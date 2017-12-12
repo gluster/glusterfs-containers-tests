@@ -12,6 +12,8 @@ from cnslibs.common.exceptions import ExecutionError, ConfigError
 from cnslibs.common.heketi_ops import (setup_heketi_ssh_key,
                                        modify_heketi_executor,
                                        export_heketi_cli_server, hello_heketi)
+from cnslibs.common.openshift_ops import (oc_login, switch_oc_project,
+                                          get_ocp_gluster_pod_names)
 
 
 class HeketiBaseClass(unittest.TestCase):
@@ -29,6 +31,12 @@ class HeketiBaseClass(unittest.TestCase):
         super(HeketiBaseClass, cls).setUpClass()
 
         # Initializes heketi config variables
+        cls.cns_username = g.config['cns']['setup']['cns_username']
+        cls.cns_password = g.config['cns']['setup']['cns_password']
+        cls.cns_project_name = g.config['cns']['setup']['cns_project_name']
+        cls.ocp_master_nodes = g.config['ocp_servers']['master'].keys()
+        cls.ocp_master_node = cls.ocp_master_nodes[0]
+
         cls.deployment_type = g.config['cns']['deployment_type']
         cls.executor = g.config['cns']['executor']
         cls.executor_user = g.config['cns']['executor_user']
@@ -66,6 +74,20 @@ class HeketiBaseClass(unittest.TestCase):
         if not hello_heketi(cls.heketi_client_node, cls.heketi_server_url):
             raise ConfigError("Heketi server %s is not alive"
                               % cls.heketi_server_url)
+
+        if cls.deployment_type == "cns":
+            if not oc_login(cls.ocp_master_node, cls.cns_username,
+                            cls.cns_password):
+                raise ExecutionError("Failed to do oc login on node %s"
+                                     % cls.ocp_master_node)
+
+            if not switch_oc_project(cls.ocp_master_node,
+                                     cls.cns_project_name):
+                raise ExecutionError("Failed to switch oc project on node %s"
+                                     % cls.ocp_master_node)
+
+            cls.gluster_pods = get_ocp_gluster_pod_names(cls.ocp_master_node)
+            g.pod_name = cls.gluster_pods[0]
 
         # Have a unique string to recognize the test run for logging
         if 'glustotest_run_id' not in g.config:
