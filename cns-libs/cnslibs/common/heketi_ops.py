@@ -395,7 +395,7 @@ def heketi_topology_load(heketi_client_node, heketi_server_url,
 
 
 def heketi_volume_create(heketi_client_node, heketi_server_url, size,
-                         mode='cli', **kwargs):
+                         mode='cli', raw_cli_output=False, **kwargs):
     """Creates heketi volume with the given user options
 
     Args:
@@ -430,6 +430,7 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
         dict: volume create info on success, only cli option is specified
             without --json option, then it returns raw string output.
         False otherwise
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_volume_create(heketi_client_node, heketi_server_url, size)
@@ -485,7 +486,11 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
                   persistent_volume_file_arg, redundancy_arg, replica_arg,
                   snapshot_factor_arg, json_arg, secret_arg, user_arg))
 
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to create volume using heketi")
             return False
@@ -514,7 +519,7 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
 
 
 def heketi_volume_info(heketi_client_node, heketi_server_url, volume_id,
-                       mode='cli', **kwargs):
+                       mode='cli', raw_cli_output=False, **kwargs):
     """Executes heketi volume info command.
 
     Args:
@@ -534,6 +539,7 @@ def heketi_volume_info(heketi_client_node, heketi_server_url, volume_id,
     Returns:
         dict: volume info on success
         False: in case of failure
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_volume_info(heketi_client_node, volume_id)
@@ -545,7 +551,11 @@ def heketi_volume_info(heketi_client_node, heketi_server_url, volume_id,
     if mode == 'cli':
         cmd = ("heketi-cli -s %s volume info %s %s %s %s"
                % (heketi_server_url, volume_id, json_arg, admin_key, user))
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli volume info command")
             return False
@@ -568,7 +578,9 @@ def heketi_volume_info(heketi_client_node, heketi_server_url, volume_id,
 
 
 def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
-                         expand_size, mode='cli', **kwargs):
+                         expand_size, mode='cli', raw_cli_output=False,
+                         **kwargs):
+
     """Executes heketi volume expand
 
     Args:
@@ -590,6 +602,7 @@ def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
         dict: volume expand info on success, only cli option is specified
             without --json option, then it returns raw string output.
         False otherwise
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
@@ -606,7 +619,11 @@ def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
                % (heketi_server_url, volume_id, expand_size, json_arg,
                   admin_key, user))
 
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli volume expand command")
             return False
@@ -631,7 +648,7 @@ def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
 
 
 def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
-                         mode='cli', **kwargs):
+                         mode='cli', raw_cli_output=False, **kwargs):
     """Executes heketi volume delete command.
 
     Args:
@@ -651,6 +668,7 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
     Returns:
         str: volume delete command output on success
         False on failure
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id)
@@ -664,7 +682,11 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
         cmd = ("heketi-cli -s %s volume delete %s %s %s %s"
                % (heketi_server_url, volume_id, json_arg, admin_key, user))
 
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli volume delete command")
             return False
@@ -681,7 +703,7 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
 
 
 def heketi_volume_list(heketi_client_node, heketi_server_url, mode='cli',
-                       **kwargs):
+                       raw_cli_output=False, **kwargs):
     """Executes heketi volume list command.
 
     Args:
@@ -701,6 +723,7 @@ def heketi_volume_list(heketi_client_node, heketi_server_url, mode='cli',
         dict: volume list with --json on success, if cli option is specified
             without --json option or with url, it returns raw string output.
         False otherwise
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_volume_info(heketi_client_node, heketi_server_url)
@@ -712,7 +735,11 @@ def heketi_volume_list(heketi_client_node, heketi_server_url, mode='cli',
     if mode == 'cli':
         cmd = ("heketi-cli -s %s volume list %s %s %s"
                % (heketi_server_url, json_arg, admin_key, user))
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli volume list command")
             return False
@@ -733,7 +760,9 @@ def heketi_volume_list(heketi_client_node, heketi_server_url, mode='cli',
     return volume_list
 
 
-def heketi_topology_info(heketi_client_node, heketi_server_url, **kwargs):
+def heketi_topology_info(heketi_client_node, heketi_server_url,
+                         raw_cli_output=False, **kwargs):
+
     """Executes heketi topology info command.
 
     Args:
@@ -753,6 +782,7 @@ def heketi_topology_info(heketi_client_node, heketi_server_url, **kwargs):
         dict: topology info if --json option is specified. If only cli option
             is specified, raw command output is returned on success.
         False, otherwise
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_topology_info(heketi_client_node, heketi_server_url)
@@ -764,7 +794,11 @@ def heketi_topology_info(heketi_client_node, heketi_server_url, **kwargs):
     cmd = ("heketi-cli -s %s topology info %s %s %s"
            % (heketi_server_url, json_arg, admin_key, user))
 
-    ret, out, _ = g.run(heketi_client_node, cmd)
+    ret, out, err = g.run(heketi_client_node, cmd)
+
+    if raw_cli_output:
+        return ret, out, err
+
     if ret != 0:
         g.log.error("Failed to execute heketi-cli topology info command")
         return False
@@ -1058,7 +1092,8 @@ def heketi_cluster_list(heketi_client_node, heketi_server_url, mode='cli',
 
 
 def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
-                      node_id, mode='cli', **kwargs):
+                      node_id, mode='cli', raw_cli_output=False, **kwargs):
+
     """Executes heketi device add command.
 
     Args:
@@ -1080,6 +1115,7 @@ def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
         str: heketi device add command output on success. If mode='url'
             return True.
         False on failure
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_device_add(heketi_client_node, heketi_server_url, device_name,
@@ -1096,7 +1132,11 @@ def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
                % (heketi_server_url, device_name, node_id, json_arg,
                   admin_key, user))
 
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli device add command")
             return False
@@ -1116,7 +1156,7 @@ def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
 
 
 def heketi_device_delete(heketi_client_node, heketi_server_url, device_id,
-                         mode='cli', **kwargs):
+                         mode='cli', raw_cli_output=False, **kwargs):
     """Executes heketi device delete command.
 
     Args:
@@ -1137,6 +1177,7 @@ def heketi_device_delete(heketi_client_node, heketi_server_url, device_id,
         str: heketi device delete command output on success. If mode='url'
             return True.
         False on failure
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_device_delete(heketi_client_node, heketi_server_url, device_id)
@@ -1152,7 +1193,11 @@ def heketi_device_delete(heketi_client_node, heketi_server_url, device_id,
                % (heketi_server_url, device_id, json_arg,
                   admin_key, user))
 
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli device delete command")
             return False
@@ -1169,7 +1214,7 @@ def heketi_device_delete(heketi_client_node, heketi_server_url, device_id,
 
 
 def heketi_device_disable(heketi_client_node, heketi_server_url, device_id,
-                          mode='cli', **kwargs):
+                          mode='cli', raw_cli_output=False, **kwargs):
     """Executes heketi-cli device disable command.
 
     Args:
@@ -1190,6 +1235,7 @@ def heketi_device_disable(heketi_client_node, heketi_server_url, device_id,
         str: heketi device disable command output on success. If mode='url'
             return True.
         False on failure
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_device_disable(heketi_client_node, heketi_server_url, device_id)
@@ -1205,7 +1251,11 @@ def heketi_device_disable(heketi_client_node, heketi_server_url, device_id,
                % (heketi_server_url, device_id, json_arg,
                   admin_key, user))
 
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli device disable command")
             return False
@@ -1222,7 +1272,7 @@ def heketi_device_disable(heketi_client_node, heketi_server_url, device_id,
 
 
 def heketi_device_enable(heketi_client_node, heketi_server_url, device_id,
-                         mode='cli', **kwargs):
+                         mode='cli', raw_cli_output=False, **kwargs):
     """Executes heketi-cli device enable command.
 
     Args:
@@ -1243,6 +1293,7 @@ def heketi_device_enable(heketi_client_node, heketi_server_url, device_id,
         str: heketi device enable command output on success. If mode='url'
             return True.
         False on failure
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_device_enable(heketi_client_node, heketi_server_url, device_id)
@@ -1258,7 +1309,11 @@ def heketi_device_enable(heketi_client_node, heketi_server_url, device_id,
                % (heketi_server_url, device_id, json_arg,
                   admin_key, user))
 
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli device enable command")
             return False
@@ -1275,7 +1330,7 @@ def heketi_device_enable(heketi_client_node, heketi_server_url, device_id,
 
 
 def heketi_device_info(heketi_client_node, heketi_server_url, device_id,
-                       mode='cli', **kwargs):
+                       mode='cli', raw_cli_output=False, **kwargs):
     """Executes heketi device info command.
 
     Args:
@@ -1296,6 +1351,7 @@ def heketi_device_info(heketi_client_node, heketi_server_url, device_id,
         dict: device info on success, if mode='cli' without json, then it
             returns raw output in string format.
         False: in case of failure
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_device_info(heketi_client_node, heketi_server_url, device_id)
@@ -1307,7 +1363,11 @@ def heketi_device_info(heketi_client_node, heketi_server_url, device_id,
     if mode == 'cli':
         cmd = ("heketi-cli -s %s device info %s %s %s %s"
                % (heketi_server_url, device_id, json_arg, admin_key, user))
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli device info command")
             return False
@@ -1328,7 +1388,7 @@ def heketi_device_info(heketi_client_node, heketi_server_url, device_id,
 
 
 def heketi_device_remove(heketi_client_node, heketi_server_url, device_id,
-                         mode='cli', **kwargs):
+                         mode='cli', raw_cli_output=False, **kwargs):
     """Executes heketi-cli device remove command.
 
     Args:
@@ -1349,6 +1409,7 @@ def heketi_device_remove(heketi_client_node, heketi_server_url, device_id,
         str: heketi device remove command output on success. If mode='url'
             return True.
         False on failure
+        Tuple (ret, out, err): if raw_cli_output is True
 
     Example:
         heketi_device_remove(heketi_client_node, heketi_server_url, device_id)
@@ -1364,7 +1425,11 @@ def heketi_device_remove(heketi_client_node, heketi_server_url, device_id,
                % (heketi_server_url, device_id, json_arg,
                   admin_key, user))
 
-        ret, out, _ = g.run(heketi_client_node, cmd)
+        ret, out, err = g.run(heketi_client_node, cmd)
+
+        if raw_cli_output:
+            return ret, out, err
+
         if ret != 0:
             g.log.error("Failed to execute heketi-cli device remove command")
             return False
