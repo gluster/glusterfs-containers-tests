@@ -189,9 +189,33 @@ def _heketi_name_id_map(vols):
 
 
 class TestVolumeMultiReq(HeketiClientSetupBaseClass):
+    def setUp(self):
+        super(TestVolumeMultiReq, self).setUp()
+        self.volcount = self._count_vols()
+
+    def wait_to_settle(self, timeout=120, interval=1):
+        # This was originally going to be a tearDown, but oddly enough
+        # tearDown is called *before* the cleanup functions, so it
+        # could never succeed. This needs to be added as a cleanup
+        # function first so that we run after our test's other cleanup
+        # functions but before we go on to the next test in order
+        # to prevent the async cleanups in kubernetes from steping
+        # on the next test's "toes".
+        for w in Waiter(timeout):
+            nvols = self._count_vols()
+            if nvols == self.volcount:
+                return
+        raise AssertionError(
+            'wait for volume count to settle timed out')
+
+    def _count_vols(self):
+        ocp_node = g.config['ocp_servers']['master'].keys()[0]
+        return len(_heketi_vols(ocp_node, self.heketi_server_url))
+
     def test_simple_serial_vol_create(self):
         """Test that serially creating PVCs causes heketi to add volumes.
         """
+        self.addCleanup(self.wait_to_settle)
         # TODO A nice thing to add to this test would be to also verify
         # the gluster volumes also exist.
         tname = make_unique_label(extract_method_name(self.id()))
@@ -245,3 +269,54 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
         self.assertEqual(len(orig_vols) + 2, len(now_vols))
         self.assertIn(c2.heketiVolumeName, now_vols)
         self.assertNotIn(c2.heketiVolumeName, orig_vols)
+
+    def test_multiple_vol_create(self):
+        """Test creating two volumes via PVCs with no waiting between
+        the PVC requests.
+
+        We do wait after all the PVCs are submitted to get statuses.
+        """
+        self.addCleanup(self.wait_to_settle)
+        tname = make_unique_label(extract_method_name(self.id()))
+        ocp_node = g.config['ocp_servers']['master'].keys()[0]
+        # deploy a temporary storage class
+        sc = build_storage_class(
+            name=tname,
+            resturl=self.heketi_server_url)
+        with temp_config(ocp_node, sc) as tmpfn:
+            oc_create(ocp_node, tmpfn)
+        self.addCleanup(delete_storageclass, ocp_node, tname)
+
+        # deploy two persistent volume claims
+        c1 = ClaimInfo(
+            name='-'.join((tname, 'pvc1')),
+            storageclass=tname,
+            size=2)
+        c1.create_pvc(ocp_node)
+        self.addCleanup(c1.delete_pvc, ocp_node)
+        c2 = ClaimInfo(
+            name='-'.join((tname, 'pvc2')),
+            storageclass=tname,
+            size=2)
+        c2.create_pvc(ocp_node)
+        self.addCleanup(c2.delete_pvc, ocp_node)
+
+        # wait for pvcs/volumes to complete
+        c1.update_pvc_info(ocp_node)
+        c2.update_pvc_info(ocp_node)
+        now_vols = _heketi_name_id_map(
+            _heketi_vols(ocp_node, self.heketi_server_url))
+
+        # verify first volume exists
+        self.assertTrue(c1.volumeName)
+        c1.update_pv_info(ocp_node)
+        self.assertTrue(c1.heketiVolumeName)
+        # verify this volume in heketi
+        self.assertIn(c1.heketiVolumeName, now_vols)
+
+        # verify second volume exists
+        self.assertTrue(c2.volumeName)
+        c2.update_pv_info(ocp_node)
+        self.assertTrue(c2.heketiVolumeName)
+        # verify this volume in heketi
+        self.assertIn(c2.heketiVolumeName, now_vols)
