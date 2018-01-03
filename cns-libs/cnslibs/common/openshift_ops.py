@@ -142,7 +142,7 @@ def switch_oc_project(ocp_node, project_name):
     return True
 
 
-def oc_rsh(ocp_node, pod_name, command):
+def oc_rsh(ocp_node, pod_name, command, log_level=None):
     """Run a command in the ocp pod using `oc rsh`.
 
     Args:
@@ -150,6 +150,8 @@ def oc_rsh(ocp_node, pod_name, command):
         pod_name (str): Name of the pod on which the command will
             be executed.
         command (str|list): command to run.
+        log_level (str|None): log level to be passed to glusto's run
+            method.
 
     Returns:
         A tuple consisting of the command return code, stdout, and stderr.
@@ -162,5 +164,5 @@ def oc_rsh(ocp_node, pod_name, command):
 
     # unpack the tuple to make sure our return value exactly matches
     # our docstring
-    ret, stdout, stderr = g.run(ocp_node, cmd)
+    ret, stdout, stderr = g.run(ocp_node, cmd, log_level=log_level)
     return (ret, stdout, stderr)
