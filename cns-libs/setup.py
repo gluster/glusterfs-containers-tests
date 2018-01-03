@@ -21,6 +21,6 @@ setup(
         'Programming Language :: Python :: 2.7'
         'Topic :: Software Development :: Testing'
     ],
-    install_requires=['glusto'],
+    install_requires=['glusto', 'ddt'],
     dependency_links=['http://github.com/loadtheaccumulator/glusto/tarball/master#egg=glusto'],
 )

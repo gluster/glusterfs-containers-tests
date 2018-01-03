@@ -2,8 +2,10 @@
 """
 
 import contextlib
+import threading
 import time
 
+import ddt
 import yaml
 
 from glusto.core import Glusto as g
@@ -188,6 +190,7 @@ def _heketi_name_id_map(vols):
     return {vol['name']: vol['id'] for vol in vols}
 
 
+@ddt.ddt
 class TestVolumeMultiReq(HeketiClientSetupBaseClass):
     def setUp(self):
         super(TestVolumeMultiReq, self).setUp()
@@ -320,3 +323,49 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
         self.assertTrue(c2.heketiVolumeName)
         # verify this volume in heketi
         self.assertIn(c2.heketiVolumeName, now_vols)
+
+    # NOTE(jjm): I've noticed that on the system I'm using (RHEL7).
+    # with count=8 things start to back up a bit.
+    # I needed to increase some timeouts to get this to pass.
+    @ddt.data(2, 4, 8)
+    def test_threaded_multi_request(self, count):
+        """Test creating volumes via PVCs where the pvc create
+        commands are launched in parallell via threads.
+        """
+        self.addCleanup(self.wait_to_settle)
+        tname = make_unique_label(extract_method_name(self.id()))
+        ocp_node = g.config['ocp_servers']['master'].keys()[0]
+        # deploy a temporary storage class
+        sc = build_storage_class(
+            name=tname,
+            resturl=self.heketi_server_url)
+        with temp_config(ocp_node, sc) as tmpfn:
+            oc_create(ocp_node, tmpfn)
+        self.addCleanup(delete_storageclass, ocp_node, tname)
+
+        # prepare the persistent volume claims
+        claims = [
+            ClaimInfo(name='-'.join((tname, ('pvc%d' % n))),
+                      storageclass=tname,
+                      size=2)
+            for n in range(count)]
+
+        # create a "bunch" of pvc all at once
+        def create(ci):
+            ci.create_pvc(ocp_node)
+            self.addCleanup(ci.delete_pvc, ocp_node)
+        threads = [
+            threading.Thread(target=create, args=[c])
+            for c in claims]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        for c in claims:
+            c.update_pvc_info(ocp_node, timeout=120)
+        now_vols = _heketi_name_id_map(
+            _heketi_vols(ocp_node, self.heketi_server_url))
+        for c in claims:
+            c.update_pv_info(ocp_node)
+            self.assertIn(c.heketiVolumeName, now_vols)
