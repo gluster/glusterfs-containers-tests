@@ -1,0 +1,15 @@
+=======
+Testing
+=======
+
+Install 'tox' package first:
+
+    $ pip install tox
+
+Run all the tests (currently, it is only pep8 checks):
+
+    $ tox
+
+Run only 'pep8' checks:
+
+    $ tox -e pep8
