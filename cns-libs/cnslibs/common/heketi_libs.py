@@ -11,7 +11,9 @@ from collections import OrderedDict
 from cnslibs.common.exceptions import ExecutionError, ConfigError
 from cnslibs.common.heketi_ops import (setup_heketi_ssh_key,
                                        modify_heketi_executor,
-                                       export_heketi_cli_server, hello_heketi)
+                                       export_heketi_cli_server,
+                                       hello_heketi,
+                                       heketi_volume_delete)
 from cnslibs.common.openshift_ops import (oc_login, switch_oc_project,
                                           get_ocp_gluster_pod_names)
 
@@ -101,6 +103,29 @@ class HeketiBaseClass(unittest.TestCase):
         super(HeketiBaseClass, self).setUp()
         msg = "Starting Test : %s : %s" % (self.id(), self.glustotest_run_id)
         g.log.info(msg)
+
+    def delete_volumes(self, volume_ids):
+        """
+        Delete volumes by their IDs and raise error with list of failures
+        Input: (volume_ids) It can be a single volume ID
+        or a list of volume IDs
+        """
+        errored_ids = []
+
+        if not isinstance(volume_ids, (list, set, tuple)):
+            volume_ids = [volume_ids]
+
+        for volume_id in volume_ids:
+            out = heketi_volume_delete(
+                self.heketi_client_node, self.heketi_server_url, volume_id)
+            output_str = 'Volume %s deleted' % volume_id
+            if output_str not in out:
+                errored_ids.append(volume_id)
+
+        if errored_ids:
+            raise ExecutionError(
+                "Failed to delete following heketi volumes: "
+                "%s" % ',\n'.join(errored_ids))
 
     def tearDown(self):
         super(HeketiBaseClass, self).tearDown()
