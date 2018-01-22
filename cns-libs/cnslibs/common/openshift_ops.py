@@ -166,3 +166,104 @@ def oc_rsh(ocp_node, pod_name, command, log_level=None):
     # our docstring
     ret, stdout, stderr = g.run(ocp_node, cmd, log_level=log_level)
     return (ret, stdout, stderr)
+
+
+def oc_create(ocp_node, filename):
+    """Create a resource based on the contents of the given file name.
+
+    Args:
+        ocp_node (str): Node on which the ocp command will run
+        filename (str): Filename (on remote) to be passed to oc create
+            command
+    Raises:
+        AssertionError: Raised when resource fails to create.
+    """
+    ret, out, err = g.run(ocp_node, ['oc', 'create', '-f', filename])
+    if ret != 0:
+        g.log.error('Failed to create resource: %r; %r', out, err)
+        raise AssertionError('failed to create resource: %r; %r' % (out, err))
+    g.log.info('Created resource from file (%s)', filename)
+    return
+
+
+def oc_delete(ocp_node, rtype, name):
+    """Delete an OCP resource by name.
+
+    Args:
+        ocp_node (str): Node on which the ocp command will run.
+        rtype (str): Name of the resource type (pod, storageClass, etc).
+        name (str): Name of the resource to delete.
+    Raises:
+        AssertionError: Raised when resource fails to create.
+    """
+    ret, out, err = g.run(ocp_node, ['oc', 'delete', rtype, name])
+    if ret != 0:
+        g.log.error('Failed to delete resource: %s, %s: %r; %r',
+                    rtype, name, out, err)
+        raise AssertionError('failed to delete resource: %r; %r' % (out, err))
+    g.log.info('Deleted resource: %r %r', rtype, name)
+    return
+
+
+def oc_get_yaml(ocp_node, rtype, name=None, raise_on_error=True):
+    """Get an OCP resource by name.
+
+    Args:
+        ocp_node (str): Node on which the ocp command will run.
+        rtype (str): Name of the resource type (pod, storageClass, etc).
+        name (str|None): Name of the resource to fetch.
+        raise_on_error (bool): If set to true a failure to fetch
+            resource inforation will raise an error, otherwise
+            an empty dict will be returned.
+    Returns:
+        dict: Dictionary containting data about the resource
+    Raises:
+        AssertionError: Raised when unable to get resource and
+            `raise_on_error` is true.
+    """
+    cmd = ['oc', 'get', '-oyaml', rtype]
+    if name is not None:
+        cmd.append(name)
+    ret, out, err = g.run(ocp_node, cmd)
+    if ret != 0:
+        g.log.error('Failed to get %s: %s: %r', rtype, name, err)
+        if raise_on_error:
+            raise AssertionError('failed to get %s: %s: %r'
+                                 % (rtype, name, err))
+        return {}
+    return yaml.load(out)
+
+
+def oc_get_pvc(ocp_node, name):
+    """Get information on a persistant volume claim.
+
+    Args:
+        ocp_node (str): Node on which the ocp command will run.
+        name (str): Name of the PVC.
+    Returns:
+        dict: Dictionary containting data about the PVC.
+    """
+    return oc_get_yaml(ocp_node, 'pvc', name)
+
+
+def oc_get_pv(ocp_node, name):
+    """Get information on a persistant volume.
+
+    Args:
+        ocp_node (str): Node on which the ocp command will run.
+        name (str): Name of the PV.
+    Returns:
+        dict: Dictionary containting data about the PV.
+    """
+    return oc_get_yaml(ocp_node, 'pv', name)
+
+
+def oc_get_all_pvs(ocp_node):
+    """Get information on all persistent volumes.
+
+    Args:
+        ocp_node (str): Node on which the ocp command will run.
+    Returns:
+        dict: Dictionary containting data about the PV.
+    """
+    return oc_get_yaml(ocp_node, 'pv', None)
