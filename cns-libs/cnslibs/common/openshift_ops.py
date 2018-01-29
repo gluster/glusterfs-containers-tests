@@ -267,3 +267,27 @@ def oc_get_all_pvs(ocp_node):
         dict: Dictionary containting data about the PV.
     """
     return oc_get_yaml(ocp_node, 'pv', None)
+
+
+def create_namespace(hostname, namespace):
+    '''
+     This function creates namespace
+     Args:
+         hostname (str): hostname on which we need to
+                         create namespace
+         namespace (str): project name
+     Returns:
+         bool: True if successful and if already exists,
+               otherwise False
+    '''
+    cmd = "oc new-project %s" % namespace
+    ret, out, err = g.run(hostname, cmd, "root")
+    if ret == 0:
+        g.log.info("new namespace %s successfully created" % namespace)
+        return True
+    output = out.strip().split("\n")[0]
+    if "already exists" in output:
+        g.log.info("namespace %s already exists" % namespace)
+        return True
+    g.log.error("failed to create namespace %s" % namespace)
+    return False
