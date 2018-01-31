@@ -300,18 +300,18 @@ class CnsGlusterBlockBaseClass(CnsBaseClass):
                                          cmd, cls.ocp_master_node[0],
                                          out, err))
         cmd = "mpathconf --enable"
-        cmd_results = g.run_parallel(cls.ocp_all_nodes, cmd, "root")
+        cmd_results = g.run_parallel(cls.ocp_nodes, cmd, "root")
         for node, ret_values in cmd_results.iteritems():
             ret, out, err = ret_values
             if ret != 0:
                 raise ExecutionError("failed to execute cmd %s on %s out: "
                                      "%s err: %s" % (cmd, node, out, err))
-        for node in cls.ocp_all_nodes:
+        for node in cls.ocp_nodes:
             ret = edit_multipath_conf_file(node)
             if not ret:
                 raise ExecutionError("failed to edit multipath.conf file")
         cmd = "systemctl restart multipathd"
-        cmd_results = g.run_parallel(cls.ocp_all_nodes, cmd, "root")
+        cmd_results = g.run_parallel(cls.ocp_nodes, cmd, "root")
         for node, ret_values in cmd_results.iteritems():
             ret, out, err = ret_values
             if ret != 0:
