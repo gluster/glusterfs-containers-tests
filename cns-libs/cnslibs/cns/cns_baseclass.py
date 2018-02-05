@@ -105,6 +105,13 @@ class CnsBaseClass(unittest.TestCase):
                                    ['start_count_for_pvc'])
         cls.app_pvc_count_dict = (g.config['cns']['dynamic_provisioning']
                                   ['app_pvc_count_dict'])
+        cmd = "echo -n %s | base64" % cls.heketi_cli_key
+        ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
+        if ret != 0:
+            raise ExecutionError("failed to execute cmd %s on %s out: %s "
+                                 "err: %s" % (
+                                     cmd, cls.ocp_master_node[0], out, err))
+        cls.secret_data_key = out.strip()
 
         if 'glustotest_run_id' not in g.config:
             g.config['glustotest_run_id'] = (
@@ -158,6 +165,9 @@ class CnsSetupBaseClass(CnsBaseClass):
                 raise ExecutionError("failed to execute cmd %s on %s out: "
                                      "%s err: %s" % (
                                          cmd, node, out, err))
+        if not edit_master_config_file(cls.ocp_master_node[0],
+                                       cls.routingconfig_subdomain):
+            raise ExecutionError("failed to edit master.conf file")
         cmd = "systemctl restart atomic-openshift-node.service"
         cmd_results = g.run_parallel(cls.ocp_nodes, cmd, "root")
         for node, ret_values in cmd_results.iteritems():
@@ -166,9 +176,6 @@ class CnsSetupBaseClass(CnsBaseClass):
                 raise ExecutionError("failed to execute cmd %s on %s out: "
                                      "%s err: %s" % (
                                          cmd, node, out, err))
-        if not edit_master_config_file(cls.ocp_master_node[0],
-                                       cls.routingconfig_subdomain):
-            raise ExecutionError("failed to edit master.conf file")
         cmd = ("systemctl restart  atomic-openshift-master-api "
                "atomic-openshift-master-controllers")
         ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
@@ -227,7 +234,8 @@ class CnsSetupBaseClass(CnsBaseClass):
         if not setup_router(cls.ocp_client[0], cls.router_name):
             raise ExecutionError("failed to setup router")
         if not update_router_ip_dnsmasq_conf(cls.ocp_client[0],
-                                             cls.router_name):
+                                             cls.router_name,
+                                             cls.routingconfig_subdomain):
             raise ExecutionError("failed to update router ip in dnsmasq.conf")
         cmd = "systemctl restart dnsmasq.service"
         ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
@@ -242,7 +250,8 @@ class CnsSetupBaseClass(CnsBaseClass):
                                  "%s err: %s" % (
                                      cmd, cls.ocp_master_node[0], out, err))
         if not update_router_ip_dnsmasq_conf(cls.ocp_master_node[0],
-                                             cls.router_name):
+                                             cls.router_name,
+                                             cls.routingconfig_subdomain):
             raise ExecutionError("failed to update router ip in dnsmasq.conf")
         cmd = "systemctl restart dnsmasq.service"
         ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
@@ -250,10 +259,11 @@ class CnsSetupBaseClass(CnsBaseClass):
             raise ExecutionError("failed to execute cmd %s on %s out: "
                                  "%s err: %s" % (
                                      cmd, cls.ocp_master_node[0], out, err))
-        if not update_nameserver_resolv_conf(cls.ocp_client[0]):
-            raise ExecutionError("failed to update namserver in resolv.conf")
         if not update_nameserver_resolv_conf(cls.ocp_master_node[0], "EOF"):
             raise ExecutionError("failed to update namserver in resolv.conf")
+        if cls.ocp_master_node[0] != cls.ocp_client[0]:
+            if not update_nameserver_resolv_conf(cls.ocp_client[0]):
+                raise ExecutionError("failed to update namserver in resolv.conf")
 
     @classmethod
     def cns_deploy(cls):
@@ -261,14 +271,21 @@ class CnsSetupBaseClass(CnsBaseClass):
          This function runs the cns-deploy
         '''
         ret = heketi_create_topology(cls.heketi_client_node,
-                                     cls.topology_info,
-                                     topology_file="/tmp/topology.json")
+                                     cls.topology_info)
         if not ret:
             raise ConfigError("Failed to create heketi topology file on %s"
                               % cls.heketi_client_node)
-        cmd = ("cns-deploy -n %s -g /tmp/topology.json -c oc -t "
-               "/usr/share/heketi/templates -l cns_deploy.log "
-               "-v -w 600 -y") % cls.cns_project_name
+        # temporary workaround till we get fix for bug -
+        # https://bugzilla.redhat.com/show_bug.cgi?id=1505948
+        cmd = "sed -i s/'exec -it'/'exec -i'/g /usr/bin/cns-deploy"
+        ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
+        if ret != 0:
+            raise ExecutionError("failed to execute cmd %s on %s out: "
+                                 "%s err: %s" % (
+                                     cmd, cls.ocp_client[0], out, err))
+        cmd = ("cns-deploy -n %s -g -c oc -t /usr/share/heketi/templates -l "
+               "cns_deploy.log -v -w 600 -y /usr/share/heketi/topology.json" % (
+                   cls.cns_project_name))
         ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
         if ret != 0:
             raise ExecutionError("failed to execute cmd %s on %s out: "
@@ -290,6 +307,11 @@ class CnsGlusterBlockBaseClass(CnsBaseClass):
          Glusterblock setup on CNS
         '''
         super(CnsGlusterBlockBaseClass, cls).setUpClass()
+        for node in cls.ocp_all_nodes:
+            if not edit_iptables_cns(node):
+                raise ExecutionError("failed to edit iptables")
+        cmd = "systemctl reload iptables"
+        cmd_results = g.run_parallel(cls.ocp_all_nodes, cmd, "root")
         gluster_pod_list = get_ocp_gluster_pod_names(cls.ocp_master_node[0])
         g.log.info("gluster_pod_list - %s" % gluster_pod_list)
         for pod in gluster_pod_list:

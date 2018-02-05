@@ -68,7 +68,8 @@ def setup_router(hostname, router_name, timeout=1200, wait_step=60):
          bool: True if successful,
                otherwise False
     '''
-    cmd = "oc get pods | grep '%s'| awk '{print $3}'" % router_name
+    cmd = ("oc get pods | grep '%s'| grep -v deploy | "
+           "awk '{print $3}'" % router_name)
     ret, out, err = g.run(hostname, cmd, "root")
     if ret != 0:
         g.log.error("failed to execute cmd %s" % cmd)
@@ -99,21 +100,22 @@ def setup_router(hostname, router_name, timeout=1200, wait_step=60):
                 g.log.error("failed to execute cmd %s" % cmd)
                 break
             status = out.strip().split("\n")[0].strip()
-            if status == "ContainerCreating":
+            if status == "ContainerCreating" or status == "Pending":
                 g.log.info("container creating for router %s sleeping for"
                            " %s seconds" % (router_name, wait_step))
                 continue
             elif status == "Running":
+                router_flag = True
                 g.log.info("router %s is up and running" % router_name)
-                break
+                return router_flag
             elif status == "Error":
                 g.log.error("error while setting up router %s" % (
                                 router_name))
-                return False
+                return router_flag
             else:
                 g.log.error("%s router pod has different status - "
                             "%s" % (router_name, status))
-                break
+                return router_flag
         if w.expired:
             g.log.error("failed to setup '%s' router in "
                         "%s seconds" % (router_name, timeout))
@@ -123,7 +125,7 @@ def setup_router(hostname, router_name, timeout=1200, wait_step=60):
     return True
 
 
-def update_router_ip_dnsmasq_conf(hostname, router_name):
+def update_router_ip_dnsmasq_conf(hostname, router_name, router_domain):
     '''
      This function updates the router-ip in /etc/dnsmasq.conf file
      Args:
@@ -134,14 +136,14 @@ def update_router_ip_dnsmasq_conf(hostname, router_name):
          bool: True if successful,
                otherwise False
     '''
-    cmd = ("oc get pods -o wide| grep '%s'|  awk '{print $6}' "
-           "| cut -d ':' -f 1") % router_name
+    cmd = ("oc get pods -o wide | grep '%s'| grep -v deploy | "
+           "awk '{print $6}' | cut -d ':' -f 1") % router_name
     ret, out, err = g.run(hostname, cmd, "root")
     if ret != 0:
         g.log.error("failed to execute cmd %s" % cmd)
         return False
     router_ip = out.strip().split("\n")[0].strip()
-    data_to_write = "address=/.cloudapps.mystorage.com/%s" % router_ip
+    data_to_write = "address=/.%s/%s" % (router_domain, router_ip)
     try:
         conn = g.rpyc_get_connection(hostname, user="root")
         if conn is None:
@@ -152,7 +154,7 @@ def update_router_ip_dnsmasq_conf(hostname, router_name):
         update_flag = False
         for line in conn.modules.fileinput.input(
                 '/etc/dnsmasq.conf', inplace=True):
-            if "mystorage" in line:
+            if router_domain in line:
                 conn.modules.sys.stdout.write(line.replace(line,
                                               data_to_write))
                 update_flag = True
