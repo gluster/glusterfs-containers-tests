@@ -43,16 +43,17 @@ class HeketiBaseClass(unittest.TestCase):
         cls.executor = g.config['cns']['executor']
         cls.executor_user = g.config['cns']['executor_user']
         cls.executor_port = g.config['cns']['executor_port']
-        cls.heketi_client_node = (g.config['cns']['heketi_config']
-                                  ['heketi_client_node'])
-        cls.heketi_server_url = (g.config['cns']['heketi_config']
-                                 ['heketi_server_url'])
+
+        heketi_config = g.config['cns']['heketi_config']
+        cls.heketi_client_node = heketi_config['heketi_client_node']
+        cls.heketi_server_url = heketi_config['heketi_server_url']
+        cls.heketi_cli_user = heketi_config['heketi_cli_user']
+        cls.heketi_cli_key = heketi_config['heketi_cli_key']
         cls.gluster_servers = g.config['gluster_servers'].keys()
         cls.gluster_servers_info = g.config['gluster_servers']
         cls.topo_info = g.config['cns']['trusted_storage_pool_list']
-        cls.heketi_ssh_key = g.config['cns']['heketi_config']['heketi_ssh_key']
-        cls.heketi_config_file = (g.config['cns']['heketi_config']
-                                  ['heketi_config_file'])
+        cls.heketi_ssh_key = heketi_config['heketi_ssh_key']
+        cls.heketi_config_file = heketi_config['heketi_config_file']
         cls.heketi_volume = {
             'size': g.config['cns']['heketi_volume']['size'],
             'name': g.config['cns']['heketi_volume']['name'],
@@ -181,7 +182,10 @@ class HeketiClientSetupBaseClass(HeketiBaseClass):
 
             # Exports heketi cli server
             heketi_url = cls.heketi_server_url
-            if not export_heketi_cli_server(cls.heketi_client_node,
-                                            heketi_cli_server=heketi_url):
+            if not export_heketi_cli_server(
+                    cls.heketi_client_node,
+                    heketi_cli_server=heketi_url,
+                    heketi_cli_user=cls.heketi_cli_user,
+                    heketi_cli_key=cls.heketi_cli_key):
                 raise ExecutionError("Failed to export heketi cli server on %s"
                                      % cls.heketi_client_node)

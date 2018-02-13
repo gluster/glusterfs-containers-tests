@@ -194,7 +194,9 @@ def enable_heketi_service(heketi_client_node):
 def export_heketi_cli_server(heketi_client_node,
                              heketi_cli_server=("http://heketi-storage-" +
                                                 "project.cloudapps." +
-                                                "mystorage.com")):
+                                                "mystorage.com"),
+                             heketi_cli_user=None,
+                             heketi_cli_key=None):
     """Exports given HEKETI_CLI_SERVER in given node.
 
     Args:
@@ -221,6 +223,10 @@ def export_heketi_cli_server(heketi_client_node,
     """
 
     cmd = "export HEKETI_CLI_SERVER=%s" % heketi_cli_server
+    if heketi_cli_user:
+        cmd += "\nexport HEKETI_CLI_USER=%s" % heketi_cli_user
+        if heketi_cli_key is not None:
+            cmd += "\nexport HEKETI_CLI_KEY='%s'" % heketi_cli_key
     return g.run(heketi_client_node, cmd)
 
 
@@ -353,6 +359,13 @@ def _set_heketi_global_flags(heketi_server_url, **kwargs):
     json_arg = "--json" if json else ""
     secret_arg = "--secret %s" % secret if secret else ""
     user_arg = "--user %s" % user if user else ""
+    if not user_arg:
+        heketi_cli_user = g.config['cns']['heketi_config']['heketi_cli_user']
+        if heketi_cli_user:
+            user_arg = "--user %s" % heketi_cli_user
+            heketi_cli_key = g.config['cns']['heketi_config']['heketi_cli_key']
+            if heketi_cli_key is not None:
+                secret_arg = "--secret '%s'" % heketi_cli_key
 
     return (heketi_server_url, json_arg, secret_arg, user_arg)
 
@@ -436,6 +449,14 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
         heketi_volume_create(heketi_client_node, heketi_server_url, size)
     """
 
+    if not kwargs.get('user'):
+        heketi_cli_user = g.config['cns']['heketi_config']['heketi_cli_user']
+        if heketi_cli_user:
+            kwargs['user'] = heketi_cli_user
+            heketi_cli_key = g.config['cns']['heketi_config']['heketi_cli_key']
+            if heketi_cli_key is not None:
+                kwargs['secret'] = heketi_cli_key
+
     heketi_server_url = (heketi_server_url if heketi_server_url else ("http:" +
                          "//heketi-storage-project.cloudapps.mystorage.com"))
 
@@ -473,8 +494,8 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
                            % float(kwargs.get("snapshot_factor"))
                            if kwargs.get("snapshot_factor") else "")
     json_arg = "--json" if kwargs.get("json") else ""
-    secret_arg = "--secret %s" % secret if kwargs.get("secret") else ""
-    user_arg = "--user %s" % user if kwargs.get("user") else ""
+    secret_arg = "--secret %s" % kwargs.get("secret") if kwargs.get("secret") else ""
+    user_arg = "--user %s" % kwargs.get("user") if kwargs.get("user") else ""
 
     if mode == 'cli':
         cmd = ("heketi-cli -s %s volume create --size=%s %s %s %s %s %s %s "
@@ -503,12 +524,10 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
         g.log.info("Volume creation is successfull using heketi")
     else:
         kwargs['size'] = int(size)
-        test_server = heketi_server_url
-        if 'secret' not in kwargs.keys():
-            kwargs['secret'] = "My Secret"
         try:
-            conn = HeketiClient(test_server, "admin", kwargs['secret'])
-            kwargs.pop("secret", None)
+            user = kwargs.pop('user', 'admin')
+            admin_key = kwargs.pop('secret', 'My Secret')
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             volume_create_info = conn.volume_create(kwargs)
         except:
             g.log.error("Failed to create volume using heketi")
@@ -567,7 +586,9 @@ def heketi_volume_info(heketi_client_node, heketi_server_url, volume_id,
             return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             volume_info = conn.volume_info(volume_id)
             if volume_info is None:
                 return False
@@ -636,7 +657,9 @@ def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
 
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             vol_req = {}
             vol_req['expand_size'] = int(expand_size)
             volume_expand_info = conn.volume_expand(volume_id, vol_req)
@@ -694,7 +717,9 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             ret = conn.volume_delete(volume_id)
         except:
             g.log.error("Failed to do volume delete using heketi")
@@ -752,7 +777,9 @@ def heketi_volume_list(heketi_client_node, heketi_server_url, mode='cli',
 
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             volume_list = conn.volume_list()
         except:
             g.log.error("Failed to do volume list using heketi")
@@ -848,7 +875,9 @@ def hello_heketi(heketi_client_node, heketi_server_url, mode='cli', **kwargs):
         return False
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             ret = conn.hello()
         except:
             g.log.error("Failed to execute heketi hello command")
@@ -924,7 +953,9 @@ def heketi_cluster_create(heketi_client_node, heketi_server_url,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             cluster_req = {}
             cluster_req["block"] = block_arg
             cluster_req["file"] = file_arg
@@ -978,7 +1009,9 @@ def heketi_cluster_delete(heketi_client_node, heketi_server_url, cluster_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             ret = conn.cluster_delete(cluster_id)
         except:
             g.log.error("Failed to do volume delete using heketi")
@@ -1030,7 +1063,9 @@ def heketi_cluster_info(heketi_client_node, heketi_server_url, cluster_id,
             return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             cluster_info = conn.cluster_info(cluster_id)
         except:
             g.log.error("Failed to get cluster info using heketi")
@@ -1083,7 +1118,9 @@ def heketi_cluster_list(heketi_client_node, heketi_server_url, mode='cli',
 
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             cluster_list = conn.cluster_list()
         except:
             g.log.error("Failed to do cluster list using heketi")
@@ -1144,7 +1181,9 @@ def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             device_req = {}
             device_req["name"] = device_name
             device_req["node"] = node_id
@@ -1205,7 +1244,9 @@ def heketi_device_delete(heketi_client_node, heketi_server_url, device_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             device = conn.device_delete(device_id)
         except:
             g.log.error("Failed to do device delete using heketi")
@@ -1263,7 +1304,9 @@ def heketi_device_disable(heketi_client_node, heketi_server_url, device_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             device = conn.device_disable(device_id)
         except:
             g.log.error("Failed to do device disable using heketi")
@@ -1321,7 +1364,9 @@ def heketi_device_enable(heketi_client_node, heketi_server_url, device_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             device = conn.device_enable(device_id)
         except:
             g.log.error("Failed to do device enable using heketi")
@@ -1379,7 +1424,9 @@ def heketi_device_info(heketi_client_node, heketi_server_url, device_id,
             return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             cluster_info = conn.device_info(device_id)
         except:
             g.log.error("Failed to get device info using heketi")
@@ -1437,7 +1484,9 @@ def heketi_device_remove(heketi_client_node, heketi_server_url, device_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             device = conn.device_remove(device_id)
         except:
             g.log.error("Failed to do device remove using heketi")
@@ -1500,7 +1549,9 @@ def heketi_node_add(heketi_client_node, heketi_server_url, zone, cluster_id,
             return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             node_req = {}
             node_req["zone"] = int(zone)
             node_req["cluster"] = cluster_id
@@ -1558,7 +1609,9 @@ def heketi_node_delete(heketi_client_node, heketi_server_url, node_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             device = conn.node_delete(node_id)
         except:
             g.log.error("Failed to do node delete using heketi")
@@ -1611,7 +1664,9 @@ def heketi_node_disable(heketi_client_node, heketi_server_url, node_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             node = conn.device_disable(node_id)
         except:
             g.log.error("Failed to do node disable using heketi")
@@ -1664,7 +1719,9 @@ def heketi_node_enable(heketi_client_node, heketi_server_url, node_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             device = conn.node_enable(node_id)
         except:
             g.log.error("Failed to do node enable using heketi")
@@ -1717,7 +1774,9 @@ def heketi_node_info(heketi_client_node, heketi_server_url, node_id,
             return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             node_info = conn.node_info(node_id)
         except:
             g.log.error("Failed to get node info using heketi")
@@ -1770,7 +1829,9 @@ def heketi_node_remove(heketi_client_node, heketi_server_url, node_id,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             node = conn.node_remove(node_id)
         except:
             g.log.error("Failed to do node remove using heketi")
@@ -1818,7 +1879,9 @@ def heketi_node_list(heketi_client_node, heketi_server_url, mode='cli',
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             node_list = conn.node_list()
         except:
             g.log.error("Failed to get node list using heketi")
@@ -1873,7 +1936,9 @@ def heketi_blockvolume_info(heketi_client_node, heketi_server_url,
             return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             block_volume_info = conn.blockvolume_info(block_volume_id)
             if block_volume_info is None:
                 return False
@@ -1970,10 +2035,10 @@ def heketi_blockvolume_create(heketi_client_node, heketi_server_url, size,
 
     else:
         kwargs['size'] = int(size)
-        if 'secret' not in kwargs.keys():
-            kwargs['secret'] = "My Secret"
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             block_volume_create_info = conn.blockvolume_create(**kwargs)
         except:
             g.log.error("Failed to do blockvolume create using heketi")
@@ -2027,7 +2092,9 @@ def heketi_blockvolume_delete(heketi_client_node, heketi_server_url,
         return out
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             return conn.blockvolume_delete(block_volume_id)
         except:
             g.log.error("Failed to do blockvolume delete using heketi")
@@ -2080,7 +2147,9 @@ def heketi_blockvolume_list(heketi_client_node, heketi_server_url, mode='cli',
 
     else:
         try:
-            conn = HeketiClient(heketi_server_url, "admin", admin_key)
+            user = user.split(' ')[-1] if user else 'admin'
+            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
+            conn = HeketiClient(heketi_server_url, user, admin_key)
             return conn.blockvolume_list()
         except:
             g.log.error("Failed to do blockvolume list using heketi")

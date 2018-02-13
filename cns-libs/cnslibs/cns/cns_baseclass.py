@@ -64,21 +64,22 @@ class CnsBaseClass(unittest.TestCase):
         cls.executor_port = g.config['cns']['executor_port']
 
         # Initializes heketi config variables
-        cls.heketi_client_node = (g.config['cns']['heketi_config']
-                                  ['heketi_client_node'])
-        cls.heketi_server_url = (g.config['cns']['heketi_config']
-                                 ['heketi_server_url'])
-        cls.gluster_servers = g.config['gluster_servers'].keys()
-        cls.gluster_servers_info = g.config['gluster_servers']
-        cls.topo_info = g.config['cns']['trusted_storage_pool_list']
-        cls.heketi_ssh_key = g.config['cns']['heketi_config']['heketi_ssh_key']
-        cls.heketi_config_file = (g.config['cns']['heketi_config']
-                                  ['heketi_config_file'])
+        heketi_config = g.config['cns']['heketi_config']
+        cls.heketi_client_node = heketi_config['heketi_client_node']
+        cls.heketi_server_url = heketi_config['heketi_server_url']
+        cls.heketi_cli_user = heketi_config['heketi_cli_user']
+        cls.heketi_cli_key = heketi_config['heketi_cli_key']
+        cls.heketi_ssh_key = heketi_config['heketi_ssh_key']
+        cls.heketi_config_file = heketi_config['heketi_config_file']
         cls.heketi_volume = {}
         cls.heketi_volume['size'] = g.config['cns']['heketi_volume']['size']
         cls.heketi_volume['name'] = g.config['cns']['heketi_volume']['name']
-        cls.heketi_volume['expand_size'] = (g.config['cns']['heketi_volume']
-                                            ['expand_size'])
+        cls.heketi_volume['expand_size'] = (
+            g.config['cns']['heketi_volume']['expand_size'])
+
+        cls.gluster_servers = g.config['gluster_servers'].keys()
+        cls.gluster_servers_info = g.config['gluster_servers']
+        cls.topo_info = g.config['cns']['trusted_storage_pool_list']
 
         # Constructs topology info dictionary
         cls.topology_info = OrderedDict()

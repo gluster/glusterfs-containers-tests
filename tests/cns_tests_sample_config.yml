@@ -74,6 +74,8 @@ cns:
     heketi_config:
         heketi_client_node:
         heketi_server_url: "http://heketi-storage-project.cloudapps.mystorage.com"
+        heketi_cli_user: "admin"
+        heketi_cli_key: "admin"
         heketi_ssh_key: "/etc/heketi/heketi_key"
         heketi_config_file: "/etc/heketi/heketi.json"
     heketi_volume:
