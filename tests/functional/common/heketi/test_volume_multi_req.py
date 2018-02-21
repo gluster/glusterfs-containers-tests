@@ -2,6 +2,7 @@
 """
 
 import contextlib
+import random
 import threading
 import time
 
@@ -119,7 +120,7 @@ def wait_for_sc_unused(ocp_node, sc_name, timeout=60, interval=1):
                          % (sc_name,))
 
 
-def delete_storageclass(ocp_node, sc_name, timeout=60):
+def delete_storageclass(ocp_node, sc_name, timeout=120):
     wait_for_sc_unused(ocp_node, sc_name, timeout)
     oc_delete(ocp_node, 'storageclass', sc_name)
 
@@ -369,3 +370,94 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
         for c in claims:
             c.update_pv_info(ocp_node)
             self.assertIn(c.heketiVolumeName, now_vols)
+
+    def test_create_delete_volumes_concurrently(self):
+        """Test creating volume when "other processes" are creating
+        and deleting other volumes in the background.
+        """
+        self.addCleanup(self.wait_to_settle)
+        tname = make_unique_label(extract_method_name(self.id()))
+        ocp_node = g.config['ocp_servers']['master'].keys()[0]
+        # deploy a temporary storage class
+        sc = build_storage_class(
+            name=tname,
+            resturl=self.heketi_server_url)
+        with temp_config(ocp_node, sc) as tmpfn:
+            oc_create(ocp_node, tmpfn)
+        self.addCleanup(delete_storageclass, ocp_node, tname)
+
+        # make this a condition
+        done = threading.Event()
+        def background_ops():
+            subname = make_unique_label(tname)
+            for i, w in enumerate(Waiter(60 * 60)):
+                time.sleep(random.randint(1, 10) * 0.1)
+                c = ClaimInfo(
+                    name='{}-{}'.format(subname, i),
+                    storageclass=tname,
+                    size=2)
+                c.create_pvc(ocp_node)
+                time.sleep(1)
+                c.update_pvc_info(ocp_node, timeout=120)
+                c.update_pv_info(ocp_node)
+                time.sleep(random.randint(1, 10) * 0.1)
+                c.delete_pvc(ocp_node)
+                if done.is_set():
+                    break
+        failures = []
+        def checked_background_ops():
+            try:
+                background_ops()
+            except Exception as e:
+                failures.append(e)
+
+        count = 4
+        threads = [
+            threading.Thread(target=checked_background_ops)
+            for _ in range(count)]
+        self.addCleanup(done.set)
+        for t in threads:
+            t.start()
+
+        # let the threads start doing their own stuff
+        time.sleep(10)
+
+        # deploy two persistent volume claims
+        c1 = ClaimInfo(
+            name='-'.join((tname, 'pvc1')),
+            storageclass=tname,
+            size=2)
+        c1.create_pvc(ocp_node)
+        self.addCleanup(c1.delete_pvc, ocp_node)
+        c2 = ClaimInfo(
+            name='-'.join((tname, 'pvc2')),
+            storageclass=tname,
+            size=2)
+        c2.create_pvc(ocp_node)
+        self.addCleanup(c2.delete_pvc, ocp_node)
+
+        # wait for pvcs/volumes to complete
+        c1.update_pvc_info(ocp_node, timeout=120)
+        c2.update_pvc_info(ocp_node, timeout=120)
+
+        # verify first volume exists
+        self.assertTrue(c1.volumeName)
+        c1.update_pv_info(ocp_node)
+        self.assertTrue(c1.heketiVolumeName)
+        # verify this volume in heketi
+        now_vols = _heketi_name_id_map(
+            _heketi_vols(ocp_node, self.heketi_server_url))
+        self.assertIn(c1.heketiVolumeName, now_vols)
+
+        # verify second volume exists
+        self.assertTrue(c2.volumeName)
+        c2.update_pv_info(ocp_node)
+        self.assertTrue(c2.heketiVolumeName)
+        # verify this volume in heketi
+        self.assertIn(c2.heketiVolumeName, now_vols)
+
+        # clean up the background threads
+        done.set()
+        for t in threads:
+            t.join()
+        self.assertFalse(failures)
