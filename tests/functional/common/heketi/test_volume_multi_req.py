@@ -5,6 +5,7 @@ import contextlib
 import random
 import threading
 import time
+import unitest
 
 import ddt
 import yaml
@@ -377,6 +378,10 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
             c.update_pv_info(ocp_node)
             self.assertIn(c.heketiVolumeName, now_vols)
 
+    @unittest.skip("Failure of this test messes up the test system "
+                   "for other tests to pass. So, this test is "
+                   "skipped temporarily until failure case is "
+                   "handled.")
     def test_create_delete_volumes_concurrently(self):
         """Test creating volume when "other processes" are creating
         and deleting other volumes in the background.
