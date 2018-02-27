@@ -28,6 +28,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
     def test_dynamic_provisioning_glusterfile(self):
         g.log.info("test_dynamic_provisioning_glusterfile")
         storage_class = self.cns_storage_class['storage_class1']
+        secret = self.cns_secret['secret1']
         sc_name = storage_class['name']
         pvc_name1 = "mongodb1"
         cmd = ("oc get svc | grep heketi | grep -v endpoints "
@@ -44,7 +45,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             storage_class['provisioner'],
             restuser=storage_class['restuser'],
             secretnamespace=storage_class['secretnamespace'],
-            secretname=storage_class['secretname'])
+            secretname=secret['secret_name'])
         self.assertTrue(ret, "creation of storage-class file failed")
         provisioner_name = storage_class['provisioner'].split("/")
         file_path = "/%s-%s-storage-class.yaml" % (
@@ -52,7 +53,6 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         oc_create(self.ocp_master_node[0], file_path)
         self.addCleanup(oc_delete, self.ocp_master_node[0],
                         'sc', sc_name)
-        secret = self.cns_secret['secret1']
         ret = create_secret_file(self.ocp_master_node[0],
                                  secret['secret_name'],
                                  secret['namespace'],
@@ -109,6 +109,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
     def test_dynamic_provisioning_glusterfile_heketipod_failure(self):
         g.log.info("test_dynamic_provisioning_glusterfile_Heketipod_Failure")
         storage_class = self.cns_storage_class['storage_class1']
+        secret = self.cns_secret['secret1']
         sc_name = storage_class['name']
         pvc_name2 = "mongodb2"
         cmd = ("oc get svc | grep heketi | grep -v endpoints "
@@ -125,7 +126,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             storage_class['provisioner'],
             restuser=storage_class['restuser'],
             secretnamespace=storage_class['secretnamespace'],
-            secretname=storage_class['secretname'])
+            secretname=secret['secret_name'])
         self.assertTrue(ret, "creation of storage-class file failed")
         provisioner_name = storage_class['provisioner'].split("/")
         file_path = "/%s-%s-storage-class.yaml" % (
@@ -133,7 +134,6 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         oc_create(self.ocp_master_node[0], file_path)
         self.addCleanup(oc_delete, self.ocp_master_node[0],
                         'sc', sc_name)
-        secret = self.cns_secret['secret1']
         ret = create_secret_file(self.ocp_master_node[0],
                                  secret['secret_name'],
                                  secret['namespace'],
@@ -251,6 +251,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
     def test_dynamic_provisioning_glusterfile_glusterpod_failure(self):
         g.log.info("test_dynamic_provisioning_glusterfile_Glusterpod_Failure")
         storage_class = self.cns_storage_class['storage_class1']
+        secret = self.cns_secret['secret1']
         sc_name = storage_class['name']
         pvc_name4 = "mongodb4"
         cmd = ("oc get svc | grep heketi | grep -v endpoints "
@@ -267,7 +268,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             storage_class['provisioner'],
             restuser=storage_class['restuser'],
             secretnamespace=storage_class['secretnamespace'],
-            secretname=storage_class['secretname'])
+            secretname=secret['secret_name'])
         self.assertTrue(ret, "creation of storage-class file failed")
         provisioner_name = storage_class['provisioner'].split("/")
         file_path = "/%s-%s-storage-class.yaml" % (
@@ -275,7 +276,6 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         oc_create(self.ocp_master_node[0], file_path)
         self.addCleanup(oc_delete, self.ocp_master_node[0],
                         'sc', sc_name)
-        secret = self.cns_secret['secret1']
         ret = create_secret_file(self.ocp_master_node[0],
                                  secret['secret_name'],
                                  secret['namespace'],

@@ -28,6 +28,7 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
     def test_dynamic_provisioning_glusterblock(self):
         g.log.info("test_dynamic_provisioning_glusterblock")
         storage_class = self.cns_storage_class['storage_class2']
+        secret = self.cns_secret['secret2']
         cmd = ("oc get svc | grep heketi | grep -v endpoints "
                "| awk '{print $2}'")
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
@@ -57,7 +58,7 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             storage_class['provisioner'],
             restuser=storage_class['restuser'],
             restsecretnamespace=storage_class['restsecretnamespace'],
-            restsecretname=storage_class['restsecretname'],
+            restsecretname=secret['secret_name'],
             hacount=storage_class['hacount'],
             clusterids=cluster_id)
         self.assertTrue(ret, "creation of storage-class file failed")
@@ -67,7 +68,6 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         oc_create(self.ocp_master_node[0], file_path)
         self.addCleanup(oc_delete, self.ocp_master_node[0],
                         'sc', sc_name)
-        secret = self.cns_secret['secret2']
         ret = create_secret_file(self.ocp_master_node[0],
                                  secret['secret_name'],
                                  secret['namespace'],
@@ -139,6 +139,7 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
     def test_dynamic_provisioning_glusterblock_heketipod_failure(self):
         g.log.info("test_dynamic_provisioning_glusterblock_Heketipod_Failure")
         storage_class = self.cns_storage_class['storage_class2']
+        secret = self.cns_secret['secret2']
         cmd = ("oc get svc | grep heketi | grep -v endpoints "
                "| awk '{print $2}'")
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
@@ -168,7 +169,7 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             storage_class['provisioner'],
             restuser=storage_class['restuser'],
             restsecretnamespace=storage_class['restsecretnamespace'],
-            restsecretname=storage_class['restsecretname'],
+            restsecretname=secret['secret_name'],
             hacount=storage_class['hacount'],
             clusterids=cluster_id)
         self.assertTrue(ret, "creation of storage-class file failed")
@@ -178,7 +179,6 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         oc_create(self.ocp_master_node[0], file_path)
         self.addCleanup(oc_delete, self.ocp_master_node[0],
                         'sc', sc_name)
-        secret = self.cns_secret['secret2']
         ret = create_secret_file(self.ocp_master_node[0],
                                  secret['secret_name'],
                                  secret['namespace'],
@@ -296,6 +296,7 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
     def test_dynamic_provisioning_glusterblock_glusterpod_failure(self):
         g.log.info("test_dynamic_provisioning_glusterblock_Glusterpod_Failure")
         storage_class = self.cns_storage_class['storage_class2']
+        secret = self.cns_secret['secret2']
         cmd = ("oc get svc | grep heketi | grep -v endpoints "
                "| awk '{print $2}'")
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
@@ -325,7 +326,7 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             storage_class['provisioner'],
             restuser=storage_class['restuser'],
             restsecretnamespace=storage_class['restsecretnamespace'],
-            restsecretname=storage_class['restsecretname'],
+            restsecretname=secret['secret_name'],
             hacount=storage_class['hacount'],
             clusterids=cluster_id)
         self.assertTrue(ret, "creation of storage-class file failed")
@@ -335,7 +336,6 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         oc_create(self.ocp_master_node[0], file_path)
         self.addCleanup(oc_delete, self.ocp_master_node[0],
                         'sc', sc_name)
-        secret = self.cns_secret['secret2']
         ret = create_secret_file(self.ocp_master_node[0],
                                  secret['secret_name'],
                                  secret['namespace'],
