@@ -124,8 +124,9 @@ class TestVolumeCreationTestCases(HeketiClientSetupBaseClass):
                 self.heketi_client_node, self.heketi_server_url,
                 50, raw_cli_output=True)
 
-        self.assertEqual(err.strip(), "Error: No space",
-                         "Volume creation failed with invalid reason")
+        self.assertEqual(ret, 255, "Volume creation did not fail ret- %s "
+                         "out- %s err- %s" % (ret, out, err))
+        g.log.info("Volume creation failed as expected, err- %s" % err)
 
         if ret == 0:
             out_json = json.loads(out)

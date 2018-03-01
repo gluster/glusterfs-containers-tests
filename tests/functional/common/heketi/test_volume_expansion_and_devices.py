@@ -254,7 +254,9 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiClientSetupBaseClass):
             self.heketi_client_node, self.heketi_server_url, 620, json=True,
             raw_cli_output=True)
 
-        self.assertEqual("Error: No space", err.strip())
+        self.assertEqual(ret, 255, "Volume creation did not fail ret- %s "
+                         "out- %s err= %s" % (ret, out, err))
+        g.log.info("Volume creation failed as expected, err- %s" % err)
 
         if ret == 0:
             out_json = json.loads(out)
@@ -576,10 +578,9 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiClientSetupBaseClass):
             self.heketi_client_node, self.heketi_server_url,
             volume_id, 50, raw_cli_output=True)
 
-        emsg = "Error: Maximum number of bricks reached."
-
-        self.assertEqual(emsg, err.strip(),
-                         "Expansion failed with invalid reason")
+        self.assertEqual(ret, 255, "volume expansion did not fail ret- %s "
+                         "out- %s err= %s" % (ret, out, err))
+        g.log.info("Volume expansion failed as expected, err- %s" % err)
 
         if ret == 0:
             out_json = json.loads(out)
