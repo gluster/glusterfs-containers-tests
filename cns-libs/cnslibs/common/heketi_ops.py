@@ -2154,3 +2154,52 @@ def heketi_blockvolume_list(heketi_client_node, heketi_server_url, mode='cli',
         except:
             g.log.error("Failed to do blockvolume list using heketi")
             return False
+
+
+def verify_volume_name_prefix(hostname, prefix, namespace, pvc_name,
+                              heketi_server_url, **kwargs):
+    '''
+     This function checks if heketi voluem is present with
+     volname prefix
+     Args:
+         hostname (str): hostname on which we want
+                         to check the heketi vol
+         prefix (str): volnameprefix given in storageclass
+         namespace (str): namespace
+         pvc_name (str): name of the pvc
+         heketi_server_url (str): Heketi server url
+
+     Kwargs:
+        mode (str): Mode in which heketi command will be executed.
+            It can be cli|url. Defaults to cli.
+        **kwargs
+            The keys, values in kwargs are:
+                - json : (bool)
+                - secret : (str)|None
+                - user : (str)|None
+
+     Returns:
+         bool: True if volume found,
+               Fasle otherwise.
+    '''
+    (heketi_server_url,
+     json_arg, admin_key, user) = _set_heketi_global_flags(heketi_server_url,
+                                                           **kwargs)
+
+    heketi_vol_name_prefix = "%s_%s_%s_" % (prefix, namespace,
+                                            pvc_name)
+    cmd = ("heketi-cli -s %s volume list %s %s %s | grep %s" % (
+               heketi_server_url, json_arg, admin_key, user,
+               heketi_vol_name_prefix))
+    ret, out, err = g.run(hostname, cmd, "root")
+    if ret != 0:
+        if not out:
+            g.log.error("no heketi volume with volnameprefix - %s" % (
+                            heketi_vol_name_prefix))
+        else:
+            g.log.error("failed to execute cmd %s" % cmd)
+        return False
+    output = out.strip()
+    g.log.info("heketi volume with volnameprefix present %s" % (
+                   output))
+    return True
