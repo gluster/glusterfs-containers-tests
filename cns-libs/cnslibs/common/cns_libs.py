@@ -1,16 +1,10 @@
-from collections import OrderedDict
 from cnslibs.common.exceptions import (
-    ConfigError,
     ExecutionError)
 from cnslibs.common.openshift_ops import (
     get_ocp_gluster_pod_names,
     oc_rsh)
 from cnslibs.common.waiter import Waiter
-import fileinput
 from glusto.core import Glusto as g
-import json
-import rtyaml
-import time
 import yaml
 
 
@@ -273,7 +267,6 @@ def edit_iptables_cns(hostname):
             return False
 
         edit_flag = False
-        commit_count = 0
         with conn.builtin.open("/etc/sysconfig/iptables", "r+") as f:
             for line in f.readlines():
                 if "--dport 3260" in line:
@@ -431,7 +424,7 @@ def validate_multipath_pod(hostname, podname, hacount):
         g.log.error("failed to exectute cmd %s on %s, err %s"
                     % (cmd, pod_nodename, out))
         return False
-    active_count = int(output.strip())
+    active_count = int(out.strip())
     if active_node_count != active_count:
         g.log.error("active node count on %s for %s is %s and not 1"
                     % (pod_nodename, podname, active_count))
