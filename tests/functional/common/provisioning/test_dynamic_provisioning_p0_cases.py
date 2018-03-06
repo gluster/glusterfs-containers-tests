@@ -31,12 +31,11 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         secret = self.cns_secret['secret1']
         sc_name = storage_class['name']
         pvc_name1 = "mongodb1"
-        cmd = ("oc get svc | grep heketi | grep -v endpoints "
-               "| awk '{print $2}'")
+        cmd = "oc get svc heketi -o=custom-columns=:.spec.clusterIP"
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
-        heketi_cluster_ip = out.strip().split("\n")[0]
+        heketi_cluster_ip = out.lstrip().strip()
         resturl = "http://%s:8080" % heketi_cluster_ip
         ret = create_storage_class_file(
             self.ocp_master_node[0],
@@ -112,12 +111,11 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         secret = self.cns_secret['secret1']
         sc_name = storage_class['name']
         pvc_name2 = "mongodb2"
-        cmd = ("oc get svc | grep heketi | grep -v endpoints "
-               "| awk '{print $2}'")
+        cmd = "oc get svc heketi -o=custom-columns=:.spec.clusterIP"
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
-        heketi_cluster_ip = out.strip().split("\n")[0]
+        heketi_cluster_ip = out.lstrip().strip()
         resturl = "http://%s:8080" % heketi_cluster_ip
         ret = create_storage_class_file(
             self.ocp_master_node[0],
@@ -191,12 +189,11 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                          cmd, self.ocp_master_node[0]))
         ret = verify_pod_status_running(self.ocp_master_node[0], "heketi")
         self.assertTrue(ret, "verify heketi pod status as running failed")
-        cmd = ("oc get svc | grep heketi | grep -v endpoints "
-               "| awk '{print $2}'")
+        cmd = "oc get svc heketi -o=custom-columns=:.spec.clusterIP"
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
-        heketi_cluster_new_ip = out.strip().split("\n")[0]
+        heketi_cluster_new_ip = out.lstrip().strip()
         if heketi_cluster_new_ip != heketi_cluster_ip:
             oc_delete(self.ocp_master_node[0], 'sc', sc_name)
             resturl = "http://%s:8080" % heketi_cluster_ip
@@ -254,12 +251,11 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         secret = self.cns_secret['secret1']
         sc_name = storage_class['name']
         pvc_name4 = "mongodb4"
-        cmd = ("oc get svc | grep heketi | grep -v endpoints "
-               "| awk '{print $2}'")
+        cmd = "oc get svc heketi -o=custom-columns=:.spec.clusterIP"
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
-        heketi_cluster_ip = out.strip().split("\n")[0]
+        heketi_cluster_ip = out.lstrip().strip()
         resturl = "http://%s:8080" % heketi_cluster_ip
         ret = create_storage_class_file(
             self.ocp_master_node[0],
