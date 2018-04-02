@@ -1,10 +1,15 @@
 from collections import OrderedDict
-from cnslibs.common.waiter import Waiter
+import json
+import os
+
 from glusto.core import Glusto as g
 from glustolibs.misc.misc_libs import upload_scripts
-import json
 import rtyaml
-import time
+
+from cnslibs.common.waiter import Waiter
+
+
+TEMPLATE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 
 def create_pvc_file(hostname, claim_name, storage_class, size):
@@ -22,7 +27,8 @@ def create_pvc_file(hostname, claim_name, storage_class, size):
          bool: True if successful,
                otherwise False
     '''
-    with open("cnslibs/common/sample-glusterfs-pvc-claim.json") as data_file:
+    with open(os.path.join(TEMPLATE_DIR,
+                           "sample-glusterfs-pvc-claim.json")) as data_file:
         data = json.load(data_file, object_pairs_hook=OrderedDict)
     data['metadata']['annotations'][
         'volume.beta.kubernetes.io/storage-class'] = storage_class
@@ -63,8 +69,8 @@ def create_app_pod_file(hostname, claim_name, app_name, sample_app_name):
          bool: True if successful,
                otherwise False
     '''
-    data = rtyaml.load(open("cnslibs/common/sample-%s-pod."
-                            "yaml" % sample_app_name))
+    data = rtyaml.load(open(
+        os.path.join(TEMPLATE_DIR, "sample-%s-pod.yaml" % sample_app_name)))
     data['spec']['volumes'][0]['persistentVolumeClaim'][
         'claimName'] = claim_name
     data['metadata']['name'] = app_name
@@ -101,7 +107,8 @@ def create_secret_file(hostname, secret_name, namespace,
          bool: True if successful,
                otherwise False
     '''
-    data = rtyaml.load(open("cnslibs/common/sample-glusterfs-secret.yaml"))
+    data = rtyaml.load(open(
+        os.path.join(TEMPLATE_DIR, "sample-glusterfs-secret.yaml")))
 
     data['metadata']['name'] = secret_name
     data['data']['key'] = data_key
@@ -156,8 +163,8 @@ def create_storage_class_file(hostname, sc_name, resturl,
          bool: True if successful,
                otherwise False
     '''
-    data = rtyaml.load(open("cnslibs/common/sample-glusterfs"
-                            "-storageclass.yaml"))
+    data = rtyaml.load(open(
+        os.path.join(TEMPLATE_DIR, "sample-glusterfs-storageclass.yaml")))
 
     data['metadata']['name'] = sc_name
     data['parameters']['resturl'] = resturl
@@ -260,7 +267,7 @@ def create_mongodb_pod(hostname, pvc_name, pvc_size, sc_name):
               False otherwise
     '''
     ret = upload_scripts(hostname,
-                         "cnslibs/common/mongodb-template.json",
+                         os.path.join(TEMPLATE_DIR, "mongodb-template.json"),
                          "/tmp/app-templates", "root")
     if not ret:
         g.log.error("Failed to upload mongodp template to %s" % hostname)
