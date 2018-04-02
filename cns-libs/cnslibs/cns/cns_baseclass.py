@@ -65,6 +65,7 @@ class CnsBaseClass(unittest.TestCase):
 
         # Initializes heketi config variables
         heketi_config = g.config['cns']['heketi_config']
+        cls.heketi_service_name = heketi_config['heketi_service_name']
         cls.heketi_client_node = heketi_config['heketi_client_node']
         cls.heketi_server_url = heketi_config['heketi_server_url']
         cls.heketi_cli_user = heketi_config['heketi_cli_user']
@@ -112,6 +113,13 @@ class CnsBaseClass(unittest.TestCase):
                                  "err: %s" % (
                                      cmd, cls.ocp_master_node[0], out, err))
         cls.secret_data_key = out.strip()
+
+        cmd = 'oc project %s' % cls.cns_project_name
+        ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
+        if ret != 0:
+            raise ExecutionError("failed to execute cmd %s on %s out: "
+                                 "%s err: %s" % (
+                                     cmd, cls.ocp_client[0], out, err))
 
         if 'glustotest_run_id' not in g.config:
             g.config['glustotest_run_id'] = (

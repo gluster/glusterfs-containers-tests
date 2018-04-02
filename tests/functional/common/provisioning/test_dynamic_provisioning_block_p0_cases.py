@@ -29,7 +29,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         g.log.info("test_dynamic_provisioning_glusterblock")
         storage_class = self.cns_storage_class['storage_class2']
         secret = self.cns_secret['secret2']
-        cmd = "oc get svc heketi -o=custom-columns=:.spec.clusterIP"
+        cmd = ("oc get svc %s "
+               "-o=custom-columns=:.spec.clusterIP" % self.heketi_service_name)
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
@@ -139,7 +140,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         g.log.info("test_dynamic_provisioning_glusterblock_Heketipod_Failure")
         storage_class = self.cns_storage_class['storage_class2']
         secret = self.cns_secret['secret2']
-        cmd = "oc get svc heketi -o=custom-columns=:.spec.clusterIP"
+        cmd = ("oc get svc %s "
+               "-o=custom-columns=:.spec.clusterIP" % self.heketi_service_name)
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
@@ -234,7 +236,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
                              cmd, self.ocp_master_node[0]))
         ret = verify_pod_status_running(self.ocp_master_node[0], "heketi")
         self.assertTrue(ret, "verify heketi pod status as running failed")
-        cmd = "oc get svc heketi -o=custom-columns=:.spec.clusterIP"
+        cmd = ("oc get svc %s "
+               "-o=custom-columns=:.spec.clusterIP" % self.heketi_service_name)
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
@@ -294,7 +297,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         g.log.info("test_dynamic_provisioning_glusterblock_Glusterpod_Failure")
         storage_class = self.cns_storage_class['storage_class2']
         secret = self.cns_secret['secret2']
-        cmd = "oc get svc heketi -o=custom-columns=:.spec.clusterIP"
+        cmd = ("oc get svc %s "
+               "-o=custom-columns=:.spec.clusterIP" % self.heketi_service_name)
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
