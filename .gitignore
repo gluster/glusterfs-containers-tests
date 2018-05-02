@@ -7,10 +7,15 @@
 # Linux swap files range from .saa to .swp
 *.s[a-w][a-p]
 
-# Python bytecode files
+# Python bytecode and other related temp files
 *.pyc
 *.pyo
+*egg-info
 
 # Development environment files
 .project
 .pydevproject
+
+# Cache files
+.cache
+.pytest_cache
