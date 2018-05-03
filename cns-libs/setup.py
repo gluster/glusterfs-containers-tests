@@ -11,6 +11,7 @@ setup(
     author='Red Hat, Inc.',
     author_email='cns-qe@redhat.com',
     packages=find_packages(),
+    include_package_data=True,
     classifiers=[
         'Development Status :: 3 - Alpha'
         'Intended Audience :: QE, Developers'
