@@ -4,12 +4,12 @@ Testing
 
 Install 'tox' package first:
 
-    $ pip install tox
+    $ pip install git+git://github.com/tox-dev/tox.git@2.9.1#egg=tox
 
-Run all the tests (currently, it is only pep8 checks):
-
-    $ tox
-
-Run only 'pep8' checks:
+Run 'pep8' checks:
 
     $ tox -e pep8
+
+Run 'functional' tests:
+
+    $ tox -e functional -- glusto -c /path/to/config.yaml --pytest='-v -s tests'
