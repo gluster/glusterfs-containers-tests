@@ -99,6 +99,7 @@ cns:
                 restuser:
                 secretnamespace:
                 secretname:
+                volumenameprefix: "cns-vol"
             storage_class2:
                 name: storage_class2
                 provisioner:

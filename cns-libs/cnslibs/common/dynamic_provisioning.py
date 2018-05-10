@@ -159,6 +159,7 @@ def create_storage_class_file(hostname, sc_name, resturl,
                restsecretnamespace:str
                 ex: restsecretnamespace:"storage-project"
                restsecretname:str ex: restsecretname:"heketi-secret"
+               volumenameprefix:str ex: "dept_qe"
      Returns:
          bool: True if successful,
                otherwise False
@@ -173,7 +174,7 @@ def create_storage_class_file(hostname, sc_name, resturl,
     for key in ('secretnamespace', 'restuser', 'secretname',
                 'restauthenabled', 'restsecretnamespace',
                 'restsecretname', 'hacount', 'clusterids',
-                'chapauthenabled'):
+                'chapauthenabled', 'volumenameprefix'):
         if kwargs.get(key):
             data['parameters'][key] = kwargs.get(key)
 

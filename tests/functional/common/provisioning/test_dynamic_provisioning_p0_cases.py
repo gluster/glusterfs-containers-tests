@@ -10,6 +10,8 @@ from cnslibs.cns.cns_baseclass import (
 from cnslibs.common.exceptions import (
     ConfigError,
     ExecutionError)
+from cnslibs.common.heketi_ops import (
+    verify_volume_name_prefix)
 from cnslibs.common.openshift_ops import (
     get_ocp_gluster_pod_names,
     oc_create,
@@ -25,12 +27,10 @@ class TestDynamicProvisioningP0(CnsBaseClass):
      Class that contain P0 dynamic provisioning test cases for
      glusterfile volume
     '''
-    def test_dynamic_provisioning_glusterfile(self):
-        g.log.info("test_dynamic_provisioning_glusterfile")
+    def dynamic_provisioning_glusterfile(self, pvc_name, volname_prefix=False):
         storage_class = self.cns_storage_class['storage_class1']
         secret = self.cns_secret['secret1']
         sc_name = storage_class['name']
-        pvc_name1 = "mongodb1"
         cmd = ("oc get svc %s "
                "-o=custom-columns=:.spec.clusterIP" % self.heketi_service_name)
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
@@ -45,7 +45,9 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             storage_class['provisioner'],
             restuser=storage_class['restuser'],
             secretnamespace=storage_class['secretnamespace'],
-            secretname=secret['secret_name'])
+            secretname=secret['secret_name'],
+            **({"volumenameprefix": storage_class['volumenameprefix']}
+                if volname_prefix else {}))
         self.assertTrue(ret, "creation of storage-class file failed")
         provisioner_name = storage_class['provisioner'].split("/")
         file_path = "/%s-%s-storage-class.yaml" % (
@@ -64,19 +66,25 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         self.addCleanup(oc_delete, self.ocp_master_node[0], 'secret',
                         secret['secret_name'])
         ret = create_mongodb_pod(self.ocp_master_node[0],
-                                 pvc_name1, 10, sc_name)
+                                 pvc_name, 10, sc_name)
         self.assertTrue(ret, "creation of mongodb pod failed")
         self.addCleanup(oc_delete, self.ocp_master_node[0], 'service',
-                        pvc_name1)
+                        pvc_name)
         self.addCleanup(oc_delete, self.ocp_master_node[0], 'pvc',
-                        pvc_name1)
+                        pvc_name)
         self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc',
-                        pvc_name1)
+                        pvc_name)
         ret = verify_pod_status_running(self.ocp_master_node[0],
-                                        pvc_name1)
+                                        pvc_name)
         self.assertTrue(ret, "verify mongodb pod status as running failed")
+        if volname_prefix:
+            ret = verify_volume_name_prefix(self.ocp_master_node[0],
+                                            storage_class['volumenameprefix'],
+                                            storage_class['secretnamespace'],
+                                            pvc_name, resturl)
+            self.assertTrue(ret, "verify volnameprefix failed")
         cmd = ("oc get pods | grep %s | grep -v deploy "
-               "| awk {'print $1'}") % pvc_name1
+               "| awk {'print $1'}") % pvc_name
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
@@ -88,10 +96,10 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                              cmd, self.ocp_master_node[0]))
         oc_delete(self.ocp_master_node[0], 'pod', pod_name)
         ret = verify_pod_status_running(self.ocp_master_node[0],
-                                        pvc_name1)
+                                        pvc_name)
         self.assertTrue(ret, "verify mongodb pod status as running failed")
         cmd = ("oc get pods | grep %s | grep -v deploy "
-               "| awk {'print $1'}") % pvc_name1
+               "| awk {'print $1'}") % pvc_name
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
@@ -104,6 +112,16 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
+
+    def test_dynamic_provisioning_glusterfile(self):
+        g.log.info("test_dynamic_provisioning_glusterfile")
+        self.dynamic_provisioning_glusterfile(pvc_name="mongodb1")
+
+    def test_dynamic_provisioning_glusterfile_volname_prefix(self):
+        g.log.info("test_dynamic_provisioning_glusterfile volname"
+                   " prefix")
+        self.dynamic_provisioning_glusterfile(pvc_name="mongodb5",
+                                              volname_prefix=True)
 
     @unittest.skip("skiping heketi-pod failure testcase")
     def test_dynamic_provisioning_glusterfile_heketipod_failure(self):
