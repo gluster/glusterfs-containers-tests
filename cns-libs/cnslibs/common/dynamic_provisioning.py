@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import json
 import os
+import tempfile
 
 from glusto.core import Glusto as g
 from glustolibs.misc.misc_libs import upload_scripts
@@ -267,35 +268,39 @@ def create_mongodb_pod(hostname, pvc_name, pvc_size, sc_name):
      Returns: True if successfull,
               False otherwise
     '''
-    ret = upload_scripts(hostname,
-                         os.path.join(TEMPLATE_DIR, "mongodb-template.json"),
-                         "/tmp/app-templates", "root")
-    if not ret:
-        g.log.error("Failed to upload mongodp template to %s" % hostname)
-        return False
+    template_path = os.path.join(TEMPLATE_DIR, "mongodb-template.json")
+    with open(template_path, 'r') as template_f:
+        data = json.load(template_f, object_pairs_hook=OrderedDict)
+    data['objects'][1]['metadata']['annotations'][
+        'volume.beta.kubernetes.io/storage-class'] = sc_name
+
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        prefix='cns-automation-mongodb-pvcname-%s-' % pvc_name, suffix='.json')
+    dst_dir = '/tmp'
+    dst_path = os.path.join(dst_dir, os.path.basename(tmp_path))
+    try:
+        with os.fdopen(tmp_fd, 'w') as tmp_f:
+            json.dump(
+                data, tmp_f, sort_keys=False, indent=4, ensure_ascii=False)
+        if not upload_scripts(hostname, tmp_path, dst_dir, "root"):
+            g.log.error("Failed to upload mongodp template to %s" % hostname)
+            return False
+    finally:
+        os.remove(tmp_path)
+
     try:
         conn = g.rpyc_get_connection(hostname, user="root")
         if conn is None:
             g.log.error("Failed to get rpyc connection of node %s"
                         % hostname)
             return False
-        with conn.builtin.open(
-                '/tmp/app-templates/mongodb-template.json', 'r') as data_file:
-            data = json.load(data_file, object_pairs_hook=OrderedDict)
-        data['objects'][1]['metadata']['annotations'][
-            'volume.beta.kubernetes.io/storage-class'] = sc_name
-        with conn.builtin.open('/%s.json' % pvc_name, 'w') as data_file:
-            json.dump(data, data_file, sort_keys=False,
-                      indent=4, ensure_ascii=False)
-        cmd = ("oc new-app /%s.json --param=DATABASE_SERVICE_NAME=%s "
+        cmd = ("oc new-app %s --param=DATABASE_SERVICE_NAME=%s "
                "--param=VOLUME_CAPACITY=%sGi") % (
-                   pvc_name, pvc_name, pvc_size)
+                   dst_path, pvc_name, pvc_size)
         ret, out, err = g.run(hostname, cmd, "root")
         if ret != 0:
-            g.log.error("failed to execute cmd %s on %s" % (
-                            cmd, hostname))
+            g.log.error("failed to execute cmd %s on %s" % (cmd, hostname))
             return False
-
     except Exception as err:
         g.log.error("failed to create mongodb pod %s" % err)
         return False

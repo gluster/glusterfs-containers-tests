@@ -65,6 +65,7 @@ class CnsBaseClass(unittest.TestCase):
 
         # Initializes heketi config variables
         heketi_config = g.config['cns']['heketi_config']
+        cls.heketi_dc_name = heketi_config['heketi_dc_name']
         cls.heketi_service_name = heketi_config['heketi_service_name']
         cls.heketi_client_node = heketi_config['heketi_client_node']
         cls.heketi_server_url = heketi_config['heketi_server_url']

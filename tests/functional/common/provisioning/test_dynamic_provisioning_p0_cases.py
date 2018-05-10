@@ -4,22 +4,18 @@ from cnslibs.common.dynamic_provisioning import (
     create_storage_class_file,
     get_pvc_status,
     verify_pod_status_running)
-from cnslibs.cns.cns_baseclass import (
-    CnsBaseClass,
-    CnsSetupBaseClass)
-from cnslibs.common.exceptions import (
-    ConfigError,
-    ExecutionError)
+from cnslibs.cns.cns_baseclass import CnsBaseClass
+from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_ops import (
     verify_volume_name_prefix)
 from cnslibs.common.openshift_ops import (
     get_ocp_gluster_pod_names,
     oc_create,
     oc_delete,
-    oc_rsh)
+    oc_rsh,
+    wait_for_resource_absence)
 from cnslibs.common.waiter import Waiter
 from glusto.core import Glusto as g
-import unittest
 
 
 class TestDynamicProvisioningP0(CnsBaseClass):
@@ -123,7 +119,6 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         self.dynamic_provisioning_glusterfile(pvc_name="mongodb5",
                                               volname_prefix=True)
 
-    @unittest.skip("skiping heketi-pod failure testcase")
     def test_dynamic_provisioning_glusterfile_heketipod_failure(self):
         g.log.info("test_dynamic_provisioning_glusterfile_Heketipod_Failure")
         storage_class = self.cns_storage_class['storage_class1']
@@ -162,6 +157,8 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                   "/%s.yaml" % secret['secret_name'])
         self.addCleanup(oc_delete, self.ocp_master_node[0], 'secret',
                         secret['secret_name'])
+
+        # Create App pod #1 and write data to it
         ret = create_mongodb_pod(self.ocp_master_node[0], pvc_name2,
                                  10, sc_name)
         self.assertTrue(ret, "creation of mongodb pod failed")
@@ -171,8 +168,8 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                         pvc_name2)
         self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc',
                         pvc_name2)
-        ret = verify_pod_status_running(self.ocp_master_node[0],
-                                        pvc_name2)
+        ret = verify_pod_status_running(
+            self.ocp_master_node[0], pvc_name2, wait_step=5, timeout=300)
         self.assertTrue(ret, "verify mongodb pod status as running failed")
         cmd = ("oc get pods | grep %s | grep -v deploy "
                "|awk {'print $1'}") % pvc_name2
@@ -185,9 +182,23 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
-        oc_delete(self.ocp_master_node[0], 'dc', "heketi")
-        oc_delete(self.ocp_master_node[0], 'service', "heketi")
-        oc_delete(self.ocp_master_node[0], 'route', "heketi")
+
+        # Remove Heketi pod
+        heketi_down_cmd = "oc scale --replicas=0 dc/%s --namespace %s" % (
+            self.heketi_dc_name, self.cns_project_name)
+        heketi_up_cmd = "oc scale --replicas=1 dc/%s --namespace %s" % (
+            self.heketi_dc_name, self.cns_project_name)
+        self.addCleanup(g.run, self.ocp_master_node[0], heketi_up_cmd, "root")
+        ret, out, err = g.run(self.ocp_master_node[0], heketi_down_cmd, "root")
+
+        get_heketi_podname_cmd = (
+            "oc get pods --all-namespaces -o=custom-columns=:.metadata.name "
+            "--no-headers=true "
+            "--selector deploymentconfig=%s" % self.heketi_dc_name)
+        ret, out, err = g.run(self.ocp_master_node[0], get_heketi_podname_cmd)
+        wait_for_resource_absence(self.ocp_master_node[0], 'pod', out.strip())
+
+        # Create App pod #2
         pvc_name3 = "mongodb3"
         ret = create_mongodb_pod(self.ocp_master_node[0],
                                  pvc_name3, 10, sc_name)
@@ -203,12 +214,18 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         self.assertTrue(ret, "failed to get pvc status of %s" % pvc_name3)
         self.assertEqual(status, "Pending", "pvc status of "
                          "%s is not in Pending state" % pvc_name3)
-        cmd = "oc process heketi | oc create -f -"
-        ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
+
+        # Bring Heketi pod back
+        ret, out, err = g.run(self.ocp_master_node[0], heketi_up_cmd, "root")
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                         cmd, self.ocp_master_node[0]))
-        ret = verify_pod_status_running(self.ocp_master_node[0], "heketi")
+                         heketi_up_cmd, self.ocp_master_node[0]))
+
+        ret, out, err = g.run(self.ocp_master_node[0], get_heketi_podname_cmd)
+        ret = verify_pod_status_running(
+            self.ocp_master_node[0], out.strip(), wait_step=5, timeout=120)
         self.assertTrue(ret, "verify heketi pod status as running failed")
+
+        # Verify App pod #2
         cmd = ("oc get svc %s "
                "-o=custom-columns=:.spec.clusterIP" % self.heketi_service_name)
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
@@ -243,17 +260,18 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             else:
                 break
         if w.expired:
-            error_msg = ("exceeded timeout 300 sec, pvc %s not in"
-                        " Bound state" % pvc_name3)
+            error_msg = ("exceeded timeout 600 sec, pvc %s not in"
+                         " Bound state" % pvc_name3)
             g.log.error(error_msg)
             raise ExecutionError(error_msg)
         self.assertEqual(status, "Bound", "pvc status of %s "
                          "is not in Bound state, its state is %s" % (
                              pvc_name3, status))
-        ret = verify_pod_status_running(self.ocp_master_node[0],
-                                        pvc_name3)
+        ret = verify_pod_status_running(
+            self.ocp_master_node[0], pvc_name3, wait_step=5, timeout=300)
         self.assertTrue(ret, "verify %s pod status "
                         "as running failed" % pvc_name3)
+
         cmd = ("oc get pods | grep %s | grep -v deploy "
                "|awk {'print $1'}") % pvc_name3
         ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")

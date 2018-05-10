@@ -6,9 +6,11 @@ Various utility functions for interacting with OCP/OpenShift.
 import re
 import types
 
+from glusto.core import Glusto as g
 import yaml
 
-from glusto.core import Glusto as g
+from cnslibs.common import exceptions
+from cnslibs.common import waiter
 
 
 PODS_WIDE_RE = re.compile(
@@ -291,3 +293,17 @@ def create_namespace(hostname, namespace):
         return True
     g.log.error("failed to create namespace %s" % namespace)
     return False
+
+
+def wait_for_resource_absence(ocp_node, rtype, name,
+                              interval=10, timeout=120):
+    for w in waiter.Waiter(timeout=timeout, interval=interval):
+        try:
+            oc_get_yaml(ocp_node, rtype, name, raise_on_error=True)
+        except AssertionError:
+            return
+    if w.expired:
+        error_msg = "%s '%s' still exists after waiting for it %d seconds" % (
+            rtype, name, timeout)
+        g.log.error(error_msg)
+        raise exceptions.ExecutionError(error_msg)

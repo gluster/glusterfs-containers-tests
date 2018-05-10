@@ -72,6 +72,7 @@ cns:
     trusted_storage_pool_list:
         - [gluster_server1, gluster_server2]
     heketi_config:
+        heketi_dc_name: "fake-name-of-heketi-deployment-config"
         heketi_service_name: "fake-name-of-heketi-service"
         heketi_client_node:
         heketi_server_url: "http://heketi-storage-project.cloudapps.mystorage.com"
