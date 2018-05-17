@@ -378,10 +378,6 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
             c.update_pv_info(ocp_node)
             self.assertIn(c.heketiVolumeName, now_vols)
 
-    @unittest.skip("Failure of this test messes up the test system "
-                   "for other tests to pass. So, this test is "
-                   "skipped temporarily until failure case is "
-                   "handled.")
     def test_create_delete_volumes_concurrently(self):
         """Test creating volume when "other processes" are creating
         and deleting other volumes in the background.
@@ -399,8 +395,9 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
 
         # make this a condition
         done = threading.Event()
+        short_tc_name = "volumes-concurrently"
         def background_ops():
-            subname = make_unique_label(tname)
+            subname = make_unique_label(short_tc_name)
             for i, w in enumerate(Waiter(60 * 60)):
                 time.sleep(random.randint(1, 10) * 0.1)
                 c = ClaimInfo(
@@ -435,13 +432,13 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
 
         # deploy two persistent volume claims
         c1 = ClaimInfo(
-            name='-'.join((tname, 'pvc1')),
+            name='-'.join((short_tc_name, 'pvc1')),
             storageclass=tname,
             size=2)
         c1.create_pvc(ocp_node)
         self.addCleanup(c1.delete_pvc, ocp_node)
         c2 = ClaimInfo(
-            name='-'.join((tname, 'pvc2')),
+            name='-'.join((short_tc_name, 'pvc2')),
             storageclass=tname,
             size=2)
         c2.create_pvc(ocp_node)
