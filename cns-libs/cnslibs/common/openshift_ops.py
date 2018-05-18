@@ -10,13 +10,19 @@ import types
 
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
+from glustolibs.gluster.brick_libs import (
+    are_bricks_online,
+    get_all_bricks,
+    get_online_bricks_list)
 import mock
 import yaml
 
 from cnslibs.common import command
 from cnslibs.common import exceptions
+from cnslibs.common import podcmd
 from cnslibs.common import utils
 from cnslibs.common import waiter
+
 
 PODS_WIDE_RE = re.compile(
     '(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+).*\n')
@@ -901,3 +907,280 @@ def verify_pvc_status_is_bound(hostname, pvc_name, timeout=120, wait_step=3):
                "to reach the 'Bound' status." % (timeout, pvc_name))
         g.log.error(msg)
         raise AssertionError(msg)
+
+
+def oc_version(hostname):
+    '''
+     Get Openshift version from oc version command
+     Args:
+        hostname (str): Node on which the ocp command will run.
+     Returns:
+        str : oc version if successful,
+              otherwise raise Exception
+    '''
+    cmd = "oc version | grep openshift | cut -d ' ' -f 2"
+    ret, out, err = g.run(hostname, cmd, "root")
+    if ret != 0:
+        msg = ("failed to get oc version err %s; out %s" % (err, out))
+        g.log.error(msg)
+        raise AssertionError(msg)
+    if not out:
+        error_msg = "Empty string found for oc version"
+        g.log.error(error_msg)
+        raise exceptions.ExecutionError(error_msg)
+
+    return out.strip()
+
+
+def resize_pvc(hostname, pvc_name, size):
+    '''
+     Resize PVC
+     Args:
+         hostname (str): hostname on which we want
+                         to edit the pvc status
+         pvc_name (str): pod_name for which we
+                         edit the storage capacity
+         size (int): size of pvc to change
+     Returns:
+         bool: True, if successful
+               otherwise raise Exception
+    '''
+    cmd = ("oc patch  pvc %s "
+           "-p='{\"spec\": {\"resources\": {\"requests\": "
+           "{\"storage\": \"%dGi\"}}}}'" % (pvc_name, size))
+    ret, out, err = g.run(hostname, cmd, "root")
+    if ret != 0:
+        error_msg = ("failed to execute cmd %s "
+                     "out- %s err %s" % (cmd, out, err))
+        g.log.error(error_msg)
+        raise exceptions.ExecutionError(error_msg)
+
+    g.log.info("successfully edited storage capacity"
+               "of pvc %s . out- %s" % (pvc_name, out))
+    return True
+
+
+def verify_pvc_size(hostname, pvc_name, size,
+                    timeout=120, wait_step=5):
+    '''
+     Verify size of PVC
+     Args:
+         hostname (str): hostname on which we want
+                         to verify the size of pvc
+         pvc_name (str): pvc_name for which we
+                         verify its size
+         size (int): size of pvc
+         timeout (int): timeout value,
+                        verifies the size after wait_step
+                        value till timeout
+                        default value is 120 sec
+         wait_step( int): wait step,
+                          default value is 5 sec
+     Returns:
+         bool: True, if successful
+               otherwise raise Exception
+    '''
+    cmd = ("oc get pvc %s -o=custom-columns="
+           ":.spec.resources.requests.storage,"
+           ":.status.capacity.storage" % pvc_name)
+    for w in waiter.Waiter(timeout, wait_step):
+        sizes = command.cmd_run(cmd, hostname=hostname).split()
+        spec_size = int(sizes[0].replace("Gi", ""))
+        actual_size = int(sizes[1].replace("Gi", ""))
+        if spec_size == actual_size == size:
+            g.log.info("verification of pvc %s of size %d "
+                       "successful" % (pvc_name, size))
+            return True
+        else:
+            g.log.info("sleeping for %s sec" % wait_step)
+            continue
+
+    err_msg = ("verification of pvc %s size of %d failed -"
+               "spec_size- %d actual_size %d" % (
+                   pvc_name, size, spec_size, actual_size))
+    g.log.error(err_msg)
+    raise AssertionError(err_msg)
+
+
+def verify_pv_size(hostname, pv_name, size,
+                   timeout=120, wait_step=5):
+    '''
+     Verify size of PV
+     Args:
+         hostname (str): hostname on which we want
+                         to verify the size of pv
+         pv_name (str): pv_name for which we
+                         verify its size
+         size (int): size of pv
+         timeout (int): timeout value,
+                        verifies the size after wait_step
+                        value till timeout
+                        default value is 120 sec
+         wait_step( int): wait step,
+                          default value is 5 sec
+     Returns:
+         bool: True, if successful
+               otherwise raise Exception
+    '''
+    cmd = ("oc get pv %s -o=custom-columns=:."
+           "spec.capacity.storage" % pv_name)
+    for w in waiter.Waiter(timeout, wait_step):
+        pv_size = command.cmd_run(cmd, hostname=hostname).split()[0]
+        pv_size = int(pv_size.replace("Gi", ""))
+        if pv_size == size:
+            g.log.info("verification of pv %s of size %d "
+                       "successful" % (pv_name, size))
+            return True
+        else:
+            g.log.info("sleeping for %s sec" % wait_step)
+            continue
+
+    err_msg = ("verification of pv %s size of %d failed -"
+               "pv_size- %d" % (pv_name, size, pv_size))
+    g.log.error(err_msg)
+    raise AssertionError(err_msg)
+
+
+def get_pv_name_from_pvc(hostname, pvc_name):
+    '''
+     Returns PV name of the corresponding PVC name
+     Args:
+         hostname (str): hostname on which we want
+                         to find pv name
+         pvc_name (str): pvc_name for which we
+                         want to find corresponding
+                         pv name
+     Returns:
+         pv_name (str): pv name if successful,
+                        otherwise raise Exception
+    '''
+    cmd = ("oc get pvc %s -o=custom-columns=:."
+           "spec.volumeName" % pvc_name)
+    pv_name = command.cmd_run(cmd, hostname=hostname)
+    g.log.info("pv name is %s for pvc %s" % (
+                   pv_name, pvc_name))
+
+    return pv_name
+
+
+def get_vol_names_from_pv(hostname, pv_name):
+    '''
+     Returns the heketi and gluster
+     vol names of the corresponding PV
+     Args:
+         hostname (str): hostname on which we want
+                         to find vol names
+         pv_name (str): pv_name for which we
+                        want to find corresponding
+                        vol names
+     Returns:
+         volname (dict): dict if successful
+                      {"heketi_vol": heketi_vol_name,
+                       "gluster_vol": gluster_vol_name
+                    ex: {"heketi_vol": " xxxx",
+                         "gluster_vol": "vol_xxxx"]
+                    otherwise raise Exception
+    '''
+    vol_dict = {}
+    cmd = ("oc get pv %s -o=custom-columns="
+           ":.metadata.annotations."
+           "'gluster\.kubernetes\.io\/heketi\-volume\-id',"
+           ":.spec.glusterfs.path"
+           % pv_name)
+    vol_list = command.cmd_run(cmd, hostname=hostname).split()
+    vol_dict = {"heketi_vol": vol_list[0],
+                "gluster_vol": vol_list[1]}
+    g.log.info("gluster vol name is %s and heketi vol name"
+               " is %s for pv %s"
+               % (vol_list[1], vol_list[0], pv_name))
+    return vol_dict
+
+
+@podcmd.GlustoPod()
+def verify_brick_count_gluster_vol(hostname, brick_count,
+                                   gluster_vol):
+    '''
+     Verify brick count for gluster volume
+     Args:
+         hostname (str): hostname on which we want
+                         to check brick count
+         brick_count (int): integer value to verify
+         gluster_vol (str): gluster vol name
+     Returns:
+         bool: True, if successful
+               otherwise raise Exception
+    '''
+    gluster_pod = get_ocp_gluster_pod_names(hostname)[1]
+    p = podcmd.Pod(hostname, gluster_pod)
+    out = get_online_bricks_list(p, gluster_vol)
+    if brick_count == len(out):
+        g.log.info("successfully verified brick count %s "
+                   "for vol %s" % (brick_count, gluster_vol))
+        return True
+    err_msg = ("verification of brick count %s for vol %s"
+               "failed, count found %s" % (
+                   brick_count, gluster_vol, len(out)))
+    raise AssertionError(err_msg)
+
+
+@podcmd.GlustoPod()
+def verify_brick_status_online_gluster_vol(hostname,
+                                           gluster_vol):
+    '''
+     Verify if all the bricks are online for the
+     gluster volume
+     Args:
+         hostname (str): hostname on which we want
+                         to check brick status
+         gluster_vol (str): gluster vol name
+     Returns:
+         bool: True, if successful
+               otherwise raise Exception
+    '''
+    gluster_pod = get_ocp_gluster_pod_names(hostname)[1]
+    p = podcmd.Pod(hostname, gluster_pod)
+    brick_list = get_all_bricks(p, gluster_vol)
+    if brick_list is None:
+        error_msg = ("failed to get brick list for vol"
+                     " %s" % gluster_vol)
+        g.log.error(error_msg)
+        raise exceptions.ExecutionError(error_msg)
+    out = are_bricks_online(p, gluster_vol, brick_list)
+    if out:
+        g.log.info("verification of brick status as online"
+                   " for gluster vol %s successful"
+                   % gluster_vol)
+        return True
+    error_msg = ("verification of brick status as online"
+                 " for gluster vol %s failed" % gluster_vol)
+
+    g.log.error(error_msg)
+    raise exceptions.ExecutionError(error_msg)
+
+
+def verify_gluster_vol_for_pvc(hostname, pvc_name):
+    '''
+     Verify gluster volume has been created for
+     the corresponding PVC
+     Also checks if all the bricks of that gluster
+     volume are online
+     Args:
+         hostname (str): hostname on which we want
+                         to find gluster vol
+         pvc_name (str): pvc_name for which we
+                         want to find corresponding
+                         gluster vol
+     Returns:
+         bool: True if successful
+               otherwise raise Exception
+    '''
+    verify_pvc_status_is_bound(hostname, pvc_name)
+    pv_name = get_pv_name_from_pvc(hostname, pvc_name)
+    vol_dict = get_vol_names_from_pv(hostname, pv_name)
+    gluster_vol = vol_dict["gluster_vol"]
+    verify_brick_status_online_gluster_vol(hostname,
+                                           gluster_vol)
+
+    g.log.info("verification of gluster vol %s for pvc %s is"
+               "successful" % (gluster_vol, pvc_name))
+    return True
