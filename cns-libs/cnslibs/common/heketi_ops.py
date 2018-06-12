@@ -2187,3 +2187,160 @@ def verify_volume_name_prefix(hostname, prefix, namespace, pvc_name,
     g.log.info("heketi volume with volnameprefix present %s" % (
                    output))
     return True
+
+
+def set_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
+             **kwargs):
+    """Set any tags on Heketi node or device.
+
+    Args:
+        - heketi_client_node (str) : Node where we want to run our commands.
+            eg. "10.70.47.64"
+        - heketi_server_url (str) : This is a heketi server url
+            eg. "http://172.30.147.142:8080
+        - source (str) : This var is for node or device whether we
+                         want to set tag on node or device.
+                         Allowed values are "node" and "device".
+        - sorrce_id (str) : ID of node or device.
+            eg. "4f9c0249834919dd372e8fb3344cd7bd"
+        - tag (str) : This is a tag which we want to set
+            eg. "arbiter:required"
+    Kwargs:
+        user (str) : username
+        secret (str) : secret for that user
+    Returns:
+        True : if successful
+    Raises:
+        ValueError : when improper input data are provided.
+        exceptions.ExecutionError : when command fails.
+    """
+
+    if source not in ('node', 'device'):
+        msg = ("Incorrect value we can use 'node' or 'device' instead of %s."
+               % source)
+        g.log.error(msg)
+        raise ValueError(msg)
+
+    heketi_server_url, json_args, secret, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+
+    cmd = ("heketi-cli -s %s %s settags %s %s %s %s" %
+           (heketi_server_url, source, source_id, tag, user, secret))
+    ret, out, err = g.run(heketi_client_node, cmd)
+
+    if not ret:
+        g.log.info("Tagging of %s to %s is successful" % (source, tag))
+        return True
+
+    g.log.error(err)
+    raise exceptions.ExecutionError(err)
+
+
+def set_arbiter_tag(heketi_client_node, heketi_server_url, source,
+                    source_id, arbiter_tag_value, **kwargs):
+    """Set Arbiter tags on Heketi node or device.
+
+    Args:
+        - heketi_client_node (str) : node where we want to run our commands.
+            eg. "10.70.47.64"
+        - heketi_server_url (str) : This is a heketi server url
+            eg. "http://172.30.147.142:8080
+        - source (str) : This var is for node or device whether we
+                         want to set tag on node or device.
+                         Allowed values are "node" and "device".
+        - source_id (str) : ID of Heketi node or device
+            eg. "4f9c0249834919dd372e8fb3344cd7bd"
+        - arbiter_tag_value (str) : This is a tag which we want to set
+            Allowed values are "required", "disabled" and "supported".
+    Kwargs:
+        user (str) : username
+        secret (str) : secret for that user
+    Returns:
+        True : if successful
+    Raises:
+        ValueError : when improper input data are provided.
+        exceptions.ExecutionError : when command fails.
+    """
+
+    if arbiter_tag_value in ('required', 'disabled', 'supported'):
+        arbiter_tag_value = "arbiter:%s" % arbiter_tag_value
+        return set_tags(heketi_client_node, heketi_server_url,
+                        source, source_id, arbiter_tag_value, **kwargs)
+
+    msg = ("Incorrect value we can use 'required', 'disabled', 'supported'"
+           "instead of %s" % arbiter_tag_value)
+    g.log.error(msg)
+    raise ValueError(msg)
+
+
+def rm_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
+            **kwargs):
+    """Remove any kind of tags from Heketi node or device.
+
+    Args:
+        - heketi_client_node (str) : Node where we want to run our commands.
+            eg. "10.70.47.64"
+        - heketi_server_url (str) : This is a heketi server url
+            eg. "http://172.30.147.142:8080
+        - source (str) : This var is for node or device whether we
+                         want to set tag on node or device.
+                         Allowed values are "node" and "device".
+        - sorrce_id (str) : id of node or device
+            eg. "4f9c0249834919dd372e8fb3344cd7bd"
+        - tag (str) : This is a tag which we want to remove.
+    Kwargs:
+        user (str) : username
+        secret (str) : secret for that user
+    Returns:
+        True : if successful
+    Raises:
+        ValueError : when improper input data are provided.
+        exceptions.ExecutionError : when command fails.
+    """
+
+    heketi_server_url, json_args, secret, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+    if source not in ('node', 'device'):
+        msg = ("Incorrect value we can use 'node' or 'device' instead of %s."
+               % source)
+        g.log.error(msg)
+        raise ValueError(msg)
+
+    cmd = ("heketi-cli -s %s %s rmtags %s %s %s %s" %
+           (heketi_server_url, source, source_id, tag, user, secret))
+    ret, out, err = g.run(heketi_client_node, cmd)
+
+    if not ret:
+        g.log.info("Removal of %s tag from %s is successful." % (tag, source))
+        return True
+
+    g.log.error(err)
+    raise exceptions.ExecutionError(err)
+
+
+def rm_arbiter_tag(heketi_client_node, heketi_server_url, source, source_id,
+                   **kwargs):
+    """Remove Arbiter tag from Heketi node or device.
+
+    Args:
+        - heketi_client_node (str) : Node where we want to run our commands.
+            eg. "10.70.47.64"
+        - heketi_server_url (str) : This is a heketi server url
+            eg. "http://172.30.147.142:8080
+        - source (str) : This var is for node or device whether we
+                         want to set tag on node or device.
+                         Allowed values are "node" and "device".
+        - source_id (str) : ID of Heketi node or device.
+            eg. "4f9c0249834919dd372e8fb3344cd7bd"
+    Kwargs:
+        user (str) : username
+        secret (str) : secret for that user
+    Returns:
+        True : if successful
+    Raises:
+        ValueError : when improper input data are provided.
+        exceptions.ExecutionError : when command fails.
+    """
+
+    return rm_tags(heketi_client_node, heketi_server_url,
+                   source, source_id, 'arbiter', **kwargs)
