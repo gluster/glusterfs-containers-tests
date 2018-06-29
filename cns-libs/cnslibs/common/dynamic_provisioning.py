@@ -226,12 +226,12 @@ def verify_pod_status_running(hostname, pod_name,
             break
         output = out.strip().split("\n")[0].strip()
         if output == "":
-            g.log.info("pod not found sleeping for %s "
-                       "sec" % wait_step)
+            g.log.info("pod %s not found sleeping for %s "
+                       "sec" % (pod_name, wait_step))
             continue
         elif output == "ContainerCreating":
-            g.log.info("pod creating sleeping for %s "
-                       "sec" % wait_step)
+            g.log.info("pod %s creating sleeping for %s "
+                       "sec" % (pod_name, wait_step))
             continue
         elif output == "Running":
             status_flag = True
@@ -241,13 +241,18 @@ def verify_pod_status_running(hostname, pod_name,
             g.log.error("pod %s status error" % pod_name)
             break
         elif output == "Terminating":
-            g.log.info("pod is terminating state sleeping "
-                       "for %s sec" % wait_step)
+            g.log.info("pod %s is terminating state sleeping "
+                       "for %s sec" % (pod_name, wait_step))
+            continue
+        elif output == "Pending":
+            g.log.info("pod %s is pending state sleeping "
+                       "for %s sec" % (pod_name, wait_step))
             continue
         else:
-            g.log.error("pod %s has different status - "
-                        "%s" % (pod_name, output))
-            break
+            g.log.error("pod %s has different status - %s "
+                        "sleeping for %s sec" % (
+                            pod_name, output, wait_step))
+            continue
     if w.expired:
         g.log.error("exceeded timeout %s for verifying running "
                     "status of pod %s" % (timeout, pod_name))
