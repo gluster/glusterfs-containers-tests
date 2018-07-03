@@ -5,7 +5,6 @@ import contextlib
 import random
 import threading
 import time
-import unittest
 
 import ddt
 import yaml
@@ -388,7 +387,9 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
         # deploy a temporary storage class
         sc = build_storage_class(
             name=tname,
-            resturl=self.heketi_server_url)
+            resturl=self.heketi_server_url,
+            restuser=self.heketi_cli_user,
+            restuserkey=self.heketi_cli_key)
         with temp_config(ocp_node, sc) as tmpfn:
             oc_create(ocp_node, tmpfn)
         self.addCleanup(delete_storageclass, ocp_node, tname)
