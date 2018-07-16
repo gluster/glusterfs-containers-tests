@@ -1,3 +1,5 @@
+import time
+
 from cnslibs.common.dynamic_provisioning import (
     create_mongodb_pod,
     create_secret_file,
@@ -220,6 +222,10 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                          heketi_up_cmd, self.ocp_master_node[0]))
 
+        # Wait small amount of time before newly scheduled Heketi POD appears
+        time.sleep(2)
+
+        # Wait for Heketi POD be up and running
         ret, out, err = g.run(self.ocp_master_node[0], get_heketi_podname_cmd)
         ret = verify_pod_status_running(
             self.ocp_master_node[0], out.strip(), wait_step=5, timeout=120)
