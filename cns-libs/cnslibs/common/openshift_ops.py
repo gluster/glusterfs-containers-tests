@@ -9,8 +9,11 @@ import re
 import types
 
 from glusto.core import Glusto as g
+from glustolibs.gluster import volume_ops
+import mock
 import yaml
 
+from cnslibs.common import command
 from cnslibs.common import exceptions
 from cnslibs.common import utils
 from cnslibs.common import waiter
@@ -530,3 +533,41 @@ def scale_dc_pod_amount_and_wait(hostname, dc_name,
             wait_for_resource_absence(hostname, 'pod', pod)
         else:
             wait_for_pod_be_ready(hostname, pod)
+
+
+def get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name):
+    """Get Gluster volume info based on the PVC name.
+
+    Args:
+        ocp_node (str): Node to execute OCP commands on.
+        pvc_name (str): Name of a PVC to get bound Gluster volume info.
+    Returns:
+        dict: Dictionary containting data about a Gluster volume.
+    """
+
+    # Get PV ID from PVC
+    get_pvc_cmd = "oc get pvc %s -o=custom-columns=:.spec.volumeName" % (
+        pvc_name)
+    pv_name = command.cmd_run(get_pvc_cmd, hostname=ocp_node)
+    assert pv_name, "PV name should not be empty: '%s'" % pv_name
+
+    # Get volume ID from PV
+    get_pv_cmd = "oc get pv %s -o=custom-columns=:.spec.glusterfs.path" % (
+        pv_name)
+    vol_id = command.cmd_run(get_pv_cmd, hostname=ocp_node)
+    assert vol_id, "Gluster volume ID should not be empty: '%s'" % vol_id
+
+    # Get name of one the Gluster PODs
+    gluster_pod = get_ocp_gluster_pod_names(ocp_node)[1]
+
+    # Get Gluster volume info
+    vol_info_cmd = "oc exec %s -- gluster v info %s --xml" % (
+        gluster_pod, vol_id)
+    vol_info = command.cmd_run(vol_info_cmd, hostname=ocp_node)
+
+    # Parse XML output to python dict
+    with mock.patch('glusto.core.Glusto.run', return_value=(0, vol_info, '')):
+        vol_info = volume_ops.get_volume_info(vol_id)
+        vol_info = vol_info[list(vol_info.keys())[0]]
+        vol_info["gluster_vol_id"] = vol_id
+        return vol_info
