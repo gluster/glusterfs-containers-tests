@@ -7,6 +7,7 @@ from glusto.core import Glusto as g
 from glustolibs.misc.misc_libs import upload_scripts
 import rtyaml
 
+from cnslibs.common import exceptions
 from cnslibs.common.waiter import Waiter
 
 
@@ -334,3 +335,55 @@ def get_pvc_status(hostname, pvc_name):
         return False, err
     output = out.strip().split("\n")[0].strip()
     return True, output
+
+
+def verify_pvc_status_is_bound(hostname, pvc_name, timeout=120, wait_step=3):
+    """Verify that PVC gets 'Bound' status in required time.
+
+    Args:
+        hostname (str): hostname on which we will execute oc commands
+        pvc_name (str): name of PVC to check status of
+        timeout (int): total time in seconds we are ok to wait
+                       for 'Bound' status of a PVC
+        wait_step (int): time in seconds we will sleep before checking a PVC
+                         status again.
+    Returns: None
+    Raises: exceptions.ExecutionError in case of errors.
+    """
+    pvc_not_found_counter = 0
+    for w in Waiter(timeout, wait_step):
+        ret, output = get_pvc_status(hostname, pvc_name)
+        if ret is not True:
+            msg = ("Failed to execute 'get' command for '%s' PVC. "
+                   "Got following responce: %s" % (pvc_name, output))
+            g.log.error(msg)
+            raise exceptions.ExecutionError(msg)
+        if output == "":
+            g.log.info("PVC '%s' not found, sleeping for %s "
+                       "sec." % (pvc_name, wait_step))
+            if pvc_not_found_counter > 0:
+                msg = ("PVC '%s' has not been found 2 times already. "
+                       "Make sure you provided correct PVC name." % pvc_name)
+            else:
+                pvc_not_found_counter += 1
+                continue
+        elif output == "Pending":
+            g.log.info("PVC '%s' is in Pending state, sleeping for %s "
+                       "sec" % (pvc_name, wait_step))
+            continue
+        elif output == "Bound":
+            g.log.info("PVC '%s' is in Bound state." % pvc_name)
+            return pvc_name
+        elif output == "Error":
+            msg = "PVC '%s' is in 'Error' state." % pvc_name
+            g.log.error(msg)
+        else:
+            msg = "PVC %s has different status - %s" % (pvc_name, output)
+            g.log.error(msg)
+        if msg:
+            raise exceptions.ExecutionError(msg)
+    if w.expired:
+        msg = ("Exceeded timeout of '%s' seconds for verifying PVC '%s' "
+               "to reach the 'Bound' status." % (timeout, pvc_name))
+        g.log.error(msg)
+        raise exceptions.ExecutionError(msg)

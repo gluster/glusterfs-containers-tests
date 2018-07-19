@@ -4,7 +4,9 @@ Generic utility functions not specifc to a larger suite of tools.
 For example, not specific to OCP, Gluster, Heketi, etc.
 """
 
+import random
 import re
+import string
 
 from glusto.core import Glusto as g
 
@@ -42,3 +44,8 @@ def get_device_size(host, device_name):
         return False
 
     return str(int(int(match.group(1))/ONE_GB_BYTES))
+
+
+def get_random_str(size=14):
+    chars = string.ascii_lowercase + string.digits
+    return ''.join(random.choice(chars) for _ in range(size))

@@ -3,6 +3,8 @@
 Various utility functions for interacting with OCP/OpenShift.
 """
 
+import base64
+import json
 import re
 import types
 
@@ -10,6 +12,7 @@ from glusto.core import Glusto as g
 import yaml
 
 from cnslibs.common import exceptions
+from cnslibs.common import utils
 from cnslibs.common import waiter
 
 
@@ -170,22 +173,126 @@ def oc_rsh(ocp_node, pod_name, command, log_level=None):
     return (ret, stdout, stderr)
 
 
-def oc_create(ocp_node, filename):
+def oc_create(ocp_node, value, value_type='file'):
     """Create a resource based on the contents of the given file name.
 
     Args:
         ocp_node (str): Node on which the ocp command will run
-        filename (str): Filename (on remote) to be passed to oc create
-            command
+        value (str): Filename (on remote) or file data
+            to be passed to oc create command.
+        value_type (str): either 'file' or 'stdin'.
     Raises:
         AssertionError: Raised when resource fails to create.
     """
-    ret, out, err = g.run(ocp_node, ['oc', 'create', '-f', filename])
+    if value_type == 'file':
+        cmd = ['oc', 'create', '-f', value]
+    else:
+        cmd = ['echo', '\'%s\'' % value, '|', 'oc', 'create', '-f', '-']
+    ret, out, err = g.run(ocp_node, cmd)
     if ret != 0:
-        g.log.error('Failed to create resource: %r; %r', out, err)
-        raise AssertionError('failed to create resource: %r; %r' % (out, err))
-    g.log.info('Created resource from file (%s)', filename)
-    return
+        msg = 'Failed to create resource: %r; %r' % (out, err)
+        g.log.error(msg)
+        raise AssertionError(msg)
+    g.log.info('Created resource from %s.' % value_type)
+
+
+def oc_create_secret(hostname, secret_name_prefix="autotests-secret-",
+                     namespace="default",
+                     data_key="password",
+                     secret_type="kubernetes.io/glusterfs"):
+    """Create secret using data provided as stdin input.
+
+    Args:
+        hostname (str): Node on which 'oc create' command will be executed.
+        secret_name_prefix (str): secret name will consist of this prefix and
+                                  random str.
+        namespace (str): name of a namespace to create a secret in
+        data_key (str): plain text value for secret which will be transformed
+                        into base64 string automatically.
+        secret_type (str): type of the secret, which will be created.
+    Returns: name of a secret
+    """
+    secret_name = "%s-%s" % (secret_name_prefix, utils.get_random_str())
+    secret_data = json.dumps({
+        "apiVersion": "v1",
+        "data": {"key": base64.b64encode(data_key)},
+        "kind": "Secret",
+        "metadata": {
+            "name": secret_name,
+            "namespace": namespace,
+        },
+        "type": secret_type,
+    })
+    oc_create(hostname, secret_data, 'stdin')
+    return secret_name
+
+
+def oc_create_sc(hostname, sc_name_prefix="autotests-sc",
+                 provisioner="kubernetes.io/glusterfs",
+                 allow_volume_expansion=False, **parameters):
+    """Create storage class using data provided as stdin input.
+
+    Args:
+        hostname (str): Node on which 'oc create' command will be executed.
+        sc_name_prefix (str): sc name will consist of this prefix and
+                              random str.
+        provisioner (str): name of the provisioner
+        allow_volume_expansion (bool): Set it to True if need to allow
+                                       volume expansion.
+    Kvargs:
+        All the keyword arguments are expected to be key and values of
+        'parameters' section for storage class.
+    """
+    allowed_parameters = (
+        'resturl', 'secretnamespace', 'restuser', 'secretname',
+        'restauthenabled', 'restsecretnamespace', 'restsecretname',
+        'hacount', 'clusterids', 'chapauthenabled', 'volumenameprefix',
+        'volumeoptions',
+    )
+    for parameter in parameters.keys():
+        if parameter.lower() not in allowed_parameters:
+            parameters.pop(parameter)
+    sc_name = "%s-%s" % (sc_name_prefix, utils.get_random_str())
+    sc_data = json.dumps({
+        "kind": "StorageClass",
+        "apiVersion": "storage.k8s.io/v1",
+        "metadata": {"name": sc_name},
+        "provisioner": provisioner,
+        "parameters": parameters,
+        "allowVolumeExpansion": allow_volume_expansion,
+    })
+    oc_create(hostname, sc_data, 'stdin')
+    return sc_name
+
+
+def oc_create_pvc(hostname, sc_name, pvc_name_prefix="autotests-pvc",
+                  pvc_size=1):
+    """Create PVC using data provided as stdin input.
+
+    Args:
+        hostname (str): Node on which 'oc create' command will be executed.
+        sc_name (str): name of a storage class to create PVC in.
+        pvc_name_prefix (str): PVC name will consist of this prefix and
+                               random str.
+        pvc_size (int/str): size of PVC in Gb
+    """
+    pvc_name = "%s-%s" % (pvc_name_prefix, utils.get_random_str())
+    pvc_data = json.dumps({
+        "kind": "PersistentVolumeClaim",
+        "apiVersion": "v1",
+        "metadata": {
+            "name": pvc_name,
+            "annotations": {
+                "volume.beta.kubernetes.io/storage-class": sc_name,
+            },
+        },
+        "spec": {
+            "accessModes": ["ReadWriteOnce"],
+            "resources": {"requests": {"storage": "%sGi" % pvc_size}}
+        },
+    })
+    oc_create(hostname, pvc_data, 'stdin')
+    return pvc_name
 
 
 def oc_delete(ocp_node, rtype, name):
