@@ -25,13 +25,9 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         Get free space in each devices
         """
         free_spaces = []
-        heketi_node_id_list = []
         device_list = []
-        heketi_node_list_string = heketi_node_list(
+        heketi_node_id_list = heketi_node_list(
             self.heketi_client_node, self.heketi_server_url)
-        for line in heketi_node_list_string.strip().split("\n"):
-            heketi_node_id_list.append(line.strip().split(
-                "Cluster")[0].strip().split(":")[1])
         for node_id in heketi_node_id_list:
             node_info_dict = heketi_node_info(self.heketi_client_node,
                                               self.heketi_server_url,

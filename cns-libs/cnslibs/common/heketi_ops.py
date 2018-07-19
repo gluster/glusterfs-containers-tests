@@ -13,6 +13,7 @@ try:
 except:
     g.log.error("Please install python-client for heketi and re-run the test")
 
+from cnslibs.common import exceptions
 
 HEKETI_SSH_KEY = "/etc/heketi/heketi_key"
 HEKETI_CONFIG_FILE = "/etc/heketi/heketi.json"
@@ -1839,54 +1840,37 @@ def heketi_node_remove(heketi_client_node, heketi_server_url, node_id,
         return node
 
 
-def heketi_node_list(heketi_client_node, heketi_server_url, mode='cli',
-                     **kwargs):
-    """Executes heketi node info command.
+def heketi_node_list(heketi_client_node, heketi_server_url,
+                     heketi_user=None, heketi_secret=None):
+    """Execute CLI 'heketi node list' command and parse its output.
 
     Args:
-        heketi_client_node (str): Node on which cmd has to be executed.
-        heketi_server_url (str): Heketi server url
-
-    Kwargs:
-        mode (str): Mode to excecute the command.
-            It can be cli|url. Defaults to cli.
-        **kwargs
-            The keys, values in kwargs are:
-                - json : (bool)
-                - secret : (str)|None
-                - user : (str)|None
-
+        heketi_client_node (str): Node on which cmd has to be executed
+        heketi_server_url (str): Heketi server url to perform request to
+        heketi_user (str): Name of the user to perform request with
+        heketi_secret (str): Secret for 'heketi_user'
     Returns:
-        dict: node list on success, if mode='cli' without json, then it
-            returns raw output in string format.
-        False: in case of failure
-
-    Example:
-        heketi_node_list(heketi_client_node, heketi_server_url)
+        list of strings which are node IDs
+    Raises: cnslibs.common.exceptions.ExecutionError in case CLI command failed.
     """
 
-    (heketi_server_url,
-     json_arg, admin_key, user) = _set_heketi_global_flags(heketi_server_url,
-                                                           **kwargs)
-    if mode == 'cli':
-        cmd = ("heketi-cli -s %s node list %s %s %s"
-               % (heketi_server_url, json_arg, admin_key, user))
-        ret, out, _ = g.run(heketi_client_node, cmd)
-        if ret != 0:
-            g.log.error("Failed to execute heketi-cli node list command")
-            return False
+    heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, user=heketi_user, secret=heketi_secret)
 
-        return out
-    else:
-        try:
-            user = user.split(' ')[-1] if user else 'admin'
-            admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
-            conn = HeketiClient(heketi_server_url, user, admin_key)
-            node_list = conn.node_list()
-        except:
-            g.log.error("Failed to get node list using heketi")
-            return False
-        return node_list
+    cmd = ("heketi-cli -s %s node list %s %s %s"
+           % (heketi_server_url, json_arg, admin_key, user))
+    ret, out, _ = g.run(heketi_client_node, cmd)
+    if ret != 0:
+        msg = "Failed to get list of Heketi nodes."
+        g.log.error(msg)
+        raise exceptions.ExecutionError(msg)
+
+    heketi_node_id_list = []
+    for line in out.strip().split("\n"):
+        # Line looks like this: 'Id:nodeIdString\tCluster:clusterIdString'
+        heketi_node_id_list.append(
+            line.strip().split("Cluster")[0].strip().split(":")[1])
+    return heketi_node_id_list
 
 
 def heketi_blockvolume_info(heketi_client_node, heketi_server_url,

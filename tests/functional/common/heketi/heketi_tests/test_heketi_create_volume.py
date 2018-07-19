@@ -160,16 +160,12 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         """
 
         # List of heketi node
-        heketi_node_id_list = []
         g.log.info("List heketi nodes")
-        node_list = heketi_node_list(self.heketi_client_node,
-                                     self.heketi_server_url,
-                                     json=True)
-        self.assertTrue(node_list, ("Failed to list heketi nodes"))
+        heketi_node_id_list = heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
+        self.assertTrue(heketi_node_id_list, ("List of node IDs is empty."))
+
         g.log.info("Successfully got the list of nodes")
-        for line in node_list.strip().split("\n"):
-            heketi_node_id_list.append(line.strip().split(
-                "Cluster")[0].strip().split(":")[1])
         for node_id in heketi_node_id_list:
             g.log.info("Retrieve the node info")
             node_info_dict = heketi_ops.heketi_node_info(
@@ -194,9 +190,9 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
                    "node %s because it contains devices")
 
         # To confrim deletion failed, check node list
+        # TODO: fix following, it doesn't verify absence of the deleted nodes
         g.log.info("Listing heketi node list")
         node_list = heketi_node_list(self.heketi_client_node,
-                                     self.heketi_server_url,
-                                     json=True)
+                                     self.heketi_server_url)
         self.assertTrue(node_list, ("Failed to list heketi nodes"))
         g.log.info("Successfully got the list of nodes")
