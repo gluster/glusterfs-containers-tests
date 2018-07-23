@@ -14,6 +14,8 @@ from cnslibs.common.heketi_ops import (
     verify_volume_name_prefix)
 from cnslibs.common.openshift_ops import (
     get_ocp_gluster_pod_names,
+    oc_create_secret,
+    oc_create_sc,
     oc_create,
     oc_create_pvc,
     oc_create_app_dc_with_io,
@@ -361,3 +363,57 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         ret, out, err = proc.async_communicate()
         self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd,
                          self.ocp_master_node[0]))
+
+    def test_storage_class_mandatory_params_glusterfile(self):
+        # CNS-442 storage-class mandatory parameters
+        sc = self.cns_storage_class['storage_class1']
+        secret = self.cns_secret['secret1']
+        node = self.ocp_master_node[0]
+        # create secret
+        self.secret_name = oc_create_secret(
+            node,
+            namespace=secret['namespace'],
+            data_key=self.heketi_cli_key,
+            secret_type=secret['type'])
+        self.addCleanup(
+            oc_delete, node, 'secret', self.secret_name)
+
+        # create storage class with mandatory parameters only
+        self.sc_name = oc_create_sc(
+            node, provisioner='kubernetes.io/glusterfs',
+            resturl=sc['resturl'], restuser=sc['restuser'],
+            secretnamespace=sc['secretnamespace'],
+            secretname=self.secret_name
+        )
+        self.addCleanup(oc_delete, node, 'sc', self.sc_name)
+
+        # Create PVC
+        pvc_name = oc_create_pvc(node, self.sc_name)
+        self.addCleanup(wait_for_resource_absence, node, 'pvc', pvc_name)
+        self.addCleanup(oc_delete, node, 'pvc', pvc_name)
+        verify_pvc_status_is_bound(node, pvc_name)
+
+        # Create DC with POD and attached PVC to it.
+        dc_name = oc_create_app_dc_with_io(node, pvc_name)
+        self.addCleanup(oc_delete, node, 'dc', dc_name)
+        self.addCleanup(scale_dc_pod_amount_and_wait, node, dc_name, 0)
+
+        pod_name = get_pod_name_from_dc(node, dc_name)
+        wait_for_pod_be_ready(node, pod_name)
+
+        # Make sure we are able to work with files on the mounted volume
+        filepath = "/mnt/file_for_testing_sc.log"
+        cmd = "dd if=/dev/urandom of=%s bs=1K count=100" % filepath
+        ret, out, err = oc_rsh(node, pod_name, cmd)
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
+
+        cmd = "ls -lrt %s" % filepath
+        ret, out, err = oc_rsh(node, pod_name, cmd)
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
+
+        cmd = "rm -rf %s" % filepath
+        ret, out, err = oc_rsh(node, pod_name, cmd)
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
