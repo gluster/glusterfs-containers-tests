@@ -262,16 +262,12 @@ def edit_iptables_cns(hostname):
     try:
         conn = g.rpyc_get_connection(hostname, user="root")
         if conn is None:
-            g.log.error("Failed to get rpyc connection of node %s"
-                        % hostname)
+            g.log.error("Failed to get rpyc connection of node %s" % hostname)
             return False
 
-        edit_flag = False
-        with conn.builtin.open("/etc/sysconfig/iptables", "r+") as f:
-            for line in f.readlines():
-                if "--dport 3260" in line:
-                    edit_flag = True
-        data = [
+        filter_flag = False
+        file_data = ""
+        data_to_add = "\n".join([
             "-A OS_FIREWALL_ALLOW -p tcp -m state --state NEW -m %s" % line
             for line in ("tcp       --dport 24007        -j ACCEPT",
                          "tcp       --dport 24008        -j ACCEPT",
@@ -280,30 +276,27 @@ def edit_iptables_cns(hostname):
                          "tcp       --dport 24010        -j ACCEPT",
                          "tcp       --dport 3260         -j ACCEPT",
                          "tcp       --dport 111          -j ACCEPT")
-        ]
-        data_to_write = "\n".join(data) + "\n"
-        filter_flag = False
-        if not edit_flag:
-            for line in conn.modules.fileinput.input('/etc/sysconfig/iptables',
-                                                     inplace=True):
+        ]) + "\n"
+        with conn.builtin.open("/etc/sysconfig/iptables", "r+") as f:
+            for line in f.readlines():
+                if "--dport 3260" in line:
+                    g.log.info("Iptables is already edited on %s" % hostname)
+                    return True
                 if "*filter" in line:
                     filter_flag = True
-                if "COMMIT" in line and filter_flag is True:
-                    conn.modules.sys.stdout.write(data_to_write)
+                elif "COMMIT" in line and filter_flag is True:
+                    file_data += data_to_add
                     filter_flag = False
-                conn.modules.sys.stdout.write(line)
-        else:
-            g.log.info("Iptables is already edited on %s" % hostname)
-            return True
-
+                file_data += "%s" % line
+        with conn.builtin.open("/etc/sysconfig/iptables", "w") as f:
+            f.write(file_data)
+        g.log.info("successfully edited iptables on %s" % hostname)
+        return True
     except Exception as err:
         g.log.error("failed to edit iptables on %s err %s" % (hostname, err))
         return False
     finally:
         g.rpyc_close_connection(hostname, user="root")
-
-    g.log.info("successfully edited iptables on %s" % hostname)
-    return True
 
 
 def enable_kernel_module(hostname, module_name):
