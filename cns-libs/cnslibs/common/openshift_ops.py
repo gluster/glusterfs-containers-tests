@@ -447,23 +447,27 @@ def oc_create_tiny_pod_with_volume(hostname, pvc_name, pod_name_prefix='',
     return pod_name
 
 
-def oc_delete(ocp_node, rtype, name):
+def oc_delete(ocp_node, rtype, name, raise_on_absence=True):
     """Delete an OCP resource by name.
 
     Args:
         ocp_node (str): Node on which the ocp command will run.
         rtype (str): Name of the resource type (pod, storageClass, etc).
         name (str): Name of the resource to delete.
-    Raises:
-        AssertionError: Raised when resource fails to create.
+        raise_on_absence (bool): if resource absent raise
+                                 exception if value is true,
+                                 else return
+                                 default value: True
     """
+    if not oc_get_yaml(ocp_node, rtype, name,
+                       raise_on_error=raise_on_absence):
+        return
     ret, out, err = g.run(ocp_node, ['oc', 'delete', rtype, name])
     if ret != 0:
         g.log.error('Failed to delete resource: %s, %s: %r; %r',
                     rtype, name, out, err)
         raise AssertionError('failed to delete resource: %r; %r' % (out, err))
     g.log.info('Deleted resource: %r %r', rtype, name)
-    return
 
 
 def oc_get_yaml(ocp_node, rtype, name=None, raise_on_error=True):
