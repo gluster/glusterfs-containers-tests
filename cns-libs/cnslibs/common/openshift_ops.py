@@ -411,6 +411,39 @@ def oc_create_app_dc_with_io(
     return dc_name
 
 
+def oc_create_tiny_pod_with_volume(hostname, pvc_name, pod_name_prefix='',
+                                   mount_path='/mnt'):
+    """Create tiny POD from image in 10Mb with attached volume at /mnt"""
+    pod_name = "%s-%s" % (pod_name_prefix, utils.get_random_str())
+    pod_data = json.dumps({
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": pod_name,
+        },
+        "spec": {
+            "terminationGracePeriodSeconds": 20,
+            "containers": [{
+                "name": pod_name,
+                "image": "cirros",  # noqa: 10 Mb! linux image
+                "volumeMounts": [{"mountPath": mount_path, "name": "vol"}],
+                "command": [
+                    "/bin/sh", "-ec",
+                    "trap 'exit 0' SIGTERM ; "
+                    "while :; do echo '.'; sleep 5 ; done",
+                ]
+            }],
+            "volumes": [{
+                "name": "vol",
+                "persistentVolumeClaim": {"claimName": pvc_name},
+            }],
+            "restartPolicy": "Never",
+        }
+    })
+    oc_create(hostname, pod_data, 'stdin')
+    return pod_name
+
+
 def oc_delete(ocp_node, rtype, name):
     """Delete an OCP resource by name.
 

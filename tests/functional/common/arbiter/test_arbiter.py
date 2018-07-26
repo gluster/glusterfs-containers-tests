@@ -1,5 +1,6 @@
 from cnslibs.cns import cns_baseclass
 from cnslibs.common.dynamic_provisioning import (
+    wait_for_pod_be_ready,
     verify_pvc_status_is_bound,
 )
 from cnslibs.common import heketi_ops
@@ -8,6 +9,7 @@ from cnslibs.common.openshift_ops import (
     oc_create_pvc,
     oc_create_sc,
     oc_create_secret,
+    oc_create_tiny_pod_with_volume,
     oc_delete,
     wait_for_resource_absence,
 )
@@ -120,3 +122,70 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             "Arbiter brick amount is '%s', Data brick amount is '%s'." % (
                 arbiter_brick_amount, data_brick_amount)
         )
+
+    def test_arbiter_pvc_mount_on_pod(self):
+        """Test case CNS-945"""
+
+        # Create sc with gluster arbiter info
+        self._create_storage_class()
+
+        # Create PVC and wait for it to be in 'Bound' state
+        self._create_and_wait_for_pvc()
+
+        # Create POD with attached volume
+        mount_path = "/mnt"
+        pod_name = oc_create_tiny_pod_with_volume(
+            self.node, self.pvc_name, "test-arbiter-pvc-mount-on-app-pod",
+            mount_path=mount_path)
+        self.addCleanup(oc_delete, self.node, 'pod', pod_name)
+
+        # Wait for POD be up and running
+        wait_for_pod_be_ready(self.node, pod_name, timeout=60, wait_step=2)
+
+        # Get volume ID
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        vol_id = vol_info["gluster_vol_id"]
+
+        # Verify that POD has volume mounted on it
+        cmd = "oc exec {0} -- df -PT {1} | grep {1}".format(
+            pod_name, mount_path)
+        out = self.cmd_run(cmd)
+        err_msg = ("Failed to get info about mounted '%s' volume. "
+                   "Output is empty." % vol_id)
+        self.assertTrue(out, err_msg)
+
+        # Verify volume data on POD
+        # Filesystem  Type           Size    Used  Avail   Cap Mounted on
+        # IP:vol_id   fuse.glusterfs 1038336 33408 1004928  3% /mnt
+        data = [s for s in out.strip().split(' ') if s]
+        actual_vol_id = data[0].split(':')[-1]
+        self.assertEqual(
+            vol_id, actual_vol_id,
+            "Volume ID does not match: expected is "
+            "'%s' and actual is '%s'." % (vol_id, actual_vol_id))
+        self.assertIn(
+            "gluster", data[1],
+            "Filesystem type is expected to be of 'glusterfs' type. "
+            "Actual value is '%s'." % data[1])
+        self.assertEqual(
+            mount_path, data[6],
+            "Unexpected mount path. Expected is '%s' and actual is '%s'." % (
+                mount_path, data[6]))
+        max_size = 1024 ** 2
+        total_size = int(data[2])
+        self.assertLessEqual(
+            total_size, max_size,
+            "Volume has bigger size '%s' than expected - '%s'." % (
+                total_size, max_size))
+        min_available_size = int(max_size * 0.95)
+        available_size = int(data[4])
+        self.assertLessEqual(
+            min_available_size, available_size,
+            "Minimum available size (%s) not satisfied. Actual is '%s'." % (
+                min_available_size, available_size))
+
+        # Write data on mounted volume
+        write_data_cmd = (
+            "dd if=/dev/zero of=%s/file$i bs=%s count=1; " % (
+                mount_path, available_size))
+        self.cmd_run(write_data_cmd)

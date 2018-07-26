@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from cnslibs.common import command
 from cnslibs.common.exceptions import (
     ConfigError,
     ExecutionError)
@@ -142,6 +143,12 @@ class CnsBaseClass(unittest.TestCase):
         super(CnsBaseClass, cls).tearDownClass()
         msg = "Teardownclass: %s : %s" % (cls.__name__, cls.glustotest_run_id)
         g.log.info(msg)
+
+    def cmd_run(self, cmd, hostname=None, raise_on_error=True):
+        if not hostname:
+            hostname = self.ocp_master_node[0]
+        return command.cmd_run(
+            cmd=cmd, hostname=hostname, raise_on_error=raise_on_error)
 
 
 class CnsSetupBaseClass(CnsBaseClass):
