@@ -168,20 +168,10 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiClientSetupBaseClass):
         returns total free space across all devices
         """
 
-        heketi_node_id_list = []
         free_spaces = []
 
-        heketi_node_list_string = heketi_ops.heketi_node_list(
-            self.heketi_client_node,
-            self.heketi_server_url, mode="cli", json=True)
-
-        self.assertNotEqual(
-            heketi_node_list_string, False,
-            "Heketi node list empty")
-
-        for line in heketi_node_list_string.strip().split("\n"):
-            heketi_node_id_list.append(line.strip().split(
-                "Cluster")[0].strip().split(":")[1])
+        heketi_node_id_list = heketi_ops.heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
 
         for node_id in heketi_node_id_list:
             node_info_dict = heketi_ops.heketi_node_info(
@@ -225,22 +215,12 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiClientSetupBaseClass):
         Method to test heketi device addition with background
         gluster validation
         """
-        node_id_list = []
         device_id_list = []
         hosts = []
         gluster_servers = []
 
-        node_list_info = heketi_ops.heketi_node_list(
+        node_id_list = heketi_ops.heketi_node_list(
             self.heketi_client_node, self.heketi_server_url)
-
-        self.assertNotEqual(node_list_info, False,
-                            "heketi node list command failed")
-
-        lines = node_list_info.strip().split("\n")
-
-        for line in lines:
-            node_id_list.append(line.strip().split("Cluster")
-                                [0].strip().split(":")[1])
 
         creation_info = heketi_ops.heketi_volume_create(
             self.heketi_client_node, self.heketi_server_url, 100, json=True)
@@ -479,18 +459,9 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiClientSetupBaseClass):
         space
         """
 
-        heketi_node_id_list = []
         additional_devices_attached = {}
-        heketi_node_list_string = heketi_ops.heketi_node_list(
-            self.heketi_client_node,
-            self.heketi_server_url, mode="cli", json=True)
-
-        self.assertNotEqual(heketi_node_list_string, False,
-                            "Heketi node list command failed")
-
-        for line in heketi_node_list_string.strip().split("\n"):
-            heketi_node_id_list.append(line.strip().split(
-                "Cluster")[0].strip().split(":")[1])
+        heketi_node_id_list = heketi_ops.heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
 
         for node_id in heketi_node_id_list:
             node_info_dict = heketi_ops.heketi_node_info(

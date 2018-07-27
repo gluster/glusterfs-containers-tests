@@ -19,20 +19,11 @@ class TestVolumeDeleteTestCases(HeketiClientSetupBaseClass):
         """
         Calculates free space across all devices
         """
+
+        heketi_node_id_list = heketi_ops.heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
+
         total_free_space = 0
-        heketi_node_id_list = []
-
-        heketi_node_list_string = heketi_ops.heketi_node_list(
-            self.heketi_client_node,
-            self.heketi_server_url, mode="cli", json=True)
-
-        self.assertNotEqual(heketi_node_list_string, False,
-                            "Heketi node list command failed")
-
-        for line in heketi_node_list_string.strip().split("\n"):
-            heketi_node_id_list.append(line.strip().split(
-                "Cluster")[0].strip().split(":")[1])
-
         for node_id in heketi_node_id_list:
             node_info_dict = heketi_ops.heketi_node_info(
                 self.heketi_client_node, self.heketi_server_url,

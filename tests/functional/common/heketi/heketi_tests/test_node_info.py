@@ -23,16 +23,12 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         """
 
         # List all list
-        heketi_node_id_list = []
         ip = []
         g.log.info("Listing the node id")
-        node_list = heketi_node_list(self.heketi_client_node,
-                                     self.heketi_server_url)
-        self.assertTrue(node_list, ("Failed to list heketi nodes"))
+        heketi_node_id_list = heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
+
         g.log.info("Successfully listed the node")
-        for line in node_list.strip().split("\n"):
-            heketi_node_id_list.append(line.strip().split(
-                "Cluster")[0].strip().split(":")[1])
 
         if (len(heketi_node_id_list) == 0):
             raise ExecutionError("Node list empty")
@@ -77,15 +73,11 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         """
 
         # List all list
-        heketi_node_id_list = []
         g.log.info("Listing the node id")
-        node_list = heketi_node_list(self.heketi_client_node,
-                                     self.heketi_server_url)
-        self.assertTrue(node_list, ("Failed to list heketi nodes"))
+        heketi_node_id_list = heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
+        self.assertTrue(heketi_node_id_list, ("Node Id list is empty."))
         g.log.info("Successfully listed the node")
-        for line in node_list.strip().split("\n"):
-            heketi_node_id_list.append(line.strip().split(
-                "Cluster")[0].strip().split(":")[1])
 
         for node_id in heketi_node_id_list:
             g.log.info("Retrieve the node info")
