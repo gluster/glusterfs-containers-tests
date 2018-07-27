@@ -14,6 +14,8 @@ import yaml
 from cnslibs.common import exceptions
 from cnslibs.common import utils
 from cnslibs.common import waiter
+from cnslibs.common.dynamic_provisioning import (
+    wait_for_pod_be_ready)
 
 
 PODS_WIDE_RE = re.compile(
@@ -414,3 +416,42 @@ def wait_for_resource_absence(ocp_node, rtype, name,
             rtype, name, timeout)
         g.log.error(error_msg)
         raise exceptions.ExecutionError(error_msg)
+
+
+def scale_heketi_pod_amount_and_wait(hostname, dc_name,
+                                     namespace, pod_amount=1):
+    '''
+     This function scales heketi_pod and waits
+     If pod_amount 0 waits for its absence
+     If pod_amount =>1 waits for all pods to be ready
+     Args:
+         hostname (str): Node on which the ocp command will run
+         dc_name (str): Name of heketi dc
+         namespace (str): Namespace
+         pod_amount (int): Number of heketi pods to scale
+                           ex: 0, 1 or 2
+    '''
+    heketi_scale_cmd = "oc scale --replicas=%d dc/%s --namespace %s" % (
+            dc_name, pod_amount, namespace)
+    ret, out, err = g.run(hostname, heketi_scale_cmd, "root")
+    if ret != 0:
+        error_msg = ("failed to execute cmd %s "
+                     "out- %s err %s" % (heketi_scale_cmd, out, err))
+        g.log.error(error_msg)
+        raise exceptions.ExecutionError(error_msg)
+    get_heketi_podname_cmd = (
+            "oc get pods --all-namespaces -o=custom-columns=:.metadata.name "
+            "--no-headers=true "
+            "--selector deploymentconfig=%s" % dc_name)
+    ret, out, err = g.run(hostname, get_heketi_podname_cmd)
+    if ret != 0:
+        error_msg = ("failed to execute cmd %s "
+                     "out- %s err %s" % (get_heketi_podname_cmd, out, err))
+        g.log.error(error_msg)
+        raise exceptions.ExecutionError(error_msg)
+    pod_list = out.strip().split("\n")
+    for pod in pod_list:
+        if pod_amount == 0:
+            wait_for_resource_absence(hostname, 'pod', pod)
+        else:
+            wait_for_pod_be_ready(hostname, pod)

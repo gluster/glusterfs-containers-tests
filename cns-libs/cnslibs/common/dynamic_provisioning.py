@@ -200,65 +200,96 @@ def create_storage_class_file(hostname, sc_name, resturl,
     return True
 
 
-def verify_pod_status_running(hostname, pod_name,
-                              timeout=1200, wait_step=60):
+def wait_for_pod_be_ready(hostname, pod_name,
+                          timeout=1200, wait_step=60):
     '''
-     MAkes sure pod is running
+     This funciton waits for pod to be in ready state
      Args:
          hostname (str): hostname on which we want to check the pod status
          pod_name (str): pod_name for which we need the status
-         timeout (int): timeout value, if pod status is ContainerCreating,
-                        checks the status after wait_step value till timeout
+         timeout (int): timeout value,,
                         default value is 1200 sec
          wait_step( int): wait step,
                           default value is 60 sec
      Returns:
-         bool: True if pod status is Running,
-               otherwise False
-
+         bool: True if pod status is Running and ready state,
+               otherwise Raise Exception
     '''
-    status_flag = False
     for w in Waiter(timeout, wait_step):
-        cmd = ("oc get pods | grep '%s'| grep -v deploy | "
-               "awk '{print $3}'") % pod_name
+        # command to find pod status and its phase
+        cmd = ("oc get pods %s -o=custom-columns="
+               ":.status.containerStatuses[0].ready,"
+               ":.status.phase") % pod_name
         ret, out, err = g.run(hostname, cmd, "root")
         if ret != 0:
-            g.log.error("failed to execute cmd %s" % cmd)
-            break
-        output = out.strip().split("\n")[0].strip()
-        if output == "":
-            g.log.info("pod %s not found sleeping for %s "
-                       "sec" % (pod_name, wait_step))
-            continue
-        elif output == "ContainerCreating":
-            g.log.info("pod %s creating sleeping for %s "
-                       "sec" % (pod_name, wait_step))
-            continue
-        elif output == "Running":
-            status_flag = True
-            g.log.info("pod %s is up and running" % pod_name)
-            break
-        elif output == "Error":
-            g.log.error("pod %s status error" % pod_name)
-            break
-        elif output == "Terminating":
-            g.log.info("pod %s is terminating state sleeping "
-                       "for %s sec" % (pod_name, wait_step))
-            continue
-        elif output == "Pending":
-            g.log.info("pod %s is pending state sleeping "
-                       "for %s sec" % (pod_name, wait_step))
-            continue
+            msg = ("failed to execute cmd %s" % cmd)
+            g.log.error(msg)
+            raise exceptions.ExecutionError(msg)
+        output = out.strip().split()
+
+        # command to find if pod is ready
+        if output[0] == "true" and output[1] == "Running":
+            g.log.info("pod %s is in ready state and is "
+                       "Running" % pod_name)
+            return True
+        elif output[1] == "Error":
+            msg = ("pod %s status error" % pod_name)
+            g.log.error(msg)
+            raise exceptions.ExecutionError(msg)
         else:
-            g.log.error("pod %s has different status - %s "
-                        "sleeping for %s sec" % (
-                            pod_name, output, wait_step))
+            g.log.info("pod %s ready state is %s,"
+                       " phase is %s,"
+                       " sleeping for %s sec" % (
+                           pod_name, output[0],
+                           output[1], wait_step))
             continue
     if w.expired:
-        g.log.error("exceeded timeout %s for verifying running "
-                    "status of pod %s" % (timeout, pod_name))
-        return False
-    return status_flag
+        err_msg = ("exceeded timeout %s for waiting for pod %s "
+                   "to be in ready state" % (timeout, pod_name))
+        g.log.error(err_msg)
+        raise exceptions.ExecutionError(err_msg)
+
+
+def get_pod_name_from_dc(hostname, dc_name,
+                         timeout=1200, wait_step=60):
+    '''
+     This funciton return pod_name from dc_name
+     Args:
+         hostname (str): hostname on which we can execute oc
+                         commands
+         dc_name (str): deployment_confidg name
+         timeout (int): timeout value
+                        default value is 1200 sec
+         wait_step( int): wait step,
+                          default value is 60 sec
+     Returns:
+         str: pod_name if successful
+         otherwise Raise Exception
+    '''
+    cmd = ("oc get pods --all-namespaces -o=custom-columns="
+           ":.metadata.name "
+           "--no-headers=true "
+           "--selector deploymentconfig=%s" % dc_name)
+    for w in Waiter(timeout, wait_step):
+        ret, out, err = g.run(hostname, cmd, "root")
+        if ret != 0:
+            msg = ("failed to execute cmd %s" % cmd)
+            g.log.error(msg)
+            raise exceptions.ExecutionError(msg)
+        output = out.strip()
+        if output == "":
+            g.log.info("podname for dc %s not found sleeping for "
+                       "%s sec" % (dc_name, wait_step))
+            continue
+        else:
+            g.log.info("podname is %s for dc %s" % (
+                           output, dc_name))
+            return output
+    if w.expired:
+        err_msg = ("exceeded timeout %s for waiting for pod_name"
+                   "for dc %s " % (timeout, dc_name))
+        g.log.error(err_msg)
+        raise exceptions.ExecutionError(err_msg)
 
 
 def create_mongodb_pod(hostname, pvc_name, pvc_size, sc_name):

@@ -5,7 +5,8 @@ from cnslibs.common.dynamic_provisioning import (
     create_secret_file,
     create_storage_class_file,
     get_pvc_status,
-    verify_pod_status_running)
+    get_pod_name_from_dc,
+    wait_for_pod_be_ready)
 from cnslibs.cns.cns_baseclass import CnsBaseClass
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_ops import (
@@ -72,8 +73,8 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                         pvc_name)
         self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc',
                         pvc_name)
-        ret = verify_pod_status_running(self.ocp_master_node[0],
-                                        pvc_name)
+        pod_name = get_pod_name_from_dc(self.ocp_master_node[0], pvc_name)
+        ret = wait_for_pod_be_ready(self.ocp_master_node[0], pod_name)
         self.assertTrue(ret, "verify mongodb pod status as running failed")
         if volname_prefix:
             ret = verify_volume_name_prefix(self.ocp_master_node[0],
@@ -81,27 +82,11 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                                             storage_class['secretnamespace'],
                                             pvc_name, resturl)
             self.assertTrue(ret, "verify volnameprefix failed")
-        cmd = ("oc get pods | grep %s | grep -v deploy "
-               "| awk {'print $1'}") % pvc_name
-        ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        pod_name = out.strip().split("\n")[0]
         cmd = ("dd if=/dev/urandom of=/var/lib/mongodb/data/file "
                "bs=1K count=100")
         ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, self.ocp_master_node[0]))
-        oc_delete(self.ocp_master_node[0], 'pod', pod_name)
-        ret = verify_pod_status_running(self.ocp_master_node[0],
-                                        pvc_name)
-        self.assertTrue(ret, "verify mongodb pod status as running failed")
-        cmd = ("oc get pods | grep %s | grep -v deploy "
-               "| awk {'print $1'}") % pvc_name
-        ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        pod_name = out.strip().split("\n")[0]
         cmd = "ls -lrt /var/lib/mongodb/data/file"
         ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
@@ -170,15 +155,10 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                         pvc_name2)
         self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc',
                         pvc_name2)
-        ret = verify_pod_status_running(
-            self.ocp_master_node[0], pvc_name2, wait_step=5, timeout=300)
+        pod_name = get_pod_name_from_dc(self.ocp_master_node[0], pvc_name2)
+        ret = wait_for_pod_be_ready(self.ocp_master_node[0], pod_name,
+                                    wait_step=5, timeout=300)
         self.assertTrue(ret, "verify mongodb pod status as running failed")
-        cmd = ("oc get pods | grep %s | grep -v deploy "
-               "|awk {'print $1'}") % pvc_name2
-        ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        pod_name = out.strip().split("\n")[0]
         cmd = ("dd if=/dev/urandom of=/var/lib/mongodb/data/file "
                "bs=1K count=100")
         ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
@@ -227,8 +207,8 @@ class TestDynamicProvisioningP0(CnsBaseClass):
 
         # Wait for Heketi POD be up and running
         ret, out, err = g.run(self.ocp_master_node[0], get_heketi_podname_cmd)
-        ret = verify_pod_status_running(
-            self.ocp_master_node[0], out.strip(), wait_step=5, timeout=120)
+        ret = wait_for_pod_be_ready(self.ocp_master_node[0], out.strip(),
+                                    wait_step=5, timeout=120)
         self.assertTrue(ret, "verify heketi pod status as running failed")
 
         # Verify App pod #2
@@ -256,7 +236,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             oc_create(self.ocp_master_node[0], file_path)
         for w in Waiter(600, 30):
             ret, status = get_pvc_status(self.ocp_master_node[0],
-                                     pvc_name3)
+                                         pvc_name3)
             self.assertTrue(ret, "failed to get pvc status of %s" % (
                                 pvc_name3))
             if status != "Bound":
@@ -273,17 +253,11 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         self.assertEqual(status, "Bound", "pvc status of %s "
                          "is not in Bound state, its state is %s" % (
                              pvc_name3, status))
-        ret = verify_pod_status_running(
-            self.ocp_master_node[0], pvc_name3, wait_step=5, timeout=300)
+        pod_name = get_pod_name_from_dc(self.ocp_master_node[0], pvc_name3)
+        ret = wait_for_pod_be_ready(self.ocp_master_node[0], pod_name,
+                                    wait_step=5, timeout=300)
         self.assertTrue(ret, "verify %s pod status "
                         "as running failed" % pvc_name3)
-
-        cmd = ("oc get pods | grep %s | grep -v deploy "
-               "|awk {'print $1'}") % pvc_name3
-        ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        pod_name = out.strip().split("\n")[0]
         cmd = ("dd if=/dev/urandom of=/var/lib/mongodb/data/file "
                "bs=1K count=100")
         ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
@@ -337,20 +311,13 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                         pvc_name4)
         self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc',
                         pvc_name4)
-        ret = verify_pod_status_running(self.ocp_master_node[0],
-                                        pvc_name4)
+        pod_name = get_pod_name_from_dc(self.ocp_master_node[0], pvc_name4)
+        ret = wait_for_pod_be_ready(self.ocp_master_node[0], pod_name,
+                                    wait_step=5, timeout=300)
         self.assertTrue(ret, "verify mongodb pod status as running failed")
-        cmd = ("oc get pods | grep %s | grep -v deploy "
-               "|awk {'print $1'}") % pvc_name4
-        ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        pod_name = out.strip().split("\n")[0]
         io_cmd = ("oc rsh %s dd if=/dev/urandom of=/var/lib/mongodb/data/file "
                   "bs=1000K count=1000") % pod_name
         proc = g.run_async(self.ocp_master_node[0], io_cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
         gluster_pod_list = get_ocp_gluster_pod_names(self.ocp_master_node[0])
         g.log.info("gluster_pod_list - %s" % gluster_pod_list)
         gluster_pod_name = gluster_pod_list[0]
@@ -379,8 +346,8 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                              cmd, self.ocp_master_node[0]))
         new_gluster_pod_name = out.strip().split("\n")[0].strip()
         g.log.info("new gluster pod name is %s" % new_gluster_pod_name)
-        ret = verify_pod_status_running(self.ocp_master_node[0],
-                                        new_gluster_pod_name)
+        ret = wait_for_pod_be_ready(self.ocp_master_node[0],
+                                    new_gluster_pod_name)
         self.assertTrue(ret, "verify %s pod status as running "
                         "failed" % new_gluster_pod_name)
         ret, out, err = proc.async_communicate()
