@@ -418,21 +418,23 @@ def wait_for_resource_absence(ocp_node, rtype, name,
         raise exceptions.ExecutionError(error_msg)
 
 
-def scale_heketi_pod_amount_and_wait(hostname, dc_name,
-                                     namespace, pod_amount=1):
+def scale_dc_pod_amount_and_wait(hostname, dc_name,
+                                 pod_amount=1, namespace=None):
     '''
-     This function scales heketi_pod and waits
+     This function scales pod and waits
      If pod_amount 0 waits for its absence
-     If pod_amount =>1 waits for all pods to be ready
+     If pod_amount => 1 waits for all pods to be ready
      Args:
          hostname (str): Node on which the ocp command will run
          dc_name (str): Name of heketi dc
          namespace (str): Namespace
          pod_amount (int): Number of heketi pods to scale
                            ex: 0, 1 or 2
+                           default 1
     '''
-    heketi_scale_cmd = "oc scale --replicas=%d dc/%s --namespace %s" % (
-            dc_name, pod_amount, namespace)
+    namespace_arg = "--namespace=%s" % namespace if namespace else ""
+    heketi_scale_cmd = "oc scale --replicas=%d dc/%s %s" % (
+            pod_amount, dc_name, namespace_arg)
     ret, out, err = g.run(hostname, heketi_scale_cmd, "root")
     if ret != 0:
         error_msg = ("failed to execute cmd %s "
