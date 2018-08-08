@@ -297,6 +297,71 @@ def oc_create_pvc(hostname, sc_name, pvc_name_prefix="autotests-pvc",
     return pvc_name
 
 
+def oc_create_app_dc_with_io(
+        hostname, pvc_name, dc_name_prefix="autotests-dc-with-app-io",
+        replicas=1, space_to_use=92274688):
+    """Create DC with app PODs and attached PVC, constantly running I/O.
+
+    Args:
+        hostname (str): Node on which 'oc create' command will be executed.
+        pvc_name (str): name of the Persistent Volume Claim to attach to
+                        the application PODs where constant I\O will run.
+        dc_name_prefix (str): DC name will consist of this prefix and
+                              random str.
+        replicas (int): amount of application POD replicas.
+        space_to_use (int): value in bytes which will be used for I\O.
+    """
+    dc_name = "%s-%s" % (dc_name_prefix, utils.get_random_str())
+    container_data = {
+        "name": dc_name,
+        "image": "cirros",
+        "volumeMounts": [{"mountPath": "/mnt", "name": dc_name}],
+        "command": ["sh"],
+        "args": [
+            "-ec",
+            "while true; do "
+            "  (mount | grep '/mnt') && "
+            "    (head -c %s < /dev/urandom > /mnt/random-data.log) || "
+            "      exit 1; "
+            "  sleep 1 ; "
+            "done" % space_to_use,
+        ],
+        "livenessProbe": {
+            "initialDelaySeconds": 3,
+            "periodSeconds": 3,
+            "exec": {"command": [
+                "sh", "-ec",
+                "mount | grep '/mnt' && "
+                "  head -c 1 < /dev/urandom >> /mnt/random-data.log"
+            ]},
+        },
+    }
+    dc_data = json.dumps({
+        "kind": "DeploymentConfig",
+        "apiVersion": "v1",
+        "metadata": {"name": dc_name},
+        "spec": {
+            "replicas": replicas,
+            "triggers": [{"type": "ConfigChange"}],
+            "paused": False,
+            "revisionHistoryLimit": 2,
+            "template": {
+                "metadata": {"labels": {"name": dc_name}},
+                "spec": {
+                    "restartPolicy": "Always",
+                    "volumes": [{
+                        "name": dc_name,
+                        "persistentVolumeClaim": {"claimName": pvc_name},
+                    }],
+                    "containers": [container_data],
+                }
+            }
+        }
+    })
+    oc_create(hostname, dc_data, 'stdin')
+    return dc_name
+
+
 def oc_delete(ocp_node, rtype, name):
     """Delete an OCP resource by name.
 

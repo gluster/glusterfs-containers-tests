@@ -6,6 +6,7 @@ from cnslibs.common.dynamic_provisioning import (
     create_storage_class_file,
     get_pvc_status,
     get_pod_name_from_dc,
+    verify_pvc_status_is_bound,
     wait_for_pod_be_ready)
 from cnslibs.cns.cns_baseclass import CnsBaseClass
 from cnslibs.common.exceptions import ExecutionError
@@ -14,8 +15,11 @@ from cnslibs.common.heketi_ops import (
 from cnslibs.common.openshift_ops import (
     get_ocp_gluster_pod_names,
     oc_create,
+    oc_create_pvc,
+    oc_create_app_dc_with_io,
     oc_delete,
     oc_rsh,
+    scale_dc_pod_amount_and_wait,
     wait_for_resource_absence)
 from cnslibs.common.waiter import Waiter
 from glusto.core import Glusto as g
@@ -26,19 +30,20 @@ class TestDynamicProvisioningP0(CnsBaseClass):
      Class that contain P0 dynamic provisioning test cases for
      glusterfile volume
     '''
-    def dynamic_provisioning_glusterfile(self, pvc_name, volname_prefix=False):
+    def dynamic_provisioning_glusterfile(self, heketi_volname_prefix=False):
         storage_class = self.cns_storage_class['storage_class1']
         secret = self.cns_secret['secret1']
+        node = self.ocp_master_node[0]
         sc_name = storage_class['name']
         cmd = ("oc get svc %s "
                "-o=custom-columns=:.spec.clusterIP" % self.heketi_service_name)
-        ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
+        ret, out, err = g.run(node, cmd, "root")
+        self.assertEqual(
+            ret, 0, "failed to execute command %s on %s" % (cmd, node))
         heketi_cluster_ip = out.lstrip().strip()
         resturl = "http://%s:8080" % heketi_cluster_ip
         ret = create_storage_class_file(
-            self.ocp_master_node[0],
+            node,
             sc_name,
             resturl,
             storage_class['provisioner'],
@@ -46,65 +51,68 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             secretnamespace=storage_class['secretnamespace'],
             secretname=secret['secret_name'],
             **({"volumenameprefix": storage_class['volumenameprefix']}
-                if volname_prefix else {}))
+                if heketi_volname_prefix else {}))
         self.assertTrue(ret, "creation of storage-class file failed")
         provisioner_name = storage_class['provisioner'].split("/")
         file_path = "/%s-%s-storage-class.yaml" % (
                         sc_name, provisioner_name[1])
-        oc_create(self.ocp_master_node[0], file_path)
-        self.addCleanup(oc_delete, self.ocp_master_node[0],
-                        'sc', sc_name)
-        ret = create_secret_file(self.ocp_master_node[0],
+        oc_create(node, file_path)
+        self.addCleanup(oc_delete, node, 'sc', sc_name)
+        ret = create_secret_file(node,
                                  secret['secret_name'],
                                  secret['namespace'],
                                  self.secret_data_key,
                                  secret['type'])
         self.assertTrue(ret, "creation of heketi-secret file failed")
-        oc_create(self.ocp_master_node[0],
-                  "/%s.yaml" % secret['secret_name'])
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'secret',
-                        secret['secret_name'])
-        ret = create_mongodb_pod(self.ocp_master_node[0],
-                                 pvc_name, 10, sc_name)
-        self.assertTrue(ret, "creation of mongodb pod failed")
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'service',
-                        pvc_name)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'pvc',
-                        pvc_name)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc',
-                        pvc_name)
-        pod_name = get_pod_name_from_dc(self.ocp_master_node[0], pvc_name)
-        ret = wait_for_pod_be_ready(self.ocp_master_node[0], pod_name)
-        self.assertTrue(ret, "verify mongodb pod status as running failed")
-        if volname_prefix:
+        oc_create(node, "/%s.yaml" % secret['secret_name'])
+        self.addCleanup(oc_delete, node, 'secret', secret['secret_name'])
+
+        # Create PVC
+        pvc_name = oc_create_pvc(node, sc_name)
+        self.addCleanup(wait_for_resource_absence, node, 'pvc', pvc_name)
+        self.addCleanup(oc_delete, node, 'pvc', pvc_name)
+        verify_pvc_status_is_bound(node, pvc_name)
+
+        # Create DC with POD and attached PVC to it.
+        dc_name = oc_create_app_dc_with_io(self.ocp_master_node[0], pvc_name)
+        self.addCleanup(oc_delete, node, 'dc', dc_name)
+        self.addCleanup(scale_dc_pod_amount_and_wait, node, dc_name, 0)
+
+        pod_name = get_pod_name_from_dc(node, dc_name)
+        wait_for_pod_be_ready(node, pod_name)
+
+        # Verify Heketi volume name for prefix presence if provided
+        if heketi_volname_prefix:
             ret = verify_volume_name_prefix(self.ocp_master_node[0],
                                             storage_class['volumenameprefix'],
                                             storage_class['secretnamespace'],
                                             pvc_name, resturl)
             self.assertTrue(ret, "verify volnameprefix failed")
-        cmd = ("dd if=/dev/urandom of=/var/lib/mongodb/data/file "
-               "bs=1K count=100")
-        ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        cmd = "ls -lrt /var/lib/mongodb/data/file"
-        ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        cmd = "rm -rf /var/lib/mongodb/data/file"
-        ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
+
+        # Make sure we are able to work with files on the mounted volume
+        filepath = "/mnt/file_for_testing_io.log"
+        cmd = "dd if=/dev/urandom of=%s bs=1K count=100" % filepath
+        ret, out, err = oc_rsh(node, pod_name, cmd)
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
+
+        cmd = "ls -lrt %s" % filepath
+        ret, out, err = oc_rsh(node, pod_name, cmd)
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
+
+        cmd = "rm -rf %s" % filepath
+        ret, out, err = oc_rsh(node, pod_name, cmd)
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
 
     def test_dynamic_provisioning_glusterfile(self):
         g.log.info("test_dynamic_provisioning_glusterfile")
-        self.dynamic_provisioning_glusterfile(pvc_name="mongodb1")
+        self.dynamic_provisioning_glusterfile(False)
 
     def test_dynamic_provisioning_glusterfile_volname_prefix(self):
-        g.log.info("test_dynamic_provisioning_glusterfile volname"
-                   " prefix")
-        self.dynamic_provisioning_glusterfile(pvc_name="mongodb5",
-                                              volname_prefix=True)
+        g.log.info("test_dynamic_provisioning_glusterfile volname prefix")
+        self.dynamic_provisioning_glusterfile(True)
 
     def test_dynamic_provisioning_glusterfile_heketipod_failure(self):
         g.log.info("test_dynamic_provisioning_glusterfile_Heketipod_Failure")
