@@ -19,7 +19,7 @@ from cnslibs.common.dynamic_provisioning import (
 
 
 PODS_WIDE_RE = re.compile(
-    '(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\n')
+    '(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+).*\n')
 
 
 def oc_get_pods(ocp_node):
