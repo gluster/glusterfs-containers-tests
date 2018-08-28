@@ -249,7 +249,7 @@ def oc_create_sc(hostname, sc_name_prefix="autotests-sc",
         'resturl', 'secretnamespace', 'restuser', 'secretname',
         'restauthenabled', 'restsecretnamespace', 'restsecretname',
         'hacount', 'clusterids', 'chapauthenabled', 'volumenameprefix',
-        'volumeoptions',
+        'volumeoptions', 'volumetype'
     )
     for parameter in parameters.keys():
         if parameter.lower() not in allowed_parameters:

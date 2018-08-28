@@ -412,9 +412,13 @@ def verify_pvc_status_is_bound(hostname, pvc_name, timeout=120, wait_step=3):
             msg = "PVC %s has different status - %s" % (pvc_name, output)
             g.log.error(msg)
         if msg:
-            raise exceptions.ExecutionError(msg)
+            raise AssertionError(msg)
     if w.expired:
+        # for debug purpose to see why provisioning failed
+        cmd = "oc describe pvc %s | grep ProvisioningFailed" % pvc_name
+        ret, out, err = g.run(hostname, cmd, "root")
+        g.log.info("cmd %s - out- %s err- %s" % (cmd, out, err))
         msg = ("Exceeded timeout of '%s' seconds for verifying PVC '%s' "
                "to reach the 'Bound' status." % (timeout, pvc_name))
         g.log.error(msg)
-        raise exceptions.ExecutionError(msg)
+        raise AssertionError(msg)
