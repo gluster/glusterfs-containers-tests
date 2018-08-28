@@ -349,3 +349,18 @@ class CnsGlusterBlockBaseClass(CnsBaseClass):
             if ret != 0:
                 raise ExecutionError("failed to execute cmd %s on %s out: "
                                      "%s err: %s" % (cmd, node, out, err))
+
+
+class PodScalabilityBaseClass(CnsBaseClass):
+    """
+    This class is for setting parameters for scalling pods
+    """
+    @classmethod
+    def setUpClass(cls):
+        """
+        Initialize all the variables necessary for scalling setup
+        """
+
+        super(PodScalabilityBaseClass, cls).setUpClass()
+
+        cls.scale_info = g.config['scale']

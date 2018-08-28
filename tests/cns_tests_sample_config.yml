@@ -128,3 +128,17 @@ cns:
         app_pvc_count_dict:
            nginx: 2
 
+scale:
+    - type: jenkins
+      instances: 1
+      namespace: "<fake-namespace-name>"
+      pod_parameters:
+        ENABLE_OAUTH: false
+        MEMORY_LIMIT: "<fake-memory-limit-size>Mi"
+        VOLUME_CAPACITY: "<fake-size-of-gluster-storage>Gi"
+        STORAGE_CLASS_NAME: "fake-name-of-storage-class"
+        JENKINS_IMAGE_STREAM_TAG: "jenkins:2"
+      load_parameters:
+        JOBS: 30
+        ITERATIONS: 30
+        EXECUTORS: 5
