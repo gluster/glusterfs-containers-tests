@@ -1,5 +1,4 @@
 from collections import OrderedDict
-from cnslibs.common import podcmd
 from cnslibs.common.exceptions import (
     ConfigError,
     ExecutionError)
@@ -13,7 +12,6 @@ from cnslibs.common.cns_libs import (
     edit_multipath_conf_file,
     setup_router,
     start_rpcbind_service,
-    start_gluster_blockd_service,
     update_nameserver_resolv_conf,
     update_router_ip_dnsmasq_conf)
 from cnslibs.common.docker_libs import (
@@ -156,9 +154,9 @@ class CnsSetupBaseClass(CnsBaseClass):
          CNS setup
         '''
         super(CnsSetupBaseClass, cls).setUpClass()
+        mod_names = ('dm_thin_pool', 'dm_multipath', 'target_core_user')
         for node in cls.ocp_all_nodes:
-            for mod_name in ('dm_thin_pool', 'dm_multipath',
-                    'target_core_user'):
+            for mod_name in mod_names:
                 if not enable_kernel_module(node, mod_name):
                     raise ExecutionError(
                         "failed to enable kernel module %s" % mod_name)
@@ -272,7 +270,8 @@ class CnsSetupBaseClass(CnsBaseClass):
             raise ExecutionError("failed to update namserver in resolv.conf")
         if cls.ocp_master_node[0] != cls.ocp_client[0]:
             if not update_nameserver_resolv_conf(cls.ocp_client[0]):
-                raise ExecutionError("failed to update namserver in resolv.conf")
+                raise ExecutionError(
+                    "failed to update namserver in resolv.conf")
 
     @classmethod
     def cns_deploy(cls):
@@ -292,9 +291,10 @@ class CnsSetupBaseClass(CnsBaseClass):
             raise ExecutionError("failed to execute cmd %s on %s out: "
                                  "%s err: %s" % (
                                      cmd, cls.ocp_client[0], out, err))
-        cmd = ("cns-deploy -n %s -g -c oc -t /usr/share/heketi/templates -l "
-               "cns_deploy.log -v -w 600 -y /usr/share/heketi/topology.json" % (
-                   cls.cns_project_name))
+        cmd = (
+            "cns-deploy -n %s -g -c oc -t /usr/share/heketi/templates -l "
+            "cns_deploy.log -v -w 600 -y /usr/share/heketi/topology.json" % (
+               cls.cns_project_name))
         ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
         if ret != 0:
             raise ExecutionError("failed to execute cmd %s on %s out: "
