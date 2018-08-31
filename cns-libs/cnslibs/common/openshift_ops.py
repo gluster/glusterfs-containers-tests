@@ -471,11 +471,19 @@ def create_namespace(hostname, namespace):
 
 def wait_for_resource_absence(ocp_node, rtype, name,
                               interval=10, timeout=120):
-    for w in waiter.Waiter(timeout=timeout, interval=interval):
+    _waiter = waiter.Waiter(timeout=timeout, interval=interval)
+    for w in _waiter:
         try:
             oc_get_yaml(ocp_node, rtype, name, raise_on_error=True)
         except AssertionError:
-            return
+            break
+    if rtype == 'pvc':
+        cmd = "oc get pv -o=custom-columns=:.spec.claimRef.name | grep %s" % (
+            name)
+        for w in _waiter:
+            ret, out, err = g.run(ocp_node, cmd, "root")
+            if ret != 0:
+                break
     if w.expired:
         error_msg = "%s '%s' still exists after waiting for it %d seconds" % (
             rtype, name, timeout)
