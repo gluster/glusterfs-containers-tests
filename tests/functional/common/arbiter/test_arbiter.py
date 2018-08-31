@@ -496,3 +496,98 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             for data_brick in data_bricks:
                 self.assertIn(
                     data_brick.split(':')[0], data_nodes_ip_addresses)
+
+    def test_create_delete_pvcs_to_make_gluster_reuse_released_space(self):
+        """Test case CNS-1265"""
+        min_storage_gb = 10
+
+        # Set arbiter:disabled tags to the first 2 nodes
+        data_nodes = []
+        biggest_disks = []
+        heketi_server_url = self.cns_storage_class['storage_class1']['resturl']
+        self.assertGreater(len(self.node_id_list), 2)
+        for node_id in self.node_id_list[0:2]:
+            node_info = heketi_ops.heketi_node_info(
+                self.heketi_client_node, heketi_server_url, node_id, json=True)
+            biggest_disk_free_space = 0
+            for device in node_info['devices']:
+                disk_free_space = int(device['storage']['free'])
+                if disk_free_space < (min_storage_gb * 1024**2):
+                    self.skipTest(
+                        "Devices are expected to have more than "
+                        "%sGb of free space" % min_storage_gb)
+                if disk_free_space > biggest_disk_free_space:
+                    biggest_disk_free_space = disk_free_space
+                self._set_arbiter_tag_with_further_revert(
+                    self.heketi_client_node, heketi_server_url, 'device',
+                    device['id'], 'disabled',
+                    revert_to=device.get('tags', {}).get('arbiter'))
+            biggest_disks.append(biggest_disk_free_space)
+            self._set_arbiter_tag_with_further_revert(
+                self.heketi_client_node, heketi_server_url, 'node',
+                node_id, 'disabled',
+                revert_to=node_info.get('tags', {}).get('arbiter'))
+            data_nodes.append(node_info)
+
+        # Set arbiter:required tag to all other nodes and their devices
+        arbiter_nodes = []
+        for node_id in self.node_id_list[2:]:
+            node_info = heketi_ops.heketi_node_info(
+                self.heketi_client_node, heketi_server_url, node_id, json=True)
+            for device in node_info['devices']:
+                self._set_arbiter_tag_with_further_revert(
+                    self.heketi_client_node, heketi_server_url, 'device',
+                    device['id'], 'required',
+                    revert_to=device.get('tags', {}).get('arbiter'))
+            self._set_arbiter_tag_with_further_revert(
+                self.heketi_client_node, heketi_server_url, 'node',
+                node_id, 'required',
+                revert_to=node_info.get('tags', {}).get('arbiter'))
+            arbiter_nodes.append(node_info)
+
+        # Calculate size and amount of volumes to be created
+        pvc_size = int(min(biggest_disks) / 1024**2)
+        pvc_amount = max([len(n['devices']) for n in data_nodes]) + 1
+
+        # Create sc with gluster arbiter info
+        self._create_storage_class()
+
+        # Create and delete 3 small volumes concurrently
+        pvc_names = []
+        for i in range(3):
+            pvc_name = oc_create_pvc(
+                self.node, self.sc_name, pvc_name_prefix='arbiter-pvc',
+                pvc_size=int(pvc_size / 3))
+            pvc_names.append(pvc_name)
+        exception_exists = False
+        for pvc_name in pvc_names:
+            try:
+                verify_pvc_status_is_bound(self.node, pvc_name)
+            except Exception:
+                for pvc_name in pvc_names:
+                    self.addCleanup(
+                        wait_for_resource_absence, self.node, 'pvc', pvc_name)
+                for pvc_name in pvc_names:
+                    self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
+                exception_exists = True
+        if exception_exists:
+            raise
+        for pvc_name in pvc_names:
+            oc_delete(self.node, 'pvc', pvc_name)
+        for pvc_name in pvc_names:
+            wait_for_resource_absence(self.node, 'pvc', pvc_name)
+
+        # Create and delete big volumes in a loop
+        for i in range(pvc_amount):
+            pvc_name = oc_create_pvc(
+                self.node, self.sc_name, pvc_name_prefix='arbiter-pvc',
+                pvc_size=pvc_size)
+            try:
+                verify_pvc_status_is_bound(self.node, pvc_name)
+            except Exception:
+                self.addCleanup(
+                    wait_for_resource_absence, self.node, 'pvc', pvc_name)
+                self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
+                raise
+            oc_delete(self.node, 'pvc', pvc_name)
+            wait_for_resource_absence(self.node, 'pvc', pvc_name)
