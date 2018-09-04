@@ -7,10 +7,10 @@ from cnslibs.common.openshift_ops import (
     get_gluster_pod_names_by_pvc_name,
     get_pvc_status,
     get_pod_name_from_dc,
+    oc_create_app_dc_with_io,
     oc_create_secret,
     oc_create_sc,
     oc_create_pvc,
-    oc_create_app_dc_with_io,
     oc_delete,
     oc_rsh,
     scale_dc_pod_amount_and_wait,
@@ -31,7 +31,7 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         super(TestDynamicProvisioningBlockP0, self).setUp()
         self.node = self.ocp_master_node[0]
 
-    def _create_storage_class(self):
+    def _create_storage_class(self, hacount=True):
         sc = self.cns_storage_class['storage_class2']
         secret = self.cns_secret['secret2']
 
@@ -46,7 +46,9 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             self.ocp_master_node[0], provisioner="gluster.org/glusterblock",
             resturl=sc['resturl'], restuser=sc['restuser'],
             restsecretnamespace=sc['restsecretnamespace'],
-            restsecretname=self.secret_name, hacount=sc['hacount'],
+            restsecretname=self.secret_name,
+            **({"hacount": sc['hacount']}
+               if hacount else {})
         )
         self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
 
@@ -80,9 +82,9 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix)[0]
         return self.pvc_name
 
-    def _create_dc_with_pvc(self):
+    def _create_dc_with_pvc(self, hacount=True):
         # Create storage class and secret objects
-        self._create_storage_class()
+        self._create_storage_class(hacount)
 
         # Create PVC
         pvc_name = self._create_and_wait_for_pvc()
@@ -96,11 +98,11 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
 
         return dc_name, pod_name, pvc_name
 
-    def test_dynamic_provisioning_glusterblock(self):
+    def dynamic_provisioning_glusterblock(self, hacount=True):
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
 
         # Create DC with attached PVC
-        dc_name, pod_name, pvc_name = self._create_dc_with_pvc()
+        dc_name, pod_name, pvc_name = self._create_dc_with_pvc(hacount)
 
         # Check that we can write data
         for cmd in ("dd if=/dev/urandom of=%s bs=1K count=100",
@@ -111,6 +113,14 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             self.assertEqual(
                 ret, 0,
                 "Failed to execute '%s' command on '%s'." % (cmd, self.node))
+
+    def test_dynamic_provisioning_glusterblock_hacount_true(self):
+        """ CNS-435 dynamic provisioning glusterblock """
+        self.dynamic_provisioning_glusterblock()
+
+    def test_dynamic_provisioning_glusterblock_hacount_false(self):
+        """ CNS-716 storage-class mandatory parameters for block """
+        self.dynamic_provisioning_glusterblock(hacount=False)
 
     def test_dynamic_provisioning_glusterblock_heketipod_failure(self):
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
