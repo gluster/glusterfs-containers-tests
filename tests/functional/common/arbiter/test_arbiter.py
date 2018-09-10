@@ -15,25 +15,26 @@ from cnslibs.common.openshift_ops import (
 
 class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
 
-    @classmethod
-    def setUpClass(cls):
-        super(TestArbiterVolumeCreateExpandDelete, cls).setUpClass()
-        if cls.deployment_type != "cns":
-            # Do nothing and switch to the step with test skip operations
-            return
+    def setUp(self):
+        super(TestArbiterVolumeCreateExpandDelete, self).setUp()
+
+        # Skip test if it is not CNS deployment
+        if self.deployment_type != "cns":
+            raise self.skipTest("This test can run only on CNS deployment.")
+        self.node = self.ocp_master_node[0]
 
         # Mark one of the Heketi nodes as arbiter-supported if none of
         # existent nodes or devices already enabled to support it.
-        heketi_server_url = cls.cns_storage_class['storage_class1']['resturl']
+        heketi_server_url = self.cns_storage_class['storage_class1']['resturl']
         arbiter_tags = ('required', 'supported')
         arbiter_already_supported = False
 
-        node_id_list = heketi_ops.heketi_node_list(
-            cls.heketi_client_node, heketi_server_url)
+        self.node_id_list = heketi_ops.heketi_node_list(
+            self.heketi_client_node, heketi_server_url)
 
-        for node_id in node_id_list[::-1]:
+        for node_id in self.node_id_list[::-1]:
             node_info = heketi_ops.heketi_node_info(
-                cls.heketi_client_node, heketi_server_url, node_id, json=True)
+                self.heketi_client_node, heketi_server_url, node_id, json=True)
             if node_info.get('tags', {}).get('arbiter') in arbiter_tags:
                 arbiter_already_supported = True
                 break
@@ -45,17 +46,22 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                 continue
             break
         if not arbiter_already_supported:
-            heketi_ops.set_arbiter_tag(
-                cls.heketi_client_node, heketi_server_url,
-                'node', node_id_list[0], 'supported')
+            self._set_arbiter_tag_with_further_revert(
+                self.heketi_client_node, heketi_server_url,
+                'node', self.node_id_list[0], 'supported')
 
-    def setUp(self):
-        super(TestArbiterVolumeCreateExpandDelete, self).setUp()
-
-        # Skip test if it is not CNS deployment
-        if self.deployment_type != "cns":
-            raise self.skipTest("This test can run only on CNS deployment.")
-        self.node = self.ocp_master_node[0]
+    def _set_arbiter_tag_with_further_revert(self, node, server_url,
+                                             source, source_id, tag_value,
+                                             revert_to=None):
+        heketi_ops.set_arbiter_tag(
+            node, server_url, source, source_id, tag_value)
+        if revert_to is None:
+            self.addCleanup(
+                heketi_ops.rm_arbiter_tag, node, server_url, source, source_id)
+        else:
+            self.addCleanup(
+                heketi_ops.set_arbiter_tag,
+                node, server_url, source, source_id, tag_value)
 
     def _create_storage_class(self):
         sc = self.cns_storage_class['storage_class1']
@@ -187,3 +193,130 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             "dd if=/dev/zero of=%s/file$i bs=%s count=1; " % (
                 mount_path, available_size))
         self.cmd_run(write_data_cmd)
+
+    def test_create_arbiter_vol_with_more_than_one_brick_set(self):
+        """Test case CNS-942"""
+
+        # Set arbiter:disabled tag to the data devices and get their info
+        heketi_server_url = self.cns_storage_class['storage_class1']['resturl']
+        data_nodes = []
+        for node_id in self.node_id_list[0:2]:
+            node_info = heketi_ops.heketi_node_info(
+                self.heketi_client_node, heketi_server_url, node_id, json=True)
+
+            if len(node_info['devices']) < 2:
+                self.skipTest(
+                    "Nodes are expected to have at least 2 devices")
+            if not all([int(d['storage']['free']) > (3 * 1024**2)
+                        for d in node_info['devices'][0:2]]):
+                self.skipTest(
+                    "Devices are expected to have more than 3Gb of free space")
+            for device in node_info['devices']:
+                self._set_arbiter_tag_with_further_revert(
+                    self.heketi_client_node, heketi_server_url,
+                    'device', device['id'], 'disabled',
+                    device.get('tags', {}).get('arbiter'))
+            self._set_arbiter_tag_with_further_revert(
+                self.heketi_client_node, heketi_server_url,
+                'node', node_id, 'disabled',
+                node_info.get('tags', {}).get('arbiter'))
+
+            data_nodes.append(node_info)
+
+        # Set arbiter:required tag to all other nodes and their devices
+        for node_id in self.node_id_list[2:]:
+            node_info = heketi_ops.heketi_node_info(
+                self.heketi_client_node, heketi_server_url, node_id, json=True)
+            self._set_arbiter_tag_with_further_revert(
+                self.heketi_client_node, heketi_server_url,
+                'node', node_id, 'required',
+                node_info.get('tags', {}).get('arbiter'))
+            for device in node_info['devices']:
+                self._set_arbiter_tag_with_further_revert(
+                    self.heketi_client_node, heketi_server_url,
+                    'device', device['id'], 'required',
+                    device.get('tags', {}).get('arbiter'))
+
+        # Get second big volume between 2 data nodes and use it
+        # for target vol calculation.
+        for i, node_info in enumerate(data_nodes):
+            biggest_disk_free_space = 0
+            for device in node_info['devices'][0:2]:
+                free = int(device['storage']['free'])
+                if free > biggest_disk_free_space:
+                    biggest_disk_free_space = free
+            data_nodes[i]['biggest_free_space'] = biggest_disk_free_space
+        target_vol_size_kb = 1 + min([
+            n['biggest_free_space'] for n in data_nodes])
+
+        # Check that all the data devices have, at least, half of required size
+        all_big_enough = True
+        for node_info in data_nodes:
+            for device in node_info['devices'][0:2]:
+                if float(device['storage']['free']) < (target_vol_size_kb / 2):
+                    all_big_enough = False
+                    break
+
+        # Create sc with gluster arbiter info
+        self._create_storage_class()
+
+        # Create helper arbiter vol if not all the data devices have
+        # half of required free space.
+        if not all_big_enough:
+            helper_vol_size_kb, target_vol_size_kb = 0, 0
+            smaller_device_id = None
+            for node_info in data_nodes:
+                devices = node_info['devices']
+                if ((devices[0]['storage']['free']) > (
+                        devices[1]['storage']['free'])):
+                    smaller_device_id = devices[1]['id']
+                    smaller_device = devices[1]['storage']['free']
+                    bigger_device = devices[0]['storage']['free']
+                else:
+                    smaller_device_id = devices[0]['id']
+                    smaller_device = devices[0]['storage']['free']
+                    bigger_device = devices[1]['storage']['free']
+                diff = bigger_device - (2 * smaller_device) + 1
+                if diff > helper_vol_size_kb:
+                    helper_vol_size_kb = diff
+                    target_vol_size_kb = bigger_device - diff
+
+            # Disable smaller device and create helper vol on bigger one
+            # to reduce its size, then enable smaller device back.
+            try:
+                out = heketi_ops.heketi_device_disable(
+                    self.heketi_client_node, heketi_server_url,
+                    smaller_device_id)
+                self.assertTrue(out)
+                self._create_and_wait_for_pvc(
+                    int(helper_vol_size_kb / 1024.0**2) + 1)
+            finally:
+                out = heketi_ops.heketi_device_enable(
+                    self.heketi_client_node, heketi_server_url,
+                    smaller_device_id)
+                self.assertTrue(out)
+
+        # Create target arbiter volume
+        self._create_and_wait_for_pvc(int(target_vol_size_kb / 1024.0**2))
+
+        # Get gluster volume info
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+
+        # Check amount of bricks
+        bricks = vol_info['bricks']['brick']
+        arbiter_brick_amount = sum([int(b['isArbiter']) for b in bricks])
+        data_brick_amount = len(bricks) - arbiter_brick_amount
+        self.assertEqual(
+            data_brick_amount,
+            (arbiter_brick_amount * 2),
+            "Expected 1 arbiter brick per 2 data bricks. "
+            "Arbiter brick amount is '%s', Data brick amount is '%s'." % (
+                arbiter_brick_amount, data_brick_amount))
+        self.assertGreater(
+            data_brick_amount, 3,
+            "Data brick amount is expected to be bigger than 3. "
+            "Actual amount is '%s'." % data_brick_amount)
+        self.assertGreater(
+            arbiter_brick_amount, 1,
+            "Arbiter brick amount is expected to be bigger than 1. "
+            "Actual amount is '%s'." % arbiter_brick_amount)
