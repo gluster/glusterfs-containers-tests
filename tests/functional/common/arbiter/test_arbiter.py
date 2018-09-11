@@ -57,15 +57,22 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
     def _set_arbiter_tag_with_further_revert(self, node, server_url,
                                              source, source_id, tag_value,
                                              revert_to=None):
-        heketi_ops.set_arbiter_tag(
-            node, server_url, source, source_id, tag_value)
-        if revert_to is None:
-            self.addCleanup(
-                heketi_ops.rm_arbiter_tag, node, server_url, source, source_id)
+        if tag_value is None:
+            # Remove arbiter tag logic
+            heketi_ops.rm_arbiter_tag(node, server_url, source, source_id)
+            if revert_to is not None:
+                self.addCleanup(heketi_ops.set_arbiter_tag,
+                                node, server_url, source, source_id, revert_to)
         else:
-            self.addCleanup(
-                heketi_ops.set_arbiter_tag,
+            # Add arbiter tag logic
+            heketi_ops.set_arbiter_tag(
                 node, server_url, source, source_id, tag_value)
+            if revert_to is not None:
+                self.addCleanup(heketi_ops.set_arbiter_tag,
+                                node, server_url, source, source_id, revert_to)
+            else:
+                self.addCleanup(heketi_ops.rm_arbiter_tag,
+                                node, server_url, source, source_id)
 
     def _create_storage_class(self, avg_file_size=None):
         sc = self.cns_storage_class['storage_class1']
@@ -416,3 +423,76 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                 brick["name"].split(":")[-1], passed_arbiter_bricks,
                 "Arbiter brick '%s' was not verified. Looks like it was "
                 "not found on any of gluster nodes." % brick_path)
+
+    @ddt.data(True, False)
+    def test_aribiter_required_tag_on_node_or_devices_other_disabled(
+            self, node_with_tag):
+        """Test cases CNS-989 and CNS-997"""
+
+        pvc_amount = 3
+
+        # Get Heketi nodes info
+        heketi_server_url = self.cns_storage_class['storage_class1']['resturl']
+        node_id_list = heketi_ops.heketi_node_list(
+            self.heketi_client_node, heketi_server_url)
+
+        # Set arbiter:required tags
+        arbiter_node = heketi_ops.heketi_node_info(
+            self.heketi_client_node, heketi_server_url, node_id_list[0],
+            json=True)
+        arbiter_nodes_ip_addresses = arbiter_node['hostnames']['storage']
+        self._set_arbiter_tag_with_further_revert(
+            self.heketi_client_node, heketi_server_url, 'node',
+            node_id_list[0], ('required' if node_with_tag else None),
+            revert_to=arbiter_node.get('tags', {}).get('arbiter'))
+        for device in arbiter_node['devices']:
+            self._set_arbiter_tag_with_further_revert(
+                self.heketi_client_node, heketi_server_url, 'device',
+                device['id'], (None if node_with_tag else 'required'),
+                revert_to=device.get('tags', {}).get('arbiter'))
+
+        # Set arbiter:disabled tags
+        data_nodes, data_nodes_ip_addresses = [], []
+        for node_id in node_id_list[1:]:
+            node_info = heketi_ops.heketi_node_info(
+                self.heketi_client_node, heketi_server_url, node_id, json=True)
+            if not any([int(d['storage']['free']) > (pvc_amount * 1024**2)
+                        for d in node_info['devices']]):
+                self.skipTest(
+                    "Devices are expected to have more than "
+                    "%sGb of free space" % pvc_amount)
+            data_nodes_ip_addresses.extend(node_info['hostnames']['storage'])
+            for device in node_info['devices']:
+                self._set_arbiter_tag_with_further_revert(
+                    self.heketi_client_node, heketi_server_url, 'device',
+                    device['id'], (None if node_with_tag else 'disabled'),
+                    revert_to=device.get('tags', {}).get('arbiter'))
+            self._set_arbiter_tag_with_further_revert(
+                self.heketi_client_node, heketi_server_url, 'node',
+                node_id, ('disabled' if node_with_tag else None),
+                revert_to=node_info.get('tags', {}).get('arbiter'))
+            data_nodes.append(node_info)
+
+        # Create PVCs and check that their bricks are correctly located
+        self._create_storage_class()
+        for i in range(pvc_amount):
+            self._create_and_wait_for_pvc(1)
+
+            # Get gluster volume info
+            vol_info = get_gluster_vol_info_by_pvc_name(
+                self.node, self.pvc_name)
+            arbiter_bricks, data_bricks = [], []
+            for brick in vol_info['bricks']['brick']:
+                if int(brick["isArbiter"]) == 1:
+                    arbiter_bricks.append(brick["name"])
+                else:
+                    data_bricks.append(brick["name"])
+
+            # Verify that all the arbiter bricks are located on
+            # arbiter:required node and data bricks on all other nodes only.
+            for arbiter_brick in arbiter_bricks:
+                self.assertIn(
+                    arbiter_brick.split(':')[0], arbiter_nodes_ip_addresses)
+            for data_brick in data_bricks:
+                self.assertIn(
+                    data_brick.split(':')[0], data_nodes_ip_addresses)
