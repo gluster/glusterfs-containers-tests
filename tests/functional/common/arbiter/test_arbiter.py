@@ -1,7 +1,10 @@
+import ddt
+
 from cnslibs.cns import cns_baseclass
 from cnslibs.common import heketi_ops
 from cnslibs.common.openshift_ops import (
     get_gluster_vol_info_by_pvc_name,
+    get_ocp_gluster_pod_names,
     oc_create_pvc,
     oc_create_sc,
     oc_create_secret,
@@ -13,6 +16,7 @@ from cnslibs.common.openshift_ops import (
 )
 
 
+@ddt.ddt
 class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
 
     def setUp(self):
@@ -63,7 +67,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                 heketi_ops.set_arbiter_tag,
                 node, server_url, source, source_id, tag_value)
 
-    def _create_storage_class(self):
+    def _create_storage_class(self, avg_file_size=None):
         sc = self.cns_storage_class['storage_class1']
         secret = self.cns_secret['secret1']
 
@@ -74,12 +78,16 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         self.addCleanup(
             oc_delete, self.node, 'secret', self.secret_name)
 
+        vol_options = "user.heketi.arbiter true"
+        if avg_file_size:
+            vol_options += ",user.heketi.average-file-size %s" % avg_file_size
+
         # Create storage class
         self.sc_name = oc_create_sc(
             self.node, resturl=sc['resturl'],
             restuser=sc['restuser'], secretnamespace=sc['secretnamespace'],
             secretname=self.secret_name,
-            volumeoptions="user.heketi.arbiter true",
+            volumeoptions=vol_options,
         )
         self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
 
@@ -320,3 +328,91 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             arbiter_brick_amount, 1,
             "Arbiter brick amount is expected to be bigger than 1. "
             "Actual amount is '%s'." % arbiter_brick_amount)
+
+    # NOTE(vponomar): do not create big volumes setting value less than 64
+    # for 'avg_file_size'. It will cause creation of very huge amount of files
+    # making one test run very loooooooong.
+    @ddt.data(
+        (2, 0), # noqa: equivalent of 64KB of avg size
+        (1, 4),
+        (2, 64),
+        (3, 128),
+        (3, 256),
+        (5, 512),
+        (5, 1024),
+        (5, 10240),
+        (10, 1024000),
+    )
+    @ddt.unpack
+    def test_verify_arbiter_brick_able_to_contain_expected_amount_of_files(
+            self, pvc_size_gb, avg_file_size):
+        """Test cases CNS-1182-1190"""
+
+        # Create sc with gluster arbiter info
+        self._create_storage_class(avg_file_size)
+
+        # Create PVC and wait for it to be in 'Bound' state
+        self._create_and_wait_for_pvc(pvc_size_gb)
+
+        # Get volume info
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        bricks = vol_info['bricks']['brick']
+        arbiter_bricks = []
+        data_bricks = []
+        for brick in bricks:
+            if int(brick['isArbiter']) == 1:
+                arbiter_bricks.append(brick)
+            else:
+                data_bricks.append(brick)
+
+        # Verify proportion of data and arbiter bricks
+        arbiter_brick_amount = len(arbiter_bricks)
+        data_brick_amount = len(data_bricks)
+        expected_file_amount = pvc_size_gb * 1024**2 / (avg_file_size or 64)
+        expected_file_amount = expected_file_amount / arbiter_brick_amount
+        self.assertGreater(
+            data_brick_amount, 0,
+            "Data brick amount is expected to be bigger than 0. "
+            "Actual amount is '%s'." % arbiter_brick_amount)
+        self.assertGreater(
+            arbiter_brick_amount, 0,
+            "Arbiter brick amount is expected to be bigger than 0. "
+            "Actual amount is '%s'." % arbiter_brick_amount)
+        self.assertEqual(
+            data_brick_amount,
+            (arbiter_brick_amount * 2),
+            "Expected 1 arbiter brick per 2 data bricks. "
+            "Arbiter brick amount is '%s', Data brick amount is '%s'." % (
+                arbiter_brick_amount, data_brick_amount)
+        )
+
+        # Try to create expected amount of files on arbiter brick mount
+        passed_arbiter_bricks = []
+        not_found = "Mount Not Found"
+        gluster_pods = get_ocp_gluster_pod_names(self.node)
+        for brick in arbiter_bricks:
+            for gluster_pod in gluster_pods:
+                # "brick path" looks like following:
+                # ip_addr:/path/to/vg/brick_unique_name/brick
+                # So, we remove "ip_addr" and "/brick" parts to have mount path
+                brick_path = brick["name"].split(":")[-1]
+                cmd = "oc exec %s -- mount | grep %s || echo '%s'" % (
+                    gluster_pod, brick_path[0:-6], not_found)
+                out = self.cmd_run(cmd)
+                if out != not_found:
+                    cmd = (
+                        "oc exec %s -- python -c \"["
+                        "    open('%s/foo_file{0}'.format(i), 'a').close()"
+                        "    for i in range(%s)"
+                        "]\"" % (gluster_pod, brick_path, expected_file_amount)
+                    )
+                    out = self.cmd_run(cmd)
+                    passed_arbiter_bricks.append(brick_path)
+                    break
+
+        # Make sure all the arbiter bricks were checked
+        for brick in arbiter_bricks:
+            self.assertIn(
+                brick["name"].split(":")[-1], passed_arbiter_bricks,
+                "Arbiter brick '%s' was not verified. Looks like it was "
+                "not found on any of gluster nodes." % brick_path)
