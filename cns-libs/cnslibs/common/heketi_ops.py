@@ -443,8 +443,9 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
     Returns:
         dict: volume create info on success, only cli option is specified
             without --json option, then it returns raw string output.
-        False otherwise
         Tuple (ret, out, err): if raw_cli_output is True
+    Raises:
+        exceptions.ExecutionError when error occurs and raw_cli_output is False
 
     Example:
         heketi_volume_create(heketi_client_node, heketi_server_url, size)
@@ -498,6 +499,7 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
     secret_arg = "--secret %s" % kwargs.get("secret") if kwargs.get("secret") else ""
     user_arg = "--user %s" % kwargs.get("user") if kwargs.get("user") else ""
 
+    err_msg = "Failed to create volume. "
     if mode == 'cli':
         cmd = ("heketi-cli -s %s volume create --size=%s %s %s %s %s %s %s "
                "%s %s %s %s %s %s %s %s %s %s"
@@ -514,8 +516,9 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
             return ret, out, err
 
         if ret != 0:
-            g.log.error("Failed to create volume using heketi")
-            return False
+            err_msg += "Out: %s \n Err: %s" % (out, err)
+            g.log.error(err_msg)
+            raise exceptions.ExecutionError(err_msg)
 
         if json_arg:
             vol_created_info = json.loads(out)
@@ -530,9 +533,9 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
             admin_key = kwargs.pop('secret', 'My Secret')
             conn = HeketiClient(heketi_server_url, user, admin_key)
             volume_create_info = conn.volume_create(kwargs)
-        except:
-            g.log.error("Failed to create volume using heketi")
-            return False
+        except Exception:
+            g.log.error(err_msg)
+            raise
 
         g.log.info("Volume creation is successful using heketi")
         return volume_create_info
@@ -691,30 +694,27 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
 
     Returns:
         str: volume delete command output on success
-        False on failure
         Tuple (ret, out, err): if raw_cli_output is True
+    Raises:
+        exceptions.ExecutionError when error occurs and raw_cli_output is False
 
     Example:
         heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id)
     """
 
-    (heketi_server_url,
-     json_arg, admin_key, user) = _set_heketi_global_flags(heketi_server_url,
-                                                           **kwargs)
-
+    heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+    err_msg = "Failed to delete '%s' volume. " % volume_id
     if mode == 'cli':
-        cmd = ("heketi-cli -s %s volume delete %s %s %s %s"
-               % (heketi_server_url, volume_id, json_arg, admin_key, user))
-
+        cmd = "heketi-cli -s %s volume delete %s %s %s %s" % (
+            heketi_server_url, volume_id, json_arg, admin_key, user)
         ret, out, err = g.run(heketi_client_node, cmd)
-
         if raw_cli_output:
             return ret, out, err
-
         if ret != 0:
-            g.log.error("Failed to execute heketi-cli volume delete command")
-            return False
-
+            err_msg += "Out: %s, \nErr: %s" % (out, err)
+            g.log.error(err_msg)
+            raise exceptions.ExecutionError(err_msg)
         return out
     else:
         try:
@@ -722,9 +722,9 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
             admin_key = admin_key.split('t ')[-1] if admin_key else admin_key
             conn = HeketiClient(heketi_server_url, user, admin_key)
             ret = conn.volume_delete(volume_id)
-        except:
-            g.log.error("Failed to do volume delete using heketi")
-            return False
+        except Exception:
+            g.log.error(err_msg)
+            raise
         return ret
 
 
