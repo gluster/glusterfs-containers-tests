@@ -1,4 +1,4 @@
-#!/usr/bin/python
+from unittest import skip
 
 from glusto.core import Glusto as g
 from cnslibs.common.heketi_ops import (heketi_create_topology,
@@ -144,6 +144,7 @@ class TestHeketiVolumeOperations(HeketiClientSetupBaseClass):
                           "Size: %s" % (str(expected_size),
                                         str(volume_info['size']))))
 
+    @skip("Blocked by BZ-1629889")
     def test_heketi_with_device_removal_insuff_space(self):
         """
         Test to create volume consuming all space and then adding new device
@@ -248,6 +249,7 @@ class TestHeketiVolumeOperations(HeketiClientSetupBaseClass):
             device_enable, False,
             "Device %s could not be enabled" % device["id"])
 
+    @skip("Blocked by BZ-1629889")
     def test_device_remove_basic_validation(self):
         """
         Test to create volume after a device removal and with new device added.
