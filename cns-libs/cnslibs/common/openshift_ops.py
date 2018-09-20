@@ -152,6 +152,28 @@ def switch_oc_project(ocp_node, project_name):
     return True
 
 
+def oc_rsync(ocp_node, pod_name, src_dir_path, dest_dir_path):
+    """Sync file from 'src_dir_path' path on ocp_node to
+       'dest_dir_path' path on 'pod_name' using 'oc rsync' command.
+
+    Args:
+        ocp_node (str): Node on which oc rsync command will be executed
+        pod_name (str): Name of the pod on which source directory to be
+                        mounted
+        src_dir_path (path): Source path from which directory to be mounted
+        dest_dir_path (path): destination path to which directory to be
+                              mounted
+    """
+    ret, out, err = g.run(ocp_node, ['oc',
+                                     'rsync',
+                                     src_dir_path,
+                                     '%s:%s' % (pod_name, dest_dir_path)])
+    if ret != 0:
+        error_msg = 'failed to sync directory in pod: %r; %r' % (out, err)
+        g.log.error(error_msg)
+        raise AssertionError(error_msg)
+
+
 def oc_rsh(ocp_node, pod_name, command, log_level=None):
     """Run a command in the ocp pod using `oc rsh`.
 
@@ -199,6 +221,28 @@ def oc_create(ocp_node, value, value_type='file'):
         g.log.error(msg)
         raise AssertionError(msg)
     g.log.info('Created resource from %s.' % value_type)
+
+
+def oc_process(ocp_node, params, filename):
+    """Create a resource template based on the contents of the
+       given filename and params provided.
+    Args:
+        ocp_node (str): Node on which the ocp command will run
+        filename (str): Filename (on remote) to be passed to
+                        oc process command.
+    Returns: template generated through process command
+    Raises:
+        AssertionError: Raised when resource fails to create.
+    """
+
+    ret, out, err = g.run(ocp_node, ['oc', 'process', '-f', filename, params])
+    if ret != 0:
+        error_msg = 'failed to create process: %r; %r' % (out, err)
+        g.log.error(error_msg)
+        raise AssertionError(error_msg)
+    g.log.info('Created resource from file (%s)', filename)
+
+    return out
 
 
 def oc_create_secret(hostname, secret_name_prefix="autotests-secret-",

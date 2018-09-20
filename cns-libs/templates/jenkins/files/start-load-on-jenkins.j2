@@ -1,0 +1,81 @@
+#!/bin/bash
+
+readonly TOTAL_BUILD_NUMBER=29
+readonly JENKINS_URL=$(awk '/^url/{split ($1, a, "="); print a[2]}' /etc/jenkins_jobs/jenkins_jobs.ini)
+
+echo "JENKINS_URL: $JENKINS_URL"
+
+function trigger() {
+    local url
+    local job_name
+
+    url=$1
+    job_name=$2
+
+    echo "Start job: $job_name"
+    curl -s -k --user admin:password -X POST "${url}/job/${job_name}/build/api/json" --data-urlencode json='{"parameter": []}'
+}
+
+
+function check_build() {
+    local result
+    local job_name
+    local url
+
+    url=$1
+    job_name=$2
+
+    echo "Executing validation for job: ${job_name}"
+    result=$(curl -s -k --user admin:password ${url}/job/${job_name}/lastBuild/api/json | python -c "import json,sys; obj=json.load(sys.stdin); print obj['result'] if 'result' in obj else False")
+
+    echo "Status: ${result}"
+    if [[ "${result}" = "SUCCESS" ]] || [[ "${result}" = "FAILURE" ]] || [[ "${result}" = "UNSTABLE" ]] || [[ "${result}" = "ABORTED" ]]
+    then
+        echo "Build completed, re-starting build"
+        trigger "${JENKINS_URL}" "${job_name}"
+    else
+        echo "Build in progress, waiting for completion"
+    fi
+}
+
+
+### delete jobs
+echo "Delete existing jobs"
+for j in $(seq 0 ${TOTAL_BUILD_NUMBER})
+do
+    jenkins-jobs delete test-${j}_job
+done
+
+echo "Wait for 30 sec until all jobs get created"
+sleep 30
+
+### create jobs
+echo "Create new jobs"
+jenkins-jobs --flush-cache update --delete-old /data
+
+echo "Wait for 30 sec until all jobs get created"
+sleep 30
+
+### trigger jobs
+echo "Start building new job"
+for j in $(seq 0 ${TOTAL_BUILD_NUMBER})
+do
+    trigger "${JENKINS_URL}" "test-${j}_job"
+done
+
+echo "Wait for 2 mins to jenkin schedule and start the jobs"
+sleep 120
+
+### check jobs
+echo "Start polling status for started jobs"
+
+while true
+do
+    for i in $(seq 0 ${TOTAL_BUILD_NUMBER})
+    do
+        check_build "${JENKINS_URL}" "test-${i}_job/job/ttt"
+    done
+
+    echo "Validated all jobs geting some rest"
+    sleep 30
+done

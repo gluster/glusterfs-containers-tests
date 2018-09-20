@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from string import Template
 import json
 import os
 import tempfile
@@ -12,6 +13,41 @@ from cnslibs.common.waiter import Waiter
 
 
 TEMPLATE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+
+def create_script_template_file(hostname, template_file_path, src_dir_path,
+                                dest_dir_path, params):
+    """Update the templates with the parameters and upload to openshift
+       master node
+    Args:
+        template_file_path (str): template file which need to be updated
+        src_dir_path (str): source path of template file
+        dest_dir_path (str): directory path to which template file
+                                to be generated
+        params (dict): key, val pair to update template file
+    Raises:
+        Raises AssertionError in case of failure
+    """
+
+    src_path = os.path.join(src_dir_path, template_file_path)
+    contents = Template(open(src_path).read())
+    contents = contents.safe_substitute(params)
+
+    dest_path = os.path.join(dest_dir_path, template_file_path)
+    try:
+        conn = g.rpyc_get_connection(hostname, user="root")
+        if conn is None:
+            g.log.error("Failed to get rpyc connection of node %s"
+                        % hostname)
+            raise AssertionError("Failed to get rpyc connection of node %s"
+                                 % hostname)
+        with conn.builtin.open(dest_path, 'w') as data_file:
+            data_file.write(contents)
+    except Exception as err:
+        g.log.error("failed to create script file %s" % err)
+        raise
+    finally:
+        g.rpyc_close_connection(hostname, user="root")
 
 
 def create_pvc_file(hostname, claim_name, storage_class, size):
