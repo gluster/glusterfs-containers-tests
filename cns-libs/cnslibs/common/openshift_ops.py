@@ -346,7 +346,7 @@ def oc_create_pvc(hostname, sc_name, pvc_name_prefix="autotests-pvc",
 
 def oc_create_app_dc_with_io(
         hostname, pvc_name, dc_name_prefix="autotests-dc-with-app-io",
-        replicas=1, space_to_use=92274688):
+        replicas=1, space_to_use=1048576):
     """Create DC with app PODs and attached PVC, constantly running I/O.
 
     Args:
@@ -366,9 +366,10 @@ def oc_create_app_dc_with_io(
         "command": ["sh"],
         "args": [
             "-ec",
+            "trap \"rm -f /mnt/random-data-$HOSTNAME.log ; exit 0\" SIGTERM; "
             "while true; do "
             "  (mount | grep '/mnt') && "
-            "    (head -c %s < /dev/urandom > /mnt/random-data.log) || "
+            "    (head -c %s < /dev/urandom > /mnt/random-data-$HOSTNAME.log) || "
             "      exit 1; "
             "  sleep 1 ; "
             "done" % space_to_use,
@@ -379,7 +380,7 @@ def oc_create_app_dc_with_io(
             "exec": {"command": [
                 "sh", "-ec",
                 "mount | grep '/mnt' && "
-                "  head -c 1 < /dev/urandom >> /mnt/random-data.log"
+                "  head -c 1 < /dev/urandom >> /mnt/random-data-$HOSTNAME.log"
             ]},
         },
     }
@@ -401,6 +402,7 @@ def oc_create_app_dc_with_io(
                         "persistentVolumeClaim": {"claimName": pvc_name},
                     }],
                     "containers": [container_data],
+                    "terminationGracePeriodSeconds": 20,
                 }
             }
         }
