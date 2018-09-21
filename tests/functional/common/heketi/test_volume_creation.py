@@ -1,18 +1,14 @@
-from __future__ import division
-import json
-import math
-import unittest
-
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
 
-from cnslibs.common.exceptions import ExecutionError, ConfigError
-from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
-from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
-from cnslibs.common import heketi_ops, podcmd
+from cnslibs.common import exceptions
+from cnslibs.common import heketi_libs
+from cnslibs.common import heketi_ops
+from cnslibs.common import openshift_ops
+from cnslibs.common import podcmd
 
 
-class TestVolumeCreationTestCases(HeketiClientSetupBaseClass):
+class TestVolumeCreationTestCases(heketi_libs.HeketiClientSetupBaseClass):
     """
     Class for volume creation related test cases
     """
@@ -65,7 +61,7 @@ class TestVolumeCreationTestCases(HeketiClientSetupBaseClass):
                          % volume_id)
 
         if self.deployment_type == "cns":
-            gluster_pod = get_ocp_gluster_pod_names(
+            gluster_pod = openshift_ops.get_ocp_gluster_pod_names(
                 self.heketi_client_node)[1]
 
             p = podcmd.Pod(self.heketi_client_node, gluster_pod)
@@ -89,8 +85,8 @@ class TestVolumeCreationTestCases(HeketiClientSetupBaseClass):
         for brick_details in volume_info[volume_name]["bricks"]["brick"]:
             brick_info.append(brick_details["name"])
 
-        if brick_info == []:
-            raise ExecutionError("Brick details empty for %s" % volume_name)
+        self.assertNotEqual(
+            brick_info, [], "Brick details are empty for %s" % volume_name)
 
         for brick in brick_info:
             brick_data = brick.strip().split(":")
@@ -102,33 +98,62 @@ class TestVolumeCreationTestCases(HeketiClientSetupBaseClass):
                              "Brick %s is not up" % brick_name)
 
     def test_volume_creation_no_free_devices(self):
-        """
-        To test volume creation when there are no free devices
-        """
+        """Test case CNS-804"""
+        node, server_url = self.heketi_client_node, self.heketi_server_url
 
-        large_volume = heketi_ops.heketi_volume_create(
-            self.heketi_client_node, self.heketi_server_url,
-            595, json=True)
+        # Get nodes info
+        node_id_list = heketi_ops.heketi_node_list(node, server_url)
+        node_info_list = []
+        for node_id in node_id_list[0:3]:
+            node_info = heketi_ops.heketi_node_info(
+                node, server_url, node_id, json=True)
+            node_info_list.append(node_info)
 
-        self.assertNotEqual(large_volume, False, "Volume creation failed")
-        self.addCleanup(self.delete_volumes, large_volume["id"])
+        # Disable 4th and other nodes
+        if len(node_id_list) > 3:
+            for node in node_id_list[3:]:
+                heketi_ops.heketi_node_disable(node, server_url, node_id)
+                self.addCleanup(
+                    heketi_ops.heketi_node_enable, node, server_url, node_id)
 
-        small_volume = heketi_ops.heketi_volume_create(
-            self.heketi_client_node, self.heketi_server_url,
-            90, json=True)
+        # Disable second and other devices on the first 3 nodes
+        for node_info in node_info_list[0:3]:
+            devices = node_info["devices"]
+            self.assertTrue(
+                devices, "Node '%s' does not have devices." % node_info["id"])
+            if devices[0]["state"].strip().lower() != "online":
+                self.skipTest("Test expects first device to be enabled.")
+            if len(devices) < 2:
+                continue
+            for device in node_info["devices"][1:]:
+                out = heketi_ops.heketi_device_disable(
+                    node, server_url, device["id"])
+                self.assertTrue(
+                    out, "Failed to disable the device %s" % device["id"])
+                self.addCleanup(
+                    heketi_ops.heketi_device_enable,
+                    node, server_url, device["id"])
 
-        self.assertNotEqual(small_volume, False, "Volume creation failed")
-        self.addCleanup(self.delete_volumes, small_volume["id"])
+        # Calculate common available space
+        available_spaces = [
+            int(node_info["devices"][0]["storage"]["free"])
+            for n in node_info_list[0:3]]
+        min_space_gb = int(min(available_spaces) / 1024**2)
+        self.assertGreater(min_space_gb, 3, "Not enough available free space.")
 
-        ret, out, err = heketi_ops.heketi_volume_create(
-                self.heketi_client_node, self.heketi_server_url,
-                50, raw_cli_output=True)
+        # Create first small volume
+        vol = heketi_ops.heketi_volume_create(node, server_url, 1, json=True)
+        self.addCleanup(self.delete_volumes, vol["id"])
 
-        self.assertEqual(ret, 255, "Volume creation did not fail ret- %s "
-                         "out- %s err- %s" % (ret, out, err))
-        g.log.info("Volume creation failed as expected, err- %s" % err)
-
-        if ret == 0:
-            out_json = json.loads(out)
-            self.addCleanup(self.delete_volumes, out_json["id"])
-
+        # Try to create second volume getting "no free space" error
+        try:
+            vol_fail = heketi_ops.heketi_volume_create(
+                node, server_url, min_space_gb, json=True)
+        except exceptions.ExecutionError:
+            g.log.info("Volume was not created as expected.")
+        else:
+            self.addCleanup(
+                self.delete_volumes, vol_fail["bricks"][0]["volume"])
+            self.assertFalse(
+                vol_fail,
+                "Volume should have not been created. Out: %s" % vol_fail)
