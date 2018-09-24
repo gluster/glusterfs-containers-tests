@@ -22,7 +22,8 @@ setup(
         'Programming Language :: Python :: 2.7'
         'Topic :: Software Development :: Testing'
     ],
-    install_requires=['glusto', 'ddt', 'mock', 'rtyaml', 'jsondiff', 'six'],
+    install_requires=['glusto', 'ddt', 'mock', 'rtyaml', 'jsondiff', 'six',
+                      'prometheus_client>=0.4.2'],
     dependency_links=[
         'http://github.com/loadtheaccumulator/glusto/tarball/master#egg=glusto'
     ],

@@ -15,6 +15,7 @@ except ImportError:
     g.log.error("Please install python-client for heketi and re-run the test")
 
 from cnslibs.common import exceptions, podcmd
+from cnslibs.common.utils import parse_prometheus_data
 
 HEKETI_SSH_KEY = "/etc/heketi/heketi_key"
 HEKETI_CONFIG_FILE = "/etc/heketi/heketi.json"
@@ -2388,3 +2389,31 @@ def match_heketi_and_gluster_block_volumes(
 
     assert sorted(gluster_vol_block_list) == heketi_block_volumes, (
         "Gluster and Heketi Block volume list match failed")
+
+
+def get_heketi_metrics(heketi_client_node, heketi_server_url,
+                       prometheus_format=False):
+    ''' Execute curl command to get metrics output
+
+    Args:
+        - heketi_client_node (str) : Node where we want to run our commands.
+        - heketi_server_url (str) : This is a heketi server url
+        - prometheus_format (bool) : control the format of output
+            by default it is False, So it will parse prometheus format into
+            python dict. If we need prometheus format we have to set it True.
+    Returns:
+        Metrics output: if successful
+    Raises:
+        err: if fails to run command
+
+    '''
+
+    cmd = "curl %s/metrics" % heketi_server_url
+    ret, out, err = g.run(heketi_client_node, cmd)
+    if ret != 0:
+        msg = "failed to get Heketi metrics with following error: %s" % err
+        g.log.error(msg)
+        raise AssertionError(msg)
+    if prometheus_format:
+        return out.strip()
+    return parse_prometheus_data(out)
