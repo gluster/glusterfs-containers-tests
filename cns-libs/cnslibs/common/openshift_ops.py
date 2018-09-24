@@ -614,6 +614,66 @@ def scale_dc_pod_amount_and_wait(hostname, dc_name,
             wait_for_pod_be_ready(hostname, pod)
 
 
+def get_gluster_pod_names_by_pvc_name(ocp_node, pvc_name):
+    """Get Gluster POD names, whose nodes store bricks for specified PVC.
+
+    Args:
+        ocp_node (str): Node to execute OCP commands on.
+        pvc_name (str): Name of a PVC to get related Gluster PODs.
+    Returns:
+        list: List of dicts, which consist of following 3 key-value pairs:
+            pod_name=<pod_name_value>,
+            host_name=<host_name_value>,
+            host_ip=<host_ip_value>
+    """
+    # Get node IPs
+    pv_info = get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name)
+    gluster_pod_nodes_ips = [
+        brick["name"].split(":")[0]
+        for brick in pv_info["bricks"]["brick"]
+    ]
+
+    # Get node names
+    get_node_names_cmd = (
+        "oc get node -o wide | grep -e '%s ' | awk '{print $1}'" % (
+            " ' -e '".join(gluster_pod_nodes_ips)))
+    gluster_pod_node_names = command.cmd_run(
+        get_node_names_cmd, hostname=ocp_node)
+    gluster_pod_node_names = [
+        node_name.strip()
+        for node_name in gluster_pod_node_names.split("\n")
+        if node_name.strip()
+    ]
+    node_count = len(gluster_pod_node_names)
+    err_msg = "Expected more than one node hosting Gluster PODs. Got '%s'." % (
+        node_count)
+    assert (node_count > 1), err_msg
+
+    # Get Gluster POD names which are located on the filtered nodes
+    get_pod_name_cmd = (
+        "oc get pods --all-namespaces "
+        "-o=custom-columns=:.metadata.name,:.spec.nodeName,:.status.hostIP | "
+        "grep 'glusterfs-' | grep -e '%s '" % "' -e '".join(
+            gluster_pod_node_names)
+    )
+    out = command.cmd_run(
+        get_pod_name_cmd, hostname=ocp_node)
+    data = []
+    for line in out.split("\n"):
+        pod_name, host_name, host_ip = [
+            el.strip() for el in line.split(" ") if el.strip()]
+        data.append({
+            "pod_name": pod_name,
+            "host_name": host_name,
+            "host_ip": host_ip,
+        })
+    pod_count = len(data)
+    err_msg = "Expected 3 or more Gluster PODs to be found. Actual is '%s'" % (
+        pod_count)
+    assert (pod_count > 2), err_msg
+    return data
+
+
 def get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name):
     """Get Gluster volume info based on the PVC name.
 
