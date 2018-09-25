@@ -626,12 +626,37 @@ def get_gluster_pod_names_by_pvc_name(ocp_node, pvc_name):
             host_name=<host_name_value>,
             host_ip=<host_ip_value>
     """
+    # Check storage provisioner
+    sp_cmd = (
+        'oc get pvc %s --no-headers -o=custom-columns='
+        ':.metadata.annotations."volume\.beta\.kubernetes\.io\/'
+        'storage\-provisioner"' % pvc_name)
+    sp_raw = command.cmd_run(sp_cmd, hostname=ocp_node)
+    sp = sp_raw.strip()
+
     # Get node IPs
-    pv_info = get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name)
-    gluster_pod_nodes_ips = [
-        brick["name"].split(":")[0]
-        for brick in pv_info["bricks"]["brick"]
-    ]
+    if sp == "kubernetes.io/glusterfs":
+        pv_info = get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name)
+        gluster_pod_nodes_ips = [
+            brick["name"].split(":")[0]
+            for brick in pv_info["bricks"]["brick"]
+        ]
+    elif sp == "gluster.org/glusterblock":
+        get_gluster_pod_node_ip_cmd = (
+            r"""oc get pv --template '{{range .items}}""" +
+            r"""{{if eq .spec.claimRef.name "%s"}}""" +
+            r"""{{.spec.iscsi.targetPortal}}{{" "}}""" +
+            r"""{{.spec.iscsi.portals}}{{end}}{{end}}'""") % (
+                pvc_name)
+        node_ips_raw = command.cmd_run(
+            get_gluster_pod_node_ip_cmd, hostname=ocp_node)
+        node_ips_raw = node_ips_raw.replace(
+            "[", " ").replace("]", " ").replace(",", " ")
+        gluster_pod_nodes_ips = [
+            s.strip() for s in node_ips_raw.split(" ") if s.strip()
+        ]
+    else:
+        assert False, "Unexpected storage provisioner: %s" % sp
 
     # Get node names
     get_node_names_cmd = (

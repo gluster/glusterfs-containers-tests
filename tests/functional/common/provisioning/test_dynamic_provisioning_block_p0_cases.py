@@ -1,25 +1,22 @@
 import time
+from unittest import skip
 
 from cnslibs.common.dynamic_provisioning import (
-    create_mongodb_pod,
-    create_secret_file,
-    create_storage_class_file,
     get_pvc_status,
     get_pod_name_from_dc,
     wait_for_pod_be_ready,
     verify_pvc_status_is_bound)
 from cnslibs.cns.cns_baseclass import CnsGlusterBlockBaseClass
 from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.heketi_ops import (
-    export_heketi_cli_server)
 from cnslibs.common.openshift_ops import (
-    get_ocp_gluster_pod_names,
-    oc_create,
+    get_gluster_pod_names_by_pvc_name,
     oc_create_secret,
     oc_create_sc,
     oc_create_pvc,
+    oc_create_app_dc_with_io,
     oc_delete,
     oc_rsh,
+    scale_dc_pod_amount_and_wait,
     wait_for_resource_absence)
 from cnslibs.common.waiter import Waiter
 from glusto.core import Glusto as g
@@ -31,18 +28,19 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
      for block volume
     '''
 
+    def setUp(self):
+        super(TestDynamicProvisioningBlockP0, self).setUp()
+        self.node = self.ocp_master_node[0]
+
     def _create_storage_class(self):
         sc = self.cns_storage_class['storage_class2']
         secret = self.cns_secret['secret2']
 
         # Create secret file
         self.secret_name = oc_create_secret(
-            self.ocp_master_node[0],
-            namespace=secret['namespace'],
-            data_key=self.heketi_cli_key,
-            secret_type=secret['type'])
-        self.addCleanup(
-            oc_delete, self.ocp_master_node[0], 'secret', self.secret_name)
+            self.node, namespace=secret['namespace'],
+            data_key=self.heketi_cli_key, secret_type=secret['type'])
+        self.addCleanup(oc_delete, self.node, 'secret', self.secret_name)
 
         # Create storage class
         self.sc_name = oc_create_sc(
@@ -51,226 +49,163 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             restsecretnamespace=sc['restsecretnamespace'],
             restsecretname=self.secret_name, hacount=sc['hacount'],
         )
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'sc', self.sc_name)
+        self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
 
         return self.sc_name
 
-    def test_dynamic_provisioning_glusterblock(self):
-        pvc_name = "mongodb1-block"
-        mongodb_filepath = '/var/lib/mongodb/data/file'
+    def _create_and_wait_for_pvcs(self, pvc_size=1,
+                                  pvc_name_prefix='autotests-block-pvc',
+                                  pvc_amount=1):
+        # Create PVCs
+        pvc_names = []
+        for i in range(pvc_amount):
+            pvc_name = oc_create_pvc(
+                self.node, self.sc_name, pvc_name_prefix=pvc_name_prefix,
+                pvc_size=pvc_size)
+            pvc_names.append(pvc_name)
+            self.addCleanup(
+                wait_for_resource_absence, self.node, 'pvc', pvc_name)
+        for pvc_name in pvc_names:
+            self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
 
+        # Wait for PVCs to be in bound state
+        for pvc_name in pvc_names:
+            verify_pvc_status_is_bound(self.node, pvc_name)
+
+        return pvc_names
+
+    def _create_and_wait_for_pvc(self, pvc_size=1,
+                                 pvc_name_prefix='autotests-block-pvc'):
+        self.pvc_name = self._create_and_wait_for_pvcs(
+            pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix)[0]
+        return self.pvc_name
+
+    def _create_dc_with_pvc(self):
         # Create storage class and secret objects
         self._create_storage_class()
 
-        ret = create_mongodb_pod(
-            self.ocp_master_node[0], pvc_name, 10, self.sc_name)
-        self.assertTrue(ret, "creation of mongodb pod failed")
-        self.addCleanup(
-            oc_delete, self.ocp_master_node[0], 'service', pvc_name)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'pvc', pvc_name)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc', pvc_name)
-        pod_name = get_pod_name_from_dc(self.ocp_master_node[0], pvc_name)
-        ret = wait_for_pod_be_ready(self.ocp_master_node[0], pod_name)
-        self.assertTrue(ret, "verify mongodb pod status as running failed")
+        # Create PVC
+        pvc_name = self._create_and_wait_for_pvc()
 
-        cmd = "dd if=/dev/urandom of=%s bs=1K count=100" % mongodb_filepath
-        ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
+        # Create DC with POD and attached PVC to it
+        dc_name = oc_create_app_dc_with_io(self.node, pvc_name)
+        self.addCleanup(oc_delete, self.node, 'dc', dc_name)
+        self.addCleanup(scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
+        pod_name = get_pod_name_from_dc(self.node, dc_name)
+        wait_for_pod_be_ready(self.node, pod_name)
 
-        cmd = "ls -lrt %s" % mongodb_filepath
-        ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        cmd = "rm -rf %s" % mongodb_filepath
-        ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                                cmd, self.ocp_master_node[0]))
+        return dc_name, pod_name, pvc_name
+
+    def test_dynamic_provisioning_glusterblock(self):
+        datafile_path = '/mnt/fake_file_for_%s' % self.id()
+
+        # Create DC with attached PVC
+        dc_name, pod_name, pvc_name = self._create_dc_with_pvc()
+
+        # Check that we can write data
+        for cmd in ("dd if=/dev/urandom of=%s bs=1K count=100",
+                    "ls -lrt %s",
+                    "rm -rf %s"):
+            cmd = cmd % datafile_path
+            ret, out, err = oc_rsh(self.node, pod_name, cmd)
+            self.assertEqual(
+                ret, 0,
+                "Failed to execute '%s' command on '%s'." % (cmd, self.node))
 
     def test_dynamic_provisioning_glusterblock_heketipod_failure(self):
-        g.log.info("test_dynamic_provisioning_glusterblock_Heketipod_Failure")
-        pvc_name = "mongodb2-block"
+        datafile_path = '/mnt/fake_file_for_%s' % self.id()
 
-        # Create storage class and secret objects
-        sc_name = self._create_storage_class()
+        # Create DC with attached PVC
+        app_1_dc_name, app_1_pod_name, app_1_pvc_name = (
+            self._create_dc_with_pvc())
 
-        # Create App pod #1 and write data to it
-        ret = create_mongodb_pod(
-            self.ocp_master_node[0], pvc_name, 10, sc_name)
-        self.assertTrue(ret, "creation of mongodb pod failed")
-        self.addCleanup(
-            oc_delete, self.ocp_master_node[0], 'service', pvc_name)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'pvc', pvc_name)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc', pvc_name)
-        pod_name = get_pod_name_from_dc(self.ocp_master_node[0], pvc_name)
-        ret = wait_for_pod_be_ready(self.ocp_master_node[0], pod_name,
-                                    wait_step=5, timeout=300)
-        self.assertTrue(ret, "verify mongodb pod status as running failed")
-        cmd = ("dd if=/dev/urandom of=/var/lib/mongodb/data/file "
-               "bs=1K count=100")
-        ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
+        # Write test data
+        write_data_cmd = (
+            "dd if=/dev/urandom of=%s bs=1K count=100" % datafile_path)
+        ret, out, err = oc_rsh(self.node, app_1_pod_name, write_data_cmd)
+        self.assertEqual(
+            ret, 0,
+            "Failed to execute command %s on %s" % (write_data_cmd, self.node))
 
         # Remove Heketi pod
         heketi_down_cmd = "oc scale --replicas=0 dc/%s --namespace %s" % (
             self.heketi_dc_name, self.cns_project_name)
         heketi_up_cmd = "oc scale --replicas=1 dc/%s --namespace %s" % (
             self.heketi_dc_name, self.cns_project_name)
-        self.addCleanup(g.run, self.ocp_master_node[0], heketi_up_cmd, "root")
-        ret, out, err = g.run(self.ocp_master_node[0], heketi_down_cmd, "root")
+        self.addCleanup(self.cmd_run, heketi_up_cmd)
+        heketi_pod_name = get_pod_name_from_dc(
+            self.node, self.heketi_dc_name, timeout=10, wait_step=3)
+        self.cmd_run(heketi_down_cmd)
+        wait_for_resource_absence(self.node, 'pod', heketi_pod_name)
 
-        get_heketi_podname_cmd = (
-            "oc get pods --all-namespaces -o=custom-columns=:.metadata.name "
-            "--no-headers=true "
-            "--selector deploymentconfig=%s" % self.heketi_dc_name)
-        ret, out, err = g.run(self.ocp_master_node[0], get_heketi_podname_cmd)
-        wait_for_resource_absence(self.ocp_master_node[0], 'pod', out.strip())
+        # Create second PVC
+        app_2_pvc_name = oc_create_pvc(
+            self.node, self.sc_name, pvc_name_prefix='autotests-block-pvc',
+            pvc_size=1)
+        self.addCleanup(
+            wait_for_resource_absence, self.node, 'pvc', app_2_pvc_name)
+        self.addCleanup(oc_delete, self.node, 'pvc', app_2_pvc_name)
 
-        # Create App pod #2
-        pvc_name3 = "mongodb3-block"
-        ret = create_mongodb_pod(self.ocp_master_node[0],
-                                 pvc_name3, 10, sc_name)
-        self.assertTrue(ret, "creation of mongodb pod failed")
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'service',
-                        pvc_name3)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'pvc',
-                        pvc_name3)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc',
-                        pvc_name3)
-        ret, status = get_pvc_status(self.ocp_master_node[0],
-                                     pvc_name3)
-        self.assertTrue(ret, "failed to get pvc status of %s" % pvc_name3)
-        self.assertEqual(status, "Pending", "pvc status of "
-                         "%s is not in Pending state" % pvc_name3)
+        # Check status of the second PVC after small pause
+        time.sleep(2)
+        ret, status = get_pvc_status(self.node, app_2_pvc_name)
+        self.assertTrue(ret, "Failed to get pvc status of %s" % app_2_pvc_name)
+        self.assertEqual(
+            status, "Pending",
+            "PVC status of %s is not in Pending state" % app_2_pvc_name)
+
+        # Create second app POD
+        app_2_dc_name = oc_create_app_dc_with_io(self.node, app_2_pvc_name)
+        self.addCleanup(oc_delete, self.node, 'dc', app_2_dc_name)
+        self.addCleanup(
+            scale_dc_pod_amount_and_wait, self.node, app_2_dc_name, 0)
+        app_2_pod_name = get_pod_name_from_dc(self.node, app_2_dc_name)
 
         # Bring Heketi pod back
-        ret, out, err = g.run(self.ocp_master_node[0], heketi_up_cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                         heketi_up_cmd, self.ocp_master_node[0]))
-
-        # Wait small amount of time before newly scheduled Heketi POD appears
-        time.sleep(2)
+        self.cmd_run(heketi_up_cmd)
 
         # Wait for Heketi POD be up and running
-        ret, out, err = g.run(self.ocp_master_node[0], get_heketi_podname_cmd)
-        ret = wait_for_pod_be_ready(self.ocp_master_node[0], out.strip(),
-                                    wait_step=5, timeout=120)
-        self.assertTrue(ret, "verify heketi pod status as running failed")
+        new_heketi_pod_name = get_pod_name_from_dc(
+            self.node, self.heketi_dc_name, timeout=10, wait_step=2)
+        wait_for_pod_be_ready(
+            self.node, new_heketi_pod_name, wait_step=5, timeout=120)
 
-        # Verify App pod #2
-        for w in Waiter(600, 30):
-            ret, status = get_pvc_status(self.ocp_master_node[0], pvc_name3)
-            self.assertTrue(ret, "failed to get pvc status of %s" % (
-                                pvc_name3))
-            if status != "Bound":
-                g.log.info("pvc status of %s is not in Bound state,"
-                           " sleeping for 30 sec" % pvc_name3)
-                continue
-            else:
-                break
-        if w.expired:
-            error_msg = ("exceeded timeout 600 sec, pvc %s not in"
-                         " Bound state" % pvc_name3)
-            g.log.error(error_msg)
-            raise ExecutionError(error_msg)
-        self.assertEqual(status, "Bound", "pvc status of %s "
-                         "is not in Bound state, its state is %s" % (
-                             pvc_name3, status))
-        pod_name = get_pod_name_from_dc(self.ocp_master_node[0], pvc_name3)
-        ret = wait_for_pod_be_ready(self.ocp_master_node[0], pod_name,
-                                    wait_step=5, timeout=300)
-        self.assertTrue(ret, "verify %s pod status as "
-                        "running failed" % pvc_name3)
-        cmd = ("dd if=/dev/urandom of=/var/lib/mongodb/data/file "
-               "bs=1K count=100")
-        ret, out, err = oc_rsh(self.ocp_master_node[0], pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
+        # Wait for second PVC and app POD be ready
+        verify_pvc_status_is_bound(self.node, app_2_pvc_name)
+        wait_for_pod_be_ready(
+            self.node, app_2_pod_name, timeout=150, wait_step=3)
 
+        # Verify that we are able to write data
+        ret, out, err = oc_rsh(self.node, app_2_pod_name, write_data_cmd)
+        self.assertEqual(
+            ret, 0,
+            "Failed to execute command %s on %s" % (write_data_cmd, self.node))
+
+    @skip("Blocked by BZ-1632873")
     def test_dynamic_provisioning_glusterblock_glusterpod_failure(self):
-        g.log.info("test_dynamic_provisioning_glusterblock_Glusterpod_Failure")
-        storage_class = self.cns_storage_class['storage_class2']
-        secret = self.cns_secret['secret2']
-        cmd = ("oc get svc %s "
-               "-o=custom-columns=:.spec.clusterIP" % self.heketi_service_name)
-        ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        heketi_cluster_ip = out.lstrip().strip()
-        resturl_block = "http://%s:8080" % heketi_cluster_ip
-        if not export_heketi_cli_server(
-                    self.heketi_client_node,
-                    heketi_cli_server=resturl_block,
-                    heketi_cli_user=self.heketi_cli_user,
-                    heketi_cli_key=self.heketi_cli_key):
-                raise ExecutionError("Failed to export heketi cli server on %s"
-                                     % self.heketi_client_node)
-        cmd = ("heketi-cli cluster list "
-               "| grep Id | cut -d ':' -f 2 | cut -d '[' -f 1")
-        ret, out, err = g.run(self.ocp_client[0], cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_client[0]))
-        cluster_id = out.strip().split("\n")[0]
-        sc_name = storage_class['name']
-        pvc_name4 = "mongodb-4-block"
-        ret = create_storage_class_file(
-            self.ocp_master_node[0],
-            sc_name,
-            resturl_block,
-            storage_class['provisioner'],
-            restuser=storage_class['restuser'],
-            restsecretnamespace=storage_class['restsecretnamespace'],
-            restsecretname=secret['secret_name'],
-            hacount=storage_class['hacount'],
-            clusterids=cluster_id)
-        self.assertTrue(ret, "creation of storage-class file failed")
-        provisioner_name = storage_class['provisioner'].split("/")
-        file_path = "/%s-%s-storage-class.yaml" % (
-                        sc_name, provisioner_name[1])
-        oc_create(self.ocp_master_node[0], file_path)
-        self.addCleanup(oc_delete, self.ocp_master_node[0],
-                        'sc', sc_name)
-        ret = create_secret_file(self.ocp_master_node[0],
-                                 secret['secret_name'],
-                                 secret['namespace'],
-                                 self.secret_data_key,
-                                 secret['type'])
-        self.assertTrue(ret, "creation of heketi-secret file failed")
-        oc_create(self.ocp_master_node[0],
-                  "/%s.yaml" % secret['secret_name'])
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'secret',
-                        secret['secret_name'])
-        ret = create_mongodb_pod(self.ocp_master_node[0],
-                                 pvc_name4, 30, sc_name)
-        self.assertTrue(ret, "creation of mongodb pod failed")
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'service',
-                        pvc_name4)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'pvc', pvc_name4)
-        self.addCleanup(oc_delete, self.ocp_master_node[0], 'dc', pvc_name4)
-        pod_name = get_pod_name_from_dc(self.ocp_master_node[0], pvc_name4)
-        ret = wait_for_pod_be_ready(self.ocp_master_node[0], pod_name)
-        self.assertTrue(ret, "verify mongodb pod status as running failed")
-        io_cmd = ("oc rsh %s dd if=/dev/urandom of=/var/lib/mongodb/data/file "
-                  "bs=1000K count=1000") % pod_name
-        proc = g.run_async(self.ocp_master_node[0], io_cmd, "root")
-        gluster_pod_list = get_ocp_gluster_pod_names(self.ocp_master_node[0])
-        g.log.info("gluster_pod_list - %s" % gluster_pod_list)
-        gluster_pod_name = gluster_pod_list[0]
-        cmd = ("oc get pods -o wide | grep %s | grep -v deploy "
-               "| awk '{print $7}'") % gluster_pod_name
-        ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
-        gluster_pod_node_name = out.strip().split("\n")[0].strip()
-        oc_delete(self.ocp_master_node[0], 'pod', gluster_pod_name)
+        datafile_path = '/mnt/fake_file_for_%s' % self.id()
+
+        # Create DC with attached PVC
+        dc_name, pod_name, pvc_name = self._create_dc_with_pvc()
+
+        # Run IO in background
+        io_cmd = "oc rsh %s dd if=/dev/urandom of=%s bs=1000K count=900" % (
+            pod_name, datafile_path)
+        async_io = g.run_async(self.node, io_cmd, "root")
+
+        # Pick up one of the hosts which stores PV brick (4+ nodes case)
+        gluster_pod_data = get_gluster_pod_names_by_pvc_name(
+            self.node, pvc_name)[0]
+
+        # Delete glusterfs POD from chosen host and wait for spawn of new one
+        oc_delete(self.node, 'pod', gluster_pod_data["pod_name"])
         cmd = ("oc get pods -o wide | grep glusterfs | grep %s | "
                "grep -v Terminating | awk '{print $1}'") % (
-                   gluster_pod_node_name)
+                   gluster_pod_data["host_name"])
         for w in Waiter(600, 30):
-            ret, out, err = g.run(self.ocp_master_node[0], cmd, "root")
+            out = self.cmd_run(cmd)
             new_gluster_pod_name = out.strip().split("\n")[0].strip()
-            if ret == 0 and not new_gluster_pod_name:
+            if not new_gluster_pod_name:
                 continue
             else:
                 break
@@ -278,17 +213,13 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             error_msg = "exceeded timeout, new gluster pod not created"
             g.log.error(error_msg)
             raise ExecutionError(error_msg)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, self.ocp_master_node[0]))
         new_gluster_pod_name = out.strip().split("\n")[0].strip()
         g.log.info("new gluster pod name is %s" % new_gluster_pod_name)
-        ret = wait_for_pod_be_ready(self.ocp_master_node[0],
-                                    new_gluster_pod_name)
-        self.assertTrue(ret, "verify %s pod status as running "
-                        "failed" % new_gluster_pod_name)
-        ret, out, err = proc.async_communicate()
-        self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd,
-                         self.ocp_master_node[0]))
+        wait_for_pod_be_ready(self.node, new_gluster_pod_name)
+
+        # Check that async IO was not interrupted
+        ret, out, err = async_io.async_communicate()
+        self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd, self.node))
 
     def test_glusterblock_logs_presence_verification(self):
         # Verify presence of glusterblock provisioner POD and its status
@@ -301,14 +232,11 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         gb_prov_name, gb_prov_status = out.split()
         self.assertEqual(gb_prov_status, 'Running')
 
-        # Create PVC
-        pvc_name = oc_create_pvc(
-            self.ocp_client[0], self._create_storage_class(),
-            pvc_name_prefix="glusterblock-logs-verification")
-        self.addCleanup(oc_delete, self.ocp_client[0], 'pvc', pvc_name)
+        # Create storage class and secret objects
+        self._create_storage_class()
 
-        # Wait for PVC to be in bound state
-        verify_pvc_status_is_bound(self.ocp_client[0], pvc_name)
+        # Create PVC
+        self._create_and_wait_for_pvc()
 
         # Get list of Gluster PODs
         g_pod_list_cmd = (
