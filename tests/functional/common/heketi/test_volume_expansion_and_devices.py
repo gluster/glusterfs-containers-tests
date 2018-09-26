@@ -209,6 +209,7 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiClientSetupBaseClass):
                 device_delete, False,
                 "Device %s could not be deleted" % device_id)
 
+    @unittest.skip("Blocked by BZ-1629889")
     @podcmd.GlustoPod()
     def test_add_device_heketi_cli(self):
         """
