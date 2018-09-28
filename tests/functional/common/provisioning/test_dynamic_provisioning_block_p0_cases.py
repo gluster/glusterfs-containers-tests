@@ -5,18 +5,22 @@ from cnslibs.cns.cns_baseclass import CnsGlusterBlockBaseClass
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.openshift_ops import (
     get_gluster_pod_names_by_pvc_name,
-    get_pvc_status,
     get_pod_name_from_dc,
+    get_pv_name_from_pvc,
+    get_pvc_status,
     oc_create_app_dc_with_io,
     oc_create_secret,
     oc_create_sc,
     oc_create_pvc,
     oc_delete,
+    oc_get_custom_resource,
     oc_rsh,
     scale_dc_pod_amount_and_wait,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
-    wait_for_resource_absence)
+    wait_for_resource_absence
+    )
+from cnslibs.common.heketi_ops import heketi_blockvolume_list
 from cnslibs.common.waiter import Waiter
 from glusto.core import Glusto as g
 
@@ -30,9 +34,9 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
     def setUp(self):
         super(TestDynamicProvisioningBlockP0, self).setUp()
         self.node = self.ocp_master_node[0]
+        self.sc = self.cns_storage_class['storage_class2']
 
-    def _create_storage_class(self, hacount=True):
-        sc = self.cns_storage_class['storage_class2']
+    def _create_storage_class(self, hacount=True, create_name_prefix=False):
         secret = self.cns_secret['secret2']
 
         # Create secret file
@@ -41,15 +45,20 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             data_key=self.heketi_cli_key, secret_type=secret['type'])
         self.addCleanup(oc_delete, self.node, 'secret', self.secret_name)
 
-        # Create storage class
-        self.sc_name = oc_create_sc(
-            self.ocp_master_node[0], provisioner="gluster.org/glusterblock",
-            resturl=sc['resturl'], restuser=sc['restuser'],
-            restsecretnamespace=sc['restsecretnamespace'],
-            restsecretname=self.secret_name,
-            **({"hacount": sc['hacount']}
-               if hacount else {})
-        )
+        kwargs = {
+            "provisioner": "gluster.org/glusterblock",
+            "resturl": self.sc['resturl'],
+            "restuser": self.sc['restuser'],
+            "restsecretnamespace": self.sc['restsecretnamespace'],
+            "restsecretname": self.secret_name
+        }
+        if hacount:
+            kwargs["hacount"] = self.sc['hacount']
+        if create_name_prefix:
+            kwargs["volumenameprefix"] = self.sc.get(
+                    'volumenameprefix', 'autotest-blk')
+
+        self.sc_name = oc_create_sc(self.node, **kwargs)
         self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
 
         return self.sc_name
@@ -82,9 +91,10 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix)[0]
         return self.pvc_name
 
-    def _create_dc_with_pvc(self, hacount=True):
+    def _create_dc_with_pvc(self, hacount=True, create_name_prefix=False):
         # Create storage class and secret objects
-        self._create_storage_class(hacount)
+        self._create_storage_class(
+                hacount, create_name_prefix=create_name_prefix)
 
         # Create PVC
         pvc_name = self._create_and_wait_for_pvc()
@@ -98,11 +108,13 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
 
         return dc_name, pod_name, pvc_name
 
-    def dynamic_provisioning_glusterblock(self, hacount=True):
+    def dynamic_provisioning_glusterblock(
+            self, hacount=True, create_name_prefix=False):
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
 
         # Create DC with attached PVC
-        dc_name, pod_name, pvc_name = self._create_dc_with_pvc(hacount)
+        dc_name, pod_name, pvc_name = self._create_dc_with_pvc(
+                hacount, create_name_prefix=create_name_prefix)
 
         # Check that we can write data
         for cmd in ("dd if=/dev/urandom of=%s bs=1K count=100",
@@ -337,3 +349,21 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
 
         # Perform I/O on the new POD
         self.cmd_run(write_cmd % (new_pod_name, datafile_path))
+
+    def test_volname_prefix_glusterblock(self):
+        # CNS-926 - custom_volname_prefix_blockvol
+
+        self.dynamic_provisioning_glusterblock(create_name_prefix=True)
+
+        pv_name = get_pv_name_from_pvc(self.node, self.pvc_name)
+        vol_name = oc_get_custom_resource(
+                self.node, 'pv',
+                ':.metadata.annotations.glusterBlockShare', pv_name)[0]
+
+        block_vol_list = heketi_blockvolume_list(
+                self.heketi_client_node, self.heketi_server_url)
+
+        self.assertIn(vol_name, block_vol_list)
+
+        self.assertTrue(vol_name.startswith(
+            self.sc.get('volumenameprefix', 'autotest-blk')))

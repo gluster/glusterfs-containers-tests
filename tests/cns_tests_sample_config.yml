@@ -110,6 +110,7 @@ cns:
                 restsecretname:
                 hacount: "3"
                 chapauthenabled: "true"
+                volumenameprefix: "cns-vol"
         secrets:
             secret1:
                 secret_name: secret1
