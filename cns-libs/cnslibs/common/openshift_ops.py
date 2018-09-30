@@ -463,6 +463,50 @@ def oc_delete(ocp_node, rtype, name):
     return
 
 
+def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None,
+                           raise_on_error=True):
+    """Get an OCP resource by custom column names.
+
+    Args:
+        ocp_node (str): Node on which the ocp command will run.
+        rtype (str): Name of the resource type (pod, storageClass, etc).
+        custom (str): Name of the custom columm to fetch.
+        name (str|None): Name of the resource to fetch.
+        selector (str|list|None): Column Name or list of column
+                                  names select to.
+        raise_on_error (bool): If set to true a failure to fetch
+            resource inforation will raise an error, otherwise
+            an empty dict will be returned.
+    Returns:
+        list: List containting data about the resource custom column
+    Raises:
+        AssertionError: Raised when unable to get resource and
+            `raise_on_error` is true.
+    """
+    cmd = [
+        'oc', 'get',
+        rtype,
+        '--no-headers',
+        '-o=custom-columns=:%s' % custom
+    ]
+
+    if selector:
+        cmd.append('--selector %s' % (
+            ",".join(selector) if type(selector) is list else selector))
+
+    if name:
+        cmd.append(name)
+    ret, out, err = g.run(ocp_node, cmd)
+    if ret != 0:
+        g.log.error('Failed to get %s: %s: %r', rtype, name, err)
+        if raise_on_error:
+            raise AssertionError('failed to get %s: %s: %r'
+                                 % (rtype, name, err))
+        return []
+
+    return out.strip() if name else out.strip().split("\n")
+
+
 def oc_get_yaml(ocp_node, rtype, name=None, raise_on_error=True):
     """Get an OCP resource by name.
 
