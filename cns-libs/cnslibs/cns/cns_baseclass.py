@@ -195,7 +195,8 @@ class CnsBaseClass(unittest.TestCase):
 
     def create_and_wait_for_pvcs(self, pvc_size=1,
                                  pvc_name_prefix="autotests-pvc",
-                                 pvc_amount=1, sc_name=None):
+                                 pvc_amount=1, sc_name=None,
+                                 timeout=120, wait_step=3):
         node = self.ocp_client[0]
 
         # Create storage class if not specified
@@ -218,7 +219,7 @@ class CnsBaseClass(unittest.TestCase):
         # Wait for PVCs to be in bound state
         try:
             for pvc_name in pvc_names:
-                verify_pvc_status_is_bound(node, pvc_name)
+                verify_pvc_status_is_bound(node, pvc_name, timeout, wait_step)
         finally:
             reclaim_policy = oc_get_custom_resource(
                 node, 'sc', ':.reclaimPolicy', sc_name)[0]
