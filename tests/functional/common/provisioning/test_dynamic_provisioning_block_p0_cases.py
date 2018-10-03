@@ -20,7 +20,10 @@ from cnslibs.common.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence
     )
-from cnslibs.common.heketi_ops import heketi_blockvolume_list
+from cnslibs.common.heketi_ops import (
+    heketi_blockvolume_delete,
+    heketi_blockvolume_list
+    )
 from cnslibs.common.waiter import Waiter
 from glusto.core import Glusto as g
 
@@ -36,7 +39,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         self.node = self.ocp_master_node[0]
         self.sc = self.cns_storage_class['storage_class2']
 
-    def _create_storage_class(self, hacount=True, create_name_prefix=False):
+    def _create_storage_class(self, hacount=True, create_name_prefix=False,
+                              reclaim_policy="Delete"):
         secret = self.cns_secret['secret2']
 
         # Create secret file
@@ -45,6 +49,7 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             data_key=self.heketi_cli_key, secret_type=secret['type'])
         self.addCleanup(oc_delete, self.node, 'secret', self.secret_name)
 
+        # create storage class
         kwargs = {
             "provisioner": "gluster.org/glusterblock",
             "resturl": self.sc['resturl'],
@@ -58,7 +63,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             kwargs["volumenameprefix"] = self.sc.get(
                     'volumenameprefix', 'autotest-blk')
 
-        self.sc_name = oc_create_sc(self.node, **kwargs)
+        self.sc_name = oc_create_sc(
+            self.node, reclaim_policy=reclaim_policy, **kwargs)
         self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
 
         return self.sc_name
@@ -75,13 +81,29 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
             pvc_names.append(pvc_name)
             self.addCleanup(
                 wait_for_resource_absence, self.node, 'pvc', pvc_name)
-        for pvc_name in pvc_names:
-            self.addCleanup(oc_delete, self.node, 'pvc', pvc_name,
-                            raise_on_absence=False)
 
         # Wait for PVCs to be in bound state
-        for pvc_name in pvc_names:
-            verify_pvc_status_is_bound(self.node, pvc_name)
+        try:
+            for pvc_name in pvc_names:
+                verify_pvc_status_is_bound(self.node, pvc_name)
+        finally:
+            reclaim_policy = oc_get_custom_resource(
+                self.node, 'sc', ':.reclaimPolicy', self.sc_name)[0]
+
+            for pvc_name in pvc_names:
+                if reclaim_policy == 'Retain':
+                    pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+                    self.addCleanup(oc_delete, self.node, 'pv', pv_name,
+                                    raise_on_absence=False)
+                    custom = (':.metadata.annotations."gluster\.kubernetes'
+                              '\.io\/heketi\-volume\-id"')
+                    vol_id = oc_get_custom_resource(
+                        self.node, 'pv', custom, pv_name)[0]
+                    self.addCleanup(heketi_blockvolume_delete,
+                                    self.heketi_client_node,
+                                    self.heketi_server_url, vol_id)
+                self.addCleanup(oc_delete, self.node, 'pvc', pvc_name,
+                                raise_on_absence=False)
 
         return pvc_names
 
@@ -367,3 +389,50 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
 
         self.assertTrue(vol_name.startswith(
             self.sc.get('volumenameprefix', 'autotest-blk')))
+
+    def test_dynamic_provisioning_glusterblock_reclaim_policy_retain(self):
+        # CNS-1391 - Retain policy - gluster-block - delete pvc
+
+        self._create_storage_class(reclaim_policy='Retain')
+        self._create_and_wait_for_pvc()
+
+        dc_name = oc_create_app_dc_with_io(self.node, self.pvc_name)
+
+        try:
+            pod_name = get_pod_name_from_dc(self.node, dc_name)
+            wait_for_pod_be_ready(self.node, pod_name)
+        finally:
+            scale_dc_pod_amount_and_wait(self.node, dc_name, pod_amount=0)
+            oc_delete(self.node, 'dc', dc_name)
+
+        # get the name of volume
+        pv_name = get_pv_name_from_pvc(self.node, self.pvc_name)
+
+        custom = [':.metadata.annotations."gluster\.org\/volume\-id"',
+                  ':.spec.persistentVolumeReclaimPolicy']
+        vol_id, reclaim_policy = oc_get_custom_resource(
+            self.node, 'pv', custom, pv_name)
+
+        # checking the retainPolicy of pvc
+        self.assertEqual(reclaim_policy, 'Retain')
+
+        # delete the pvc
+        oc_delete(self.node, 'pvc', self.pvc_name)
+
+        # check if pv is also deleted or not
+        with self.assertRaises(ExecutionError):
+            wait_for_resource_absence(
+                self.node, 'pvc', self.pvc_name, interval=3, timeout=30)
+
+        # getting the blockvol list
+        blocklist = heketi_blockvolume_list(self.heketi_client_node,
+                                            self.heketi_server_url)
+        self.assertIn(vol_id, blocklist)
+
+        heketi_blockvolume_delete(self.heketi_client_node,
+                                  self.heketi_server_url, vol_id)
+        blocklist = heketi_blockvolume_list(self.heketi_client_node,
+                                            self.heketi_server_url)
+        self.assertNotIn(vol_id, blocklist)
+        oc_delete(self.node, 'pv', pv_name)
+        wait_for_resource_absence(self.node, 'pv', pv_name)
