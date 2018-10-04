@@ -2000,9 +2000,9 @@ def heketi_blockvolume_create(heketi_client_node, heketi_server_url, size,
 
     if mode == 'cli':
         cmd = ("heketi-cli -s %s blockvolume create --size=%s %s %s %s %s "
-               "%s %s %s" % (heketi_server_url, str(size), auth_arg,
+               "%s %s %s %s" % (heketi_server_url, str(size), auth_arg,
                              clusters_arg, ha_arg, name_arg, name_arg,
-                             admin_key, user))
+                             admin_key, user, json_arg))
 
         ret, out, _ = g.run(heketi_client_node, cmd)
         if ret != 0:
