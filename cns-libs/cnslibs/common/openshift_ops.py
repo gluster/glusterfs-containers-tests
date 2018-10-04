@@ -29,6 +29,9 @@ from cnslibs.common.heketi_ops import (
 
 PODS_WIDE_RE = re.compile(
     '(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+).*\n')
+SERVICE_STATUS = "systemctl status %s"
+SERVICE_RESTART = "systemctl restart %s"
+SERVICE_STATUS_REGEX = "Active: active \((.*)\) since .*;.*"
 
 
 def oc_get_pods(ocp_node):
@@ -471,6 +474,60 @@ def oc_delete(ocp_node, rtype, name, raise_on_absence=True):
                     rtype, name, out, err)
         raise AssertionError('failed to delete resource: %r; %r' % (out, err))
     g.log.info('Deleted resource: %r %r', rtype, name)
+
+
+def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None,
+                           raise_on_error=True):
+    """Get an OCP resource by custom column names.
+
+    Args:
+        ocp_node (str): Node on which the ocp command will run.
+        rtype (str): Name of the resource type (pod, storageClass, etc).
+        custom (str): Name of the custom columm to fetch.
+        name (str|None): Name of the resource to fetch.
+        selector (str|list|None): Column Name or list of column
+                                  names select to.
+        raise_on_error (bool): If set to true a failure to fetch
+            resource inforation will raise an error, otherwise
+            an empty dict will be returned.
+    Returns:
+        list: List containting data about the resource custom column
+    Raises:
+        AssertionError: Raised when unable to get resource and
+            `raise_on_error` is true.
+    Example:
+        Get all "pvc" with "metadata.name" parameter values:
+            pvc_details = oc_get_custom_resource(
+                ocp_node, "pvc", ":.metadata.name"
+            )
+    """
+    cmd = ['oc', 'get', rtype, '--no-headers']
+
+    cmd.append('-o=custom-columns=%s' % (
+        ','.join(custom) if isinstance(custom, list) else custom))
+
+    if selector:
+        cmd.append('--selector %s' % (
+            ','.join(selector) if isinstance(selector, list) else selector))
+
+    if name:
+        cmd.append(name)
+
+    ret, out, err = g.run(ocp_node, cmd)
+    if ret != 0:
+        g.log.error('Failed to get %s: %s: %r', rtype, name, err)
+        if raise_on_error:
+            raise AssertionError('failed to get %s: %s: %r'
+                                 % (rtype, name, err))
+        return []
+
+    if name:
+        return filter(None, map(str.strip, (out.strip()).split(' ')))
+    else:
+        out_list = []
+        for line in (out.strip()).split('\n'):
+            out_list.append(filter(None, map(str.strip, line.split(' '))))
+        return out_list
 
 
 def oc_get_yaml(ocp_node, rtype, name=None, raise_on_error=True):
@@ -1286,3 +1343,107 @@ def wait_for_events(hostname,
         err_msg = ("Exceeded %ssec timeout waiting for events." % timeout)
         g.log.error(err_msg)
         raise exceptions.ExecutionError(err_msg)
+
+
+def match_pvc_and_pv(hostname, prefix):
+    """Match OCP PVCs and PVs generated
+
+    Args:
+        hostname (str): hostname of oc client
+        prefix (str): pv prefix used by user at time
+                      of pvc creation
+    """
+    pvc_list = sorted([
+        pvc[0]
+        for pvc in oc_get_custom_resource(hostname, "pvc", ":.metadata.name")
+        if pvc[0].startswith(prefix)
+    ])
+
+    pv_list = sorted([
+        pv[0]
+        for pv in oc_get_custom_resource(
+            hostname, "pv", ":.spec.claimRef.name"
+        )
+        if pv[0].startswith(prefix)
+    ])
+
+    assert pvc_list == pv_list, "PVC and PV list match failed"
+
+
+def match_pv_and_heketi_block_volumes(
+        hostname, heketi_block_volumes, pvc_prefix):
+    """Match heketi block volumes and OC PVCs
+
+    Args:
+        hostname (str): hostname on which we want to check heketi
+                        block volumes and OCP PVCs
+        heketi_block_volumes (list): list of heketi block volume names
+        pvc_prefix (str): pv prefix given by user at the time of pvc creation
+    """
+    custom_columns = [
+        ':.spec.claimRef.name',
+        ':.metadata.annotations."pv\.kubernetes\.io\/provisioned\-by"',
+        ':.metadata.annotations."gluster\.org\/volume\-id"'
+    ]
+    pv_block_volumes = sorted([
+        pv[2]
+        for pv in oc_get_custom_resource(hostname, "pv", custom_columns)
+        if pv[0].startswith(pvc_prefix) and pv[1] == "gluster.org/glusterblock"
+    ])
+
+    assert pv_block_volumes == heketi_block_volumes, (
+        "PV and Heketi Block list match failed")
+
+
+def check_service_status(
+        hostname, podname, service, status, timeout=180, wait_step=3):
+    """Checks provided service to be in "Running" status for given
+       timeout on given podname
+
+    Args:
+        hostname (str): hostname on which we want to check service
+        podname (str): pod name on which service needs to be restarted
+        service (str): service which needs to be restarted
+        status (str): status to be checked
+        timeout (int): seconds to wait before service starts having
+                       specified 'status'
+        wait_step (int): interval in seconds to wait before checking
+                         service again.
+    """
+    err_msg = ("Exceeded timeout of %s sec for verifying %s service to start "
+               "having '%s' status" % (timeout, service, status))
+
+    for w in waiter.Waiter(timeout, wait_step):
+        ret, out, err = oc_rsh(hostname, podname, SERVICE_STATUS % service)
+        if ret != 0:
+            err_msg = ("failed to get service %s's status on pod %s" %
+                       (service, podname))
+            g.log.error(err_msg)
+            raise AssertionError(err_msg)
+
+        for line in out.splitlines():
+            status_match = re.search(SERVICE_STATUS_REGEX, line)
+            if status_match and status_match.group(1) == status:
+                return True
+
+    if w.expired:
+        g.log.error(err_msg)
+        raise exceptions.ExecutionError(err_msg)
+
+
+def restart_service_on_pod(hostname, podname, service):
+    """Restarts service on podname given
+
+    Args:
+        hostname (str): hostname on which we want to restart service
+        podname (str): pod name on which service needs to be restarted
+        service (str): service which needs to be restarted
+    Raises:
+        AssertionError in case failed to restarts service
+    """
+    ret, out, err = oc_rsh(hostname, podname, SERVICE_RESTART % service)
+    if ret != 0:
+        err_msg = ("failed to restart service %s on pod %s" %
+                   (service, podname))
+        g.log.error(err_msg)
+        raise AssertionError(err_msg)
