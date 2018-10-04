@@ -1,13 +1,15 @@
+from unittest import skip
 
 import ddt
 import re
+import time
 
-from cnslibs.common.heketi_ops import (
-    heketi_blockvolume_list,
-    match_heketi_and_gluster_block_volumes
-)
+from datetime import datetime
+from glusto.core import Glusto as g
+from cnslibs.common.heketi_ops import heketi_blockvolume_list
 from cnslibs.common.openshift_ops import (
     check_service_status,
+    oc_get_custom_resource,
     get_ocp_gluster_pod_names,
     get_pod_name_from_dc,
     match_pv_and_heketi_block_volumes,
@@ -18,11 +20,19 @@ from cnslibs.common.openshift_ops import (
     oc_create_secret,
     oc_delete,
     oc_get_yaml,
+    oc_rsh,
     restart_service_on_pod,
     scale_dc_pod_amount_and_wait,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
     wait_for_resource_absence
+)
+from cnslibs.common.gluster_ops import (
+    get_block_hosting_volume_name,
+    match_heketi_and_gluster_block_volumes_by_prefix,
+    restart_block_hosting_volume,
+    restart_brick_process,
+    wait_to_heal_complete
 )
 from cnslibs.cns.cns_baseclass import CnsBaseClass
 from cnslibs.common import podcmd
@@ -46,6 +56,7 @@ class GlusterStabilityTestSetup(CnsBaseClass):
         """
         self.oc_node = self.ocp_master_node[0]
         self.gluster_pod = get_ocp_gluster_pod_names(self.oc_node)[0]
+        self.gluster_pod_obj = podcmd.Pod(self.oc_node, self.gluster_pod)
 
         # prefix used to create resources, generating using glusto_test_id
         # which uses time and date of test case
@@ -140,6 +151,31 @@ class GlusterStabilityTestSetup(CnsBaseClass):
 
         return sc_name, pvc_name, dc_name, secretname
 
+    def get_block_hosting_volume_by_pvc_name(self, pvc_name):
+        """Get block hosting volume of pvc name given
+
+        Args:
+            pvc_name (str): pvc name of which host name is need
+                            to be returned
+        """
+        pv_name = oc_get_custom_resource(
+            self.oc_node, 'pvc', ':.spec.volumeName', name=pvc_name
+        )[0]
+
+        block_volume = oc_get_custom_resource(
+            self.oc_node, 'pv',
+            r':.metadata.annotations."gluster\.org\/volume\-id"',
+            name=pv_name
+        )[0]
+
+        # get block hosting volume from pvc name
+        block_hosting_vol = get_block_hosting_volume_name(
+            self.heketi_client_node, self.heketi_server_url,
+            block_volume, self.gluster_pod, self.oc_node
+        )
+
+        return block_hosting_vol
+
     def get_heketi_block_volumes(self):
         """lists heketi block volumes
 
@@ -197,10 +233,51 @@ class GlusterStabilityTestSetup(CnsBaseClass):
         )
 
         # validate block volumes listed by heketi and gluster
-        gluster_pod_obj = podcmd.Pod(self.heketi_client_node, self.gluster_pod)
-        match_heketi_and_gluster_block_volumes(
-            gluster_pod_obj, heketi_block_volume_names, "%s_" % self.prefix
+        match_heketi_and_gluster_block_volumes_by_prefix(
+            self.gluster_pod_obj, heketi_block_volume_names,
+            "%s_" % self.prefix
         )
+
+    def get_io_time(self):
+        """Gets last io time of io pod by listing log file directory
+           /mnt on pod
+        """
+        ret, stdout, stderr = oc_rsh(
+            self.oc_node, self.pod_name, "ls -l /mnt/ | awk '{print $8}'"
+        )
+        if ret != 0:
+            err_msg = "failed to get io time for pod %s" % self.pod_name
+            g.log.error(err_msg)
+            raise AssertionError(err_msg)
+
+        get_time = None
+        try:
+            get_time = datetime.strptime(stdout.strip(), "%H:%M")
+        except Exception:
+            g.log.error("invalid time format ret %s, stout: %s, "
+                        "stderr: %s" % (ret, stdout, stderr))
+            raise
+
+        return get_time
+
+    def restart_block_hosting_volume_wait_for_heal(self, block_hosting_vol):
+        """restarts block hosting volume and wait for heal to complete
+
+        Args:
+            block_hosting_vol (str): block hosting volume which need to
+                                     restart
+        """
+        start_io_time = self.get_io_time()
+
+        restart_block_hosting_volume(self.gluster_pod_obj, block_hosting_vol)
+
+        # Explicit wait to start ios on pvc after volume start
+        time.sleep(5)
+        resume_io_time = self.get_io_time()
+
+        self.assertGreater(resume_io_time, start_io_time, "IO has not stopped")
+
+        wait_to_heal_complete(self.gluster_pod_obj)
 
     @ddt.data(SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET)
     def test_restart_services_provision_volume_and_run_io(self, service):
@@ -224,6 +301,52 @@ class GlusterStabilityTestSetup(CnsBaseClass):
                 ),
                 "service %s is not in %s state" % (service, status)
             )
+
+        # validates pvc, pv, heketi block and gluster block count after
+        # service restarts
+        self.validate_volumes_and_blocks()
+
+    @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
+    def test_target_side_failures_brick_failure_on_block_hosting_volume(self):
+        """[CNS-1285] Target side failures - Brick failure on block
+           hosting volume
+        """
+        # get block hosting volume from pvc name
+        block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(
+            self.pvc_name
+        )
+
+        # restarts brick 2 process of block hosting volume
+        restart_brick_process(
+            self.oc_node, self.gluster_pod_obj, block_hosting_vol
+        )
+
+        # checks if all glusterfs services are in running state
+        for service in (SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET):
+            status = "exited" if service == SERVICE_TARGET else "running"
+            self.assertTrue(
+                check_service_status(
+                    self.oc_node, self.gluster_pod, service, status
+                ),
+                "service %s is not in %s state" % (service, status)
+            )
+
+        # validates pvc, pv, heketi block and gluster block count after
+        # service restarts
+        self.validate_volumes_and_blocks()
+
+    @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
+    def test_start_stop_block_volume_service(self):
+        """[CNS-1314] Block hosting volume - stop/start block hosting
+           volume when IO's and provisioning are going on
+        """
+        # get block hosting volume from pvc name
+        block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(
+            self.pvc_name
+        )
+
+        # restarts one of the block hosting volume and checks heal
+        self.restart_block_hosting_volume_wait_for_heal(block_hosting_vol)
 
         # validates pvc, pv, heketi block and gluster block count after
         # service restarts

@@ -3,19 +3,17 @@
 """
 
 import json
-import six
 
 from glusto.core import Glusto as g
-from glustolibs.gluster.block_ops import block_list
-from glustolibs.gluster.volume_ops import get_volume_list
 from collections import OrderedDict
 try:
     from heketi import HeketiClient
 except ImportError:
     g.log.error("Please install python-client for heketi and re-run the test")
 
-from cnslibs.common import exceptions, podcmd
+from cnslibs.common import exceptions
 from cnslibs.common.utils import parse_prometheus_data
+
 
 HEKETI_SSH_KEY = "/etc/heketi/heketi_key"
 HEKETI_CONFIG_FILE = "/etc/heketi/heketi.json"
@@ -2349,46 +2347,6 @@ def rm_arbiter_tag(heketi_client_node, heketi_server_url, source, source_id,
 
     return rm_tags(heketi_client_node, heketi_server_url,
                    source, source_id, 'arbiter', **kwargs)
-
-
-@podcmd.GlustoPod()
-def match_heketi_and_gluster_block_volumes(
-        gluster_pod, heketi_block_volumes, block_vol_prefix, hostname=None):
-    """Match block volumes from heketi and gluster
-
-    Args:
-        gluster_pod (podcmd | str): gluster pod class object has gluster
-                                    pod and ocp master node or gluster
-                                    pod name
-        heketi_block_volumes (list): list of heketi block volumes with
-                                     which gluster block volumes need to
-                                     be matched
-        block_vol_prefix (str): block volume prefix by which the block
-                                volumes needs to be filtered
-        hostname (str): master node on which gluster pod exists
-
-    """
-    if isinstance(gluster_pod, podcmd.Pod):
-        g.log.info("Recieved gluster pod object using same")
-    elif isinstance(gluster_pod, six.string_types) and hostname:
-        g.log.info("Recieved gluster pod name and hostname")
-        gluster_pod = podcmd.Pod(hostname, gluster_pod)
-    else:
-        raise exceptions.ExecutionError("Invalid glsuter pod parameter")
-
-    gluster_vol_list = get_volume_list(gluster_pod)
-
-    gluster_vol_block_list = []
-    for gluster_vol in gluster_vol_list[1:]:
-        ret, out, err = block_list(gluster_pod, gluster_vol)
-        gluster_vol_block_list.extend([
-            block_vol.replace(block_vol_prefix, "")
-            for block_vol in json.loads(out)["blocks"]
-            if block_vol.startswith(block_vol_prefix)
-        ])
-
-    assert sorted(gluster_vol_block_list) == heketi_block_volumes, (
-        "Gluster and Heketi Block volume list match failed")
 
 
 def get_heketi_metrics(heketi_client_node, heketi_server_url,

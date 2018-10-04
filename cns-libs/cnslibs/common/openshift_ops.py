@@ -1422,7 +1422,12 @@ def match_pvc_and_pv(hostname, prefix):
         if pv[0].startswith(prefix)
     ])
 
-    assert pvc_list == pv_list, "PVC and PV list match failed"
+    if cmp(pvc_list, pv_list) != 0:
+        err_msg = "PVC and PV list match failed"
+        err_msg += "\nPVC list: %s, " % pvc_list
+        err_msg += "\nPV list %s" % pv_list
+        err_msg += "\nDifference: %s" % (set(pvc_list) ^ set(pv_list))
+        raise AssertionError(err_msg)
 
 
 def match_pv_and_heketi_block_volumes(
@@ -1446,8 +1451,13 @@ def match_pv_and_heketi_block_volumes(
         if pv[0].startswith(pvc_prefix) and pv[1] == "gluster.org/glusterblock"
     ])
 
-    assert pv_block_volumes == heketi_block_volumes, (
-        "PV and Heketi Block list match failed")
+    if cmp(pv_block_volumes, heketi_block_volumes) != 0:
+        err_msg = "PV block volumes and Heketi Block volume list match failed"
+        err_msg += "\nPV Block Volumes: %s, " % pv_block_volumes
+        err_msg += "\nHeketi Block volumes %s" % heketi_block_volumes
+        err_msg += "\nDifference: %s" % (set(pv_block_volumes) ^
+                                         set(heketi_block_volumes))
+        raise AssertionError(err_msg)
 
 
 def check_service_status(
@@ -1502,3 +1512,34 @@ def restart_service_on_pod(hostname, podname, service):
                    (service, podname))
         g.log.error(err_msg)
         raise AssertionError(err_msg)
+
+
+def wait_for_process_to_kill_on_pod(
+       pod, pid, hostname, timeout=60, interval=3):
+    """check for process presence if process is present for more than
+       timeout sec raise exception
+
+    Args:
+        pid (int | str): process id to be killed on pod
+        pod (str): pod name on which process id to be killed
+        hostname (str): hostname on which pod is present
+    """
+    killed_pid_cmd = "ps -eaf | grep %s | grep -v grep | awk '{print $2}'"
+    _waiter = waiter.Waiter(timeout=60, interval=3)
+    for w in _waiter:
+        ret, out, err = oc_rsh(hostname, pod, killed_pid_cmd % pid)
+        if ret != 0:
+            err_msg = ("failed to get killed process id '%s' details "
+                       "from pod '%s' err: %s" % (pid, pod, err))
+            g.log.error(err_msg)
+            raise AssertionError(err_msg)
+
+        if not out.strip() == pid:
+            g.log.info("brick process '%s' killed on pod '%s'" % (pid, pod))
+            break
+
+    if w.expired:
+        error_msg = ("process id '%s' still exists on pod '%s' after waiting "
+                     "for it '%s' seconds to get kill" % (pid, pod, timeout))
+        g.log.error(error_msg)
+        raise exceptions.ExecutionError(error_msg)
