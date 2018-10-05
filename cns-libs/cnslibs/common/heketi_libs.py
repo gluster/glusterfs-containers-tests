@@ -13,7 +13,8 @@ from cnslibs.common.heketi_ops import (setup_heketi_ssh_key,
                                        modify_heketi_executor,
                                        export_heketi_cli_server,
                                        hello_heketi,
-                                       heketi_volume_delete)
+                                       heketi_volume_delete,
+                                       heketi_blockvolume_delete)
 from cnslibs.common.openshift_ops import (oc_login, switch_oc_project,
                                           get_ocp_gluster_pod_names)
 
@@ -129,6 +130,24 @@ class HeketiBaseClass(unittest.TestCase):
             raise ExecutionError(
                 "Failed to delete following heketi volumes: "
                 "%s" % ',\n'.join(errored_ids))
+
+    def delete_block_volumes(self, volume_ids):
+        """
+        Delete block volumes by their volume IDs and raise an error on failures
+        Args:
+            volume_ids (str) : Volume ID of the block volume
+        """
+        if not isinstance(volume_ids, (list, set, tuple)):
+            volume_ids = [volume_ids]
+
+        fail = False
+        for volume_id in volume_ids:
+            block_out = heketi_blockvolume_delete(
+                self.heketi_client_node, self.heketi_server_url, volume_id)
+            if block_out is False:
+                g.log.error("Block volume delete failed %s " % volume_id)
+                fail = True
+        self.assertFalse(fail, "Failed to delete blockvolumes")
 
     def tearDown(self):
         super(HeketiBaseClass, self).tearDown()
