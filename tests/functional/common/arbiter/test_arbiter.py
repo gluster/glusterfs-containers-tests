@@ -1,8 +1,4 @@
 from cnslibs.cns import cns_baseclass
-from cnslibs.common.dynamic_provisioning import (
-    wait_for_pod_be_ready,
-    verify_pvc_status_is_bound,
-)
 from cnslibs.common import heketi_ops
 from cnslibs.common.openshift_ops import (
     get_gluster_vol_info_by_pvc_name,
@@ -11,6 +7,8 @@ from cnslibs.common.openshift_ops import (
     oc_create_secret,
     oc_create_tiny_pod_with_volume,
     oc_delete,
+    verify_pvc_status_is_bound,
+    wait_for_pod_be_ready,
     wait_for_resource_absence,
 )
 

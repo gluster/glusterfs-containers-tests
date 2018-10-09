@@ -17,9 +17,6 @@ from cnslibs.common import command
 from cnslibs.common import exceptions
 from cnslibs.common import utils
 from cnslibs.common import waiter
-from cnslibs.common.dynamic_provisioning import (
-    wait_for_pod_be_ready)
-
 
 PODS_WIDE_RE = re.compile(
     '(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+).*\n')
@@ -735,3 +732,172 @@ def get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name):
         vol_info = vol_info[list(vol_info.keys())[0]]
         vol_info["gluster_vol_id"] = vol_id
         return vol_info
+
+
+def wait_for_pod_be_ready(hostname, pod_name,
+                          timeout=1200, wait_step=60):
+    '''
+     This funciton waits for pod to be in ready state
+     Args:
+         hostname (str): hostname on which we want to check the pod status
+         pod_name (str): pod_name for which we need the status
+         timeout (int): timeout value,,
+                        default value is 1200 sec
+         wait_step( int): wait step,
+                          default value is 60 sec
+     Returns:
+         bool: True if pod status is Running and ready state,
+               otherwise Raise Exception
+    '''
+    for w in waiter.Waiter(timeout, wait_step):
+        # command to find pod status and its phase
+        cmd = ("oc get pods %s -o=custom-columns="
+               ":.status.containerStatuses[0].ready,"
+               ":.status.phase") % pod_name
+        ret, out, err = g.run(hostname, cmd, "root")
+        if ret != 0:
+            msg = ("failed to execute cmd %s" % cmd)
+            g.log.error(msg)
+            raise exceptions.ExecutionError(msg)
+        output = out.strip().split()
+
+        # command to find if pod is ready
+        if output[0] == "true" and output[1] == "Running":
+            g.log.info("pod %s is in ready state and is "
+                       "Running" % pod_name)
+            return True
+        elif output[1] == "Error":
+            msg = ("pod %s status error" % pod_name)
+            g.log.error(msg)
+            raise exceptions.ExecutionError(msg)
+        else:
+            g.log.info("pod %s ready state is %s,"
+                       " phase is %s,"
+                       " sleeping for %s sec" % (
+                           pod_name, output[0],
+                           output[1], wait_step))
+            continue
+    if w.expired:
+        err_msg = ("exceeded timeout %s for waiting for pod %s "
+                   "to be in ready state" % (timeout, pod_name))
+        g.log.error(err_msg)
+        raise exceptions.ExecutionError(err_msg)
+
+
+def get_pod_name_from_dc(hostname, dc_name,
+                         timeout=1200, wait_step=60):
+    '''
+     This funciton return pod_name from dc_name
+     Args:
+         hostname (str): hostname on which we can execute oc
+                         commands
+         dc_name (str): deployment_confidg name
+         timeout (int): timeout value
+                        default value is 1200 sec
+         wait_step( int): wait step,
+                          default value is 60 sec
+     Returns:
+         str: pod_name if successful
+         otherwise Raise Exception
+    '''
+    cmd = ("oc get pods --all-namespaces -o=custom-columns="
+           ":.metadata.name "
+           "--no-headers=true "
+           "--selector deploymentconfig=%s" % dc_name)
+    for w in waiter.Waiter(timeout, wait_step):
+        ret, out, err = g.run(hostname, cmd, "root")
+        if ret != 0:
+            msg = ("failed to execute cmd %s" % cmd)
+            g.log.error(msg)
+            raise exceptions.ExecutionError(msg)
+        output = out.strip()
+        if output == "":
+            g.log.info("podname for dc %s not found sleeping for "
+                       "%s sec" % (dc_name, wait_step))
+            continue
+        else:
+            g.log.info("podname is %s for dc %s" % (
+                           output, dc_name))
+            return output
+    if w.expired:
+        err_msg = ("exceeded timeout %s for waiting for pod_name"
+                   "for dc %s " % (timeout, dc_name))
+        g.log.error(err_msg)
+        raise exceptions.ExecutionError(err_msg)
+
+
+def get_pvc_status(hostname, pvc_name):
+    '''
+     This function verifies the if pod is running
+     Args:
+         hostname (str): hostname on which we want
+                         to check the pvc status
+         pvc_name (str): pod_name for which we
+                         need the status
+     Returns:
+         bool, status (str): True, status of pvc
+               otherwise False, error message.
+    '''
+    cmd = "oc get pvc | grep %s | awk '{print $2}'" % pvc_name
+    ret, out, err = g.run(hostname, cmd, "root")
+    if ret != 0:
+        g.log.error("failed to execute cmd %s" % cmd)
+        return False, err
+    output = out.strip().split("\n")[0].strip()
+    return True, output
+
+
+def verify_pvc_status_is_bound(hostname, pvc_name, timeout=120, wait_step=3):
+    """Verify that PVC gets 'Bound' status in required time.
+
+    Args:
+        hostname (str): hostname on which we will execute oc commands
+        pvc_name (str): name of PVC to check status of
+        timeout (int): total time in seconds we are ok to wait
+                       for 'Bound' status of a PVC
+        wait_step (int): time in seconds we will sleep before checking a PVC
+                         status again.
+    Returns: None
+    Raises: exceptions.ExecutionError in case of errors.
+    """
+    pvc_not_found_counter = 0
+    for w in waiter.Waiter(timeout, wait_step):
+        ret, output = get_pvc_status(hostname, pvc_name)
+        if ret is not True:
+            msg = ("Failed to execute 'get' command for '%s' PVC. "
+                   "Got following responce: %s" % (pvc_name, output))
+            g.log.error(msg)
+            raise exceptions.ExecutionError(msg)
+        if output == "":
+            g.log.info("PVC '%s' not found, sleeping for %s "
+                       "sec." % (pvc_name, wait_step))
+            if pvc_not_found_counter > 0:
+                msg = ("PVC '%s' has not been found 2 times already. "
+                       "Make sure you provided correct PVC name." % pvc_name)
+            else:
+                pvc_not_found_counter += 1
+                continue
+        elif output == "Pending":
+            g.log.info("PVC '%s' is in Pending state, sleeping for %s "
+                       "sec" % (pvc_name, wait_step))
+            continue
+        elif output == "Bound":
+            g.log.info("PVC '%s' is in Bound state." % pvc_name)
+            return pvc_name
+        elif output == "Error":
+            msg = "PVC '%s' is in 'Error' state." % pvc_name
+            g.log.error(msg)
+        else:
+            msg = "PVC %s has different status - %s" % (pvc_name, output)
+            g.log.error(msg)
+        if msg:
+            raise AssertionError(msg)
+    if w.expired:
+        # for debug purpose to see why provisioning failed
+        cmd = "oc describe pvc %s | grep ProvisioningFailed" % pvc_name
+        ret, out, err = g.run(hostname, cmd, "root")
+        g.log.info("cmd %s - out- %s err- %s" % (cmd, out, err))
+        msg = ("Exceeded timeout of '%s' seconds for verifying PVC '%s' "
+               "to reach the 'Bound' status." % (timeout, pvc_name))
+        g.log.error(msg)
+        raise AssertionError(msg)

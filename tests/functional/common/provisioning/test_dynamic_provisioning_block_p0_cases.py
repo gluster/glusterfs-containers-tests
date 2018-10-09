@@ -1,15 +1,12 @@
 import time
 from unittest import skip
 
-from cnslibs.common.dynamic_provisioning import (
-    get_pvc_status,
-    get_pod_name_from_dc,
-    wait_for_pod_be_ready,
-    verify_pvc_status_is_bound)
 from cnslibs.cns.cns_baseclass import CnsGlusterBlockBaseClass
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.openshift_ops import (
     get_gluster_pod_names_by_pvc_name,
+    get_pvc_status,
+    get_pod_name_from_dc,
     oc_create_secret,
     oc_create_sc,
     oc_create_pvc,
@@ -17,6 +14,8 @@ from cnslibs.common.openshift_ops import (
     oc_delete,
     oc_rsh,
     scale_dc_pod_amount_and_wait,
+    verify_pvc_status_is_bound,
+    wait_for_pod_be_ready,
     wait_for_resource_absence)
 from cnslibs.common.waiter import Waiter
 from glusto.core import Glusto as g

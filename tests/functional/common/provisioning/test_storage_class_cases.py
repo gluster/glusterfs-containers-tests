@@ -2,14 +2,12 @@ import ddt
 from glusto.core import Glusto as g
 
 from cnslibs.cns import cns_baseclass
-from cnslibs.common.dynamic_provisioning import (
-    verify_pvc_status_is_bound,
-)
 from cnslibs.common.openshift_ops import (
     oc_create_pvc,
     oc_create_sc,
     oc_create_secret,
     oc_delete,
+    verify_pvc_status_is_bound,
     wait_for_resource_absence,
 )
 
