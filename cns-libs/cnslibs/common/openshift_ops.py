@@ -585,43 +585,29 @@ def wait_for_resource_absence(ocp_node, rtype, name,
 
 def scale_dc_pod_amount_and_wait(hostname, dc_name,
                                  pod_amount=1, namespace=None):
-    '''
-     This function scales pod and waits
-     If pod_amount 0 waits for its absence
-     If pod_amount => 1 waits for all pods to be ready
-     Args:
-         hostname (str): Node on which the ocp command will run
-         dc_name (str): Name of heketi dc
-         namespace (str): Namespace
-         pod_amount (int): Number of heketi pods to scale
-                           ex: 0, 1 or 2
-                           default 1
-    '''
+    """Scale amount of PODs for a DC.
+
+    If pod_amount is 0, then wait for it's absence.
+    If pod_amount => 1, then wait for all of a DC PODs to be ready.
+
+    Args:
+        hostname (str): Node on which the ocp command will run
+        dc_name (str): Name of heketi dc
+        pod_amount (int): Number of PODs to scale. Default is 1.
+        namespace (str): Namespace of a DC.
+    """
     namespace_arg = "--namespace=%s" % namespace if namespace else ""
-    heketi_scale_cmd = "oc scale --replicas=%d dc/%s %s" % (
-            pod_amount, dc_name, namespace_arg)
-    ret, out, err = g.run(hostname, heketi_scale_cmd, "root")
-    if ret != 0:
-        error_msg = ("failed to execute cmd %s "
-                     "out- %s err %s" % (heketi_scale_cmd, out, err))
-        g.log.error(error_msg)
-        raise exceptions.ExecutionError(error_msg)
-    get_heketi_podname_cmd = (
-            "oc get pods --all-namespaces -o=custom-columns=:.metadata.name "
-            "--no-headers=true "
-            "--selector deploymentconfig=%s" % dc_name)
-    ret, out, err = g.run(hostname, get_heketi_podname_cmd)
-    if ret != 0:
-        error_msg = ("failed to execute cmd %s "
-                     "out- %s err %s" % (get_heketi_podname_cmd, out, err))
-        g.log.error(error_msg)
-        raise exceptions.ExecutionError(error_msg)
-    pod_list = out.strip().split("\n")
-    for pod in pod_list:
+    scale_cmd = "oc scale --replicas=%d dc/%s %s" % (
+        pod_amount, dc_name, namespace_arg)
+    command.cmd_run(scale_cmd, hostname=hostname)
+
+    pod_names = get_pod_names_from_dc(hostname, dc_name)
+    for pod_name in pod_names:
         if pod_amount == 0:
-            wait_for_resource_absence(hostname, 'pod', pod)
+            wait_for_resource_absence(hostname, 'pod', pod_name)
         else:
-            wait_for_pod_be_ready(hostname, pod)
+            wait_for_pod_be_ready(hostname, pod_name)
+    return pod_names
 
 
 def get_gluster_pod_names_by_pvc_name(ocp_node, pvc_name):
@@ -837,46 +823,47 @@ def wait_for_pod_be_ready(hostname, pod_name,
         raise exceptions.ExecutionError(err_msg)
 
 
-def get_pod_name_from_dc(hostname, dc_name,
-                         timeout=1200, wait_step=60):
-    '''
-     This funciton return pod_name from dc_name
-     Args:
-         hostname (str): hostname on which we can execute oc
-                         commands
-         dc_name (str): deployment_confidg name
-         timeout (int): timeout value
-                        default value is 1200 sec
-         wait_step( int): wait step,
-                          default value is 60 sec
-     Returns:
-         str: pod_name if successful
-         otherwise Raise Exception
-    '''
-    cmd = ("oc get pods --all-namespaces -o=custom-columns="
-           ":.metadata.name "
-           "--no-headers=true "
-           "--selector deploymentconfig=%s" % dc_name)
+def get_pod_names_from_dc(hostname, dc_name, timeout=180, wait_step=3):
+    """Return list of POD names by their DC.
+
+    Args:
+        hostname (str): hostname on which 'oc' commands will be executed.
+        dc_name (str): deployment_confidg name
+        timeout (int): timeout value. Default value is 180 sec.
+        wait_step( int): Wait step, default value is 3 sec.
+    Returns:
+         list: list of strings which are POD names
+    Raises: exceptions.ExecutionError
+    """
+    get_replicas_amount_cmd = (
+        "oc get dc --no-headers --all-namespaces "
+        "-o=custom-columns=:.spec.replicas,:.metadata.name "
+        "| grep '%s' | awk '{print $1}'" % dc_name)
+    replicas = int(command.cmd_run(
+        get_replicas_amount_cmd, hostname=hostname))
+
+    get_pod_names_cmd = (
+        "oc get pods --all-namespaces -o=custom-columns=:.metadata.name "
+        "--no-headers=true --selector deploymentconfig=%s" % dc_name)
     for w in waiter.Waiter(timeout, wait_step):
-        ret, out, err = g.run(hostname, cmd, "root")
-        if ret != 0:
-            msg = ("failed to execute cmd %s" % cmd)
-            g.log.error(msg)
-            raise exceptions.ExecutionError(msg)
-        output = out.strip()
-        if output == "":
-            g.log.info("podname for dc %s not found sleeping for "
-                       "%s sec" % (dc_name, wait_step))
+        out = command.cmd_run(get_pod_names_cmd, hostname=hostname)
+        pod_names = [o.strip() for o in out.split('\n') if o.strip()]
+        if len(pod_names) != replicas:
             continue
-        else:
-            g.log.info("podname is %s for dc %s" % (
-                           output, dc_name))
-            return output
+        g.log.info(
+            "POD names for '%s' DC are '%s'. "
+            "Expected amount of PODs is '%s'.", dc_name, out, replicas)
+        return pod_names
     if w.expired:
-        err_msg = ("exceeded timeout %s for waiting for pod_name"
-                   "for dc %s " % (timeout, dc_name))
+        err_msg = ("Exceeded %s sec timeout waiting for PODs to appear "
+                   "in amount of %s." % (timeout, replicas))
         g.log.error(err_msg)
         raise exceptions.ExecutionError(err_msg)
+
+
+def get_pod_name_from_dc(hostname, dc_name, timeout=180, wait_step=3):
+    return get_pod_names_from_dc(
+        hostname, dc_name, timeout=timeout, wait_step=wait_step)[0]
 
 
 def get_pvc_status(hostname, pvc_name):

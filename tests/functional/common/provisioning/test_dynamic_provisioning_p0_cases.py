@@ -9,6 +9,7 @@ from cnslibs.common.openshift_ops import (
     get_gluster_pod_names_by_pvc_name,
     get_pvc_status,
     get_pod_name_from_dc,
+    get_pod_names_from_dc,
     oc_create_secret,
     oc_create_sc,
     oc_create_pvc,
@@ -360,3 +361,34 @@ class TestDynamicProvisioningP0(CnsBaseClass):
 
         # create a new PVC
         self._create_and_wait_for_pvc()
+
+    def test_validate_pvc_in_multiple_app_pods(self):
+        """Test case CNS-574"""
+        replicas = 5
+
+        # Create secret and storage class
+        self._create_storage_class()
+
+        # Create PVC
+        pvc_name = self._create_and_wait_for_pvc()
+
+        # Create DC with application PODs
+        dc_name = oc_create_app_dc_with_io(
+            self.node, pvc_name, replicas=replicas)
+        self.addCleanup(oc_delete, self.node, 'dc', dc_name)
+        self.addCleanup(scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
+
+        # Wait for all the PODs to be ready
+        pod_names = get_pod_names_from_dc(self.node, dc_name)
+        self.assertEqual(replicas, len(pod_names))
+        for pod_name in pod_names:
+            wait_for_pod_be_ready(self.node, pod_name)
+
+        # Create files in each of the PODs
+        for pod_name in pod_names:
+            self.cmd_run("oc exec {0} -- touch /mnt/temp_{0}".format(pod_name))
+
+        # Check that all the created files are available at once
+        ls_out = self.cmd_run("oc exec %s -- ls /mnt" % pod_names[0]).split()
+        for pod_name in pod_names:
+            self.assertIn("temp_%s" % pod_name, ls_out)
