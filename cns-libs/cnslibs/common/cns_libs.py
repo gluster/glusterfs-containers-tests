@@ -414,7 +414,7 @@ def validate_multipath_pod(hostname, podname, hacount):
     active_node_count = 1
     enable_node_count = hacount - 1
     cmd = "multipath -ll | grep 'status=active' | wc -l"
-    ret, out, err = g.run(hostname, cmd, "root")
+    ret, out, err = g.run(pod_nodename, cmd, "root")
     if ret != 0 or out == "":
         g.log.error("failed to exectute cmd %s on %s, err %s"
                     % (cmd, pod_nodename, out))
@@ -425,7 +425,7 @@ def validate_multipath_pod(hostname, podname, hacount):
                     % (pod_nodename, podname, active_count))
         return False
     cmd = "multipath -ll | grep 'status=enabled' | wc -l"
-    ret, out, err = g.run(hostname, cmd, "root")
+    ret, out, err = g.run(pod_nodename, cmd, "root")
     if ret != 0 or out == "":
         g.log.error("failed to exectute cmd %s on %s, err %s"
                     % (cmd, pod_nodename, out))

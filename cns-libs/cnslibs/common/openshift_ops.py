@@ -22,7 +22,10 @@ from cnslibs.common import exceptions
 from cnslibs.common import podcmd
 from cnslibs.common import utils
 from cnslibs.common import waiter
-
+from cnslibs.common.heketi_ops import (
+    heketi_blockvolume_info,
+    heketi_volume_info,
+)
 
 PODS_WIDE_RE = re.compile(
     '(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+).*\n')
@@ -742,6 +745,46 @@ def get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name):
         vol_info = vol_info[list(vol_info.keys())[0]]
         vol_info["gluster_vol_id"] = vol_id
         return vol_info
+
+
+def get_gluster_blockvol_info_by_pvc_name(ocp_node, heketi_server_url,
+                                          pvc_name):
+    """Get Gluster block volume info based on the PVC name.
+
+    Args:
+        ocp_node (str): Node to execute OCP commands on.
+        heketi_server_url (str): Heketi server url
+        pvc_name (str): Name of a PVC to get bound Gluster block volume info.
+    Returns:
+        dict: Dictionary containting data about a Gluster block volume.
+    """
+
+    # Get block volume Name and ID from PV which is bound to our PVC
+    get_block_vol_data_cmd = (
+        'oc get pv --no-headers -o custom-columns='
+        ':.metadata.annotations.glusterBlockShare,'
+        ':.metadata.annotations."gluster\.org\/volume\-id",'
+        ':.spec.claimRef.name | grep "%s"' % pvc_name)
+    out = command.cmd_run(get_block_vol_data_cmd, hostname=ocp_node)
+    parsed_out = filter(None, map(str.strip, out.split(" ")))
+    assert len(parsed_out) == 3, "Expected 3 fields in following: %s" % out
+    block_vol_name, block_vol_id = parsed_out[:2]
+
+    # Get block hosting volume ID
+    block_hosting_vol_id = heketi_blockvolume_info(
+        ocp_node, heketi_server_url, block_vol_id, json=True
+    )["blockhostingvolume"]
+
+    # Get block hosting volume name by it's ID
+    block_hosting_vol_name = heketi_volume_info(
+        ocp_node, heketi_server_url, block_hosting_vol_id, json=True)['name']
+
+    # Get Gluster block volume info
+    vol_info_cmd = "oc exec %s -- gluster-block info %s/%s --json" % (
+        get_ocp_gluster_pod_names(ocp_node)[0],
+        block_hosting_vol_name, block_vol_name)
+
+    return json.loads(command.cmd_run(vol_info_cmd, hostname=ocp_node))
 
 
 def wait_for_pod_be_ready(hostname, pod_name,
