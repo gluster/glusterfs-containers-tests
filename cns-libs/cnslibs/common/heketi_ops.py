@@ -525,7 +525,6 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
             return vol_created_info
         else:
             return out
-        g.log.info("Volume creation is successfull using heketi")
     else:
         kwargs['size'] = int(size)
         try:
