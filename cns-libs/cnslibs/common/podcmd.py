@@ -47,10 +47,9 @@ lifetime of a function that addresses both hosts and pods.
 
 from collections import namedtuple
 from functools import partial, wraps
+import types
 
 from glusto.core import Glusto as g
-
-from cnslibs.common.openshift_ops import oc_rsh
 
 # Define a namedtuple that allows us to address pods instead of just
 # hosts,
@@ -80,8 +79,15 @@ def run(target, command, log_level=None, orig_run=g.run):
     # definition time in order to capture the method before
     # any additional monkeypatching by other code
     if isinstance(target, Pod):
-        return oc_rsh(target.node, target.podname, command,
-                      log_level=log_level)
+        prefix = ['oc', 'rsh', target.podname]
+        if isinstance(command, types.StringTypes):
+            cmd = ' '.join(prefix + [command])
+        else:
+            cmd = prefix + command
+
+        # unpack the tuple to make sure our return value exactly matches
+        # our docstring
+        return g.run(target.node, cmd, log_level=log_level)
     else:
         return orig_run(target, command, log_level=log_level)
 
