@@ -8,6 +8,8 @@ from cnslibs.common.heketi_ops import (heketi_volume_create,
                                        heketi_volume_list,
                                        heketi_volume_info,
                                        heketi_volume_delete,
+                                       heketi_blockvolume_create,
+                                       heketi_blockvolume_delete,
                                        heketi_cluster_list,
                                        heketi_cluster_delete,
                                        heketi_node_list,
@@ -196,3 +198,39 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
                                      self.heketi_server_url)
         self.assertTrue(node_list, ("Failed to list heketi nodes"))
         g.log.info("Successfully got the list of nodes")
+
+    def test_blockvolume_create_no_free_space(self):
+        """Test case CNS-550"""
+
+        # Create first small blockvolume
+        blockvol1 = heketi_blockvolume_create(
+            self.heketi_client_node, self.heketi_server_url, 1, json=True)
+        self.assertTrue(blockvol1, "Failed to create block volume.")
+        self.addCleanup(
+            heketi_blockvolume_delete, self.heketi_client_node,
+            self.heketi_server_url, blockvol1['id'])
+
+        # Get info about block hosting volume available space
+        file_volumes = heketi_volume_list(
+            self.heketi_client_node, self.heketi_server_url, json=True)
+        self.assertTrue(file_volumes)
+        max_freesize = 0
+        for vol_id in file_volumes["volumes"]:
+            vol = heketi_volume_info(
+                self.heketi_client_node, self.heketi_server_url,
+                vol_id, json=True)
+            current_freesize = vol.get("blockinfo", {}).get("freesize", 0)
+            if current_freesize > max_freesize:
+                max_freesize = current_freesize
+        self.assertGreater(max_freesize, 0)
+
+        # Try to create blockvolume with size bigger than available
+        too_big_vol_size = max_freesize + 1
+        blockvol2 = heketi_blockvolume_create(
+            self.heketi_client_node, self.heketi_server_url,
+            too_big_vol_size, json=True)
+        if blockvol2 and blockvol2.get('id'):
+            self.addCleanup(
+                heketi_blockvolume_delete, self.heketi_client_node,
+                self.heketi_server_url, blockvol2['id'])
+        self.assertFalse(blockvol2, 'Volume unexpectedly was created')
