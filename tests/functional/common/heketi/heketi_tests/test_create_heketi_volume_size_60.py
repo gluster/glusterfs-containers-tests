@@ -1,21 +1,19 @@
-#!/usr/bin/python
-
 from __future__ import division
 import math
 
 from glusto.core import Glusto as g
-from glustolibs.gluster.exceptions import ConfigError
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
+
+from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
 from cnslibs.common.heketi_ops import (heketi_node_list,
                                        heketi_node_info,
                                        heketi_volume_create,
                                        heketi_volume_list,
                                        heketi_volume_info,
-                                       heketi_volume_delete,
-                                       heketi_topology_info)
-from cnslibs.common import heketi_ops, podcmd
-from cnslibs.common.openshift_ops import oc_rsh, get_ocp_gluster_pod_names
+                                       heketi_volume_delete)
+from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
+from cnslibs.common import podcmd
 
 
 class TestHeketiVolume(HeketiClientSetupBaseClass):
@@ -25,7 +23,6 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         Get free space in each devices
         """
         free_spaces = []
-        device_list = []
         heketi_node_id_list = heketi_node_list(
             self.heketi_client_node, self.heketi_server_url)
         for node_id in heketi_node_id_list:
@@ -36,10 +33,7 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
             for device in node_info_dict["devices"]:
                 total_free_space += device["storage"]["free"]
             free_spaces.append(total_free_space)
-        min_free_space = min(free_spaces)
         total_free_space = sum(free_spaces)/(1024**2)
-        optimum_space = min_free_space / (1024 * 1024 * 10)
-        free_space = int(math.floor(optimum_space))
         total_free_space = int(math.floor(total_free_space))
 
         return total_free_space, free_spaces
@@ -70,7 +64,9 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         mount_node = (out["mount"]["glusterfs"]
                       ["device"].strip().split(":")[0])
         hosts.append(mount_node)
-        backup_volfile_server_list = (out["mount"]["glusterfs"]["options"]                                      ["backup-volfile-servers"].strip().split(","))
+        backup_volfile_server_list = (
+            out["mount"]["glusterfs"]["options"][
+                "backup-volfile-servers"].strip().split(","))
         for backup_volfile_server in backup_volfile_server_list:
             hosts.append(backup_volfile_server)
         for gluster_server in g.config["gluster_servers"].keys():
@@ -81,9 +77,9 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
 
         # Retrieve heketi volume info
         g.log.info("Retrieving heketi volume info")
-        out = heketi_ops.heketi_volume_info(self.heketi_client_node,
-                                            self.heketi_server_url,
-                                            volume_id, json=True)
+        out = heketi_volume_info(
+            self.heketi_client_node, self.heketi_server_url, volume_id,
+            json=True)
         self.assertTrue(out, ("Failed to get heketi volume info"))
         g.log.info("Successfully got the heketi volume info")
         name = out["name"]
@@ -187,9 +183,11 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         # Compare the free size before and after deleting volume
         g.log.info("Comparing the free space before and after"
                    " deleting volume")
-        self.assertTrue(free_space_after_creating_vol < free_space_after_deleting_vol)
+        self.assertTrue(
+            free_space_after_creating_vol < free_space_after_deleting_vol)
         g.log.info("Volume successfully deleted and space is"
                    " reallocated. Free space after creating"
                    " volume %s, Free space after deleting"
-                   " volume %s" % ((free_space_after_creating_vol),
-                    (free_space_after_deleting_vol)))
+                   " volume %s" % (
+                       free_space_after_creating_vol,
+                       free_space_after_deleting_vol))

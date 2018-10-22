@@ -1,10 +1,6 @@
 from __future__ import division
-import math
-import unittest
 
-from glusto.core import Glusto as g
-
-from cnslibs.common.exceptions import ExecutionError, ConfigError
+from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
 from cnslibs.common import heketi_ops
 
@@ -110,4 +106,3 @@ class TestVolumeDeleteTestCases(HeketiClientSetupBaseClass):
         if not heketidbexists:
             raise ExecutionError(
                 "Warning: heketidbstorage doesn't exist in list of volumes")
-

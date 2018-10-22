@@ -1,13 +1,10 @@
-#!/usr/bin/python
-
 from glusto.core import Glusto as g
 from glustolibs.gluster.exceptions import ExecutionError
-from glustolibs.gluster.peer_ops import (get_pool_list)
+from glustolibs.gluster.peer_ops import get_pool_list
+
 from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
-from cnslibs.common.heketi_ops import (heketi_node_info,
-                                       heketi_node_list)
 from cnslibs.common import heketi_ops, podcmd
-from cnslibs.common.openshift_ops import oc_rsh, get_ocp_gluster_pod_names
+from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
 
 
 class TestHeketiVolume(HeketiClientSetupBaseClass):
@@ -25,7 +22,7 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         # List all list
         ip = []
         g.log.info("Listing the node id")
-        heketi_node_id_list = heketi_node_list(
+        heketi_node_id_list = heketi_ops.heketi_node_list(
             self.heketi_client_node, self.heketi_server_url)
 
         g.log.info("Successfully listed the node")
@@ -61,8 +58,9 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
             hostname.append(pool["hostname"])
 
         if (len(heketi_node_id_list) != len(list_of_pools)):
-            raise ExecutionError("Heketi volume list %s is not equal"
-                              " to gluster volume list %s" % ((ip), (hostname)))
+            raise ExecutionError(
+                "Heketi volume list %s is not equal "
+                "to gluster volume list %s" % ((ip), (hostname)))
         g.log.info("The node IP's from node info and list"
                    " is : %s/n and pool list from gluster"
                    " pods/nodes is %s" % ((ip), (hostname)))
@@ -74,7 +72,7 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
 
         # List all list
         g.log.info("Listing the node id")
-        heketi_node_id_list = heketi_node_list(
+        heketi_node_id_list = heketi_ops.heketi_node_list(
             self.heketi_client_node, self.heketi_server_url)
         self.assertTrue(heketi_node_id_list, ("Node Id list is empty."))
         g.log.info("Successfully listed the node")

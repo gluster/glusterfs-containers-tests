@@ -397,6 +397,7 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
         # make this a condition
         done = threading.Event()
         short_tc_name = "volumes-concurrently"
+
         def background_ops():
             subname = make_unique_label(short_tc_name)
             for i, w in enumerate(Waiter(60 * 60)):
@@ -414,6 +415,7 @@ class TestVolumeMultiReq(HeketiClientSetupBaseClass):
                 if done.is_set():
                     break
         failures = []
+
         def checked_background_ops():
             try:
                 background_ops()
