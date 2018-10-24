@@ -23,5 +23,7 @@ setup(
         'Topic :: Software Development :: Testing'
     ],
     install_requires=['glusto', 'ddt', 'mock', 'rtyaml'],
-    dependency_links=['http://github.com/loadtheaccumulator/glusto/tarball/master#egg=glusto'],
+    dependency_links=[
+        'http://github.com/loadtheaccumulator/glusto/tarball/master#egg=glusto'
+    ],
 )

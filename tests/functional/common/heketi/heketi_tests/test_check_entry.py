@@ -1,13 +1,12 @@
-#!/usr/bin/python
-
 from glusto.core import Glusto as g
 from glustolibs.gluster.exceptions import ConfigError
+
 from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
 from cnslibs.common.heketi_ops import (heketi_volume_create,
                                        heketi_volume_list,
                                        heketi_volume_delete)
-from cnslibs.common import heketi_ops, podcmd
-from cnslibs.common.openshift_ops import oc_rsh, get_ocp_gluster_pod_names
+from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
+from cnslibs.common import podcmd
 
 
 class TestHeketiVolume(HeketiClientSetupBaseClass):
@@ -51,11 +50,13 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         gluster_pod = get_ocp_gluster_pod_names(
             self.heketi_client_node)[1]
 
-        cmd = "oc rsync "+ gluster_pod +":/var/lib/heketi/fstab /tmp"
+        cmd = "oc rsync " + gluster_pod + ":/var/lib/heketi/fstab /tmp"
         out = g.run(self.heketi_client_node, cmd)
         self.assertTrue(out, ("Failed to copy the file"))
         g.log.info("Copied the file")
-        out = g.run_local("scp -r root@" +self.heketi_client_node+":/tmp/fstab /tmp/file.txt")
+        out = g.run_local(
+            "scp -r root@%s:/tmp/fstab "
+            "/tmp/file.txt" % self.heketi_client_node)
         self.assertTrue(out, ("Failed to copy a file to /tmp/file.txt"))
         g.log.info("Successfully copied to /tmp/file.txt")
         out = g.run_local("ls /tmp")
@@ -67,7 +68,8 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         # Check if the brick is mounted
         for i in path:
             string_to_search = i
-            rcode, rout, rerr = g.run_local('grep %s %s' % (string_to_search, "/tmp/file.txt"))
+            rcode, rout, rerr = g.run_local(
+                'grep %s %s' % (string_to_search, "/tmp/file.txt"))
             if rcode == 0:
                 g.log.info("Brick %s is mounted" % i)
         datafile.close()
@@ -99,11 +101,12 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         gluster_pod = get_ocp_gluster_pod_names(
                 self.heketi_client_node)[0]
 
-        cmd = "oc rsync "+ gluster_pod +":/var/lib/heketi/fstab /"
+        cmd = "oc rsync " + gluster_pod + ":/var/lib/heketi/fstab /"
         out = g.run(self.heketi_client_node, cmd)
         self.assertTrue(out, ("Failed to copy the file"))
         g.log.info("Copied the file")
-        out = g.run_local("scp -r root@" +self.heketi_client_node+":/fstab /tmp/newfile.txt")
+        out = g.run_local(
+            "scp -r root@%s:/fstab /tmp/newfile.txt" % self.heketi_client_node)
         self.assertTrue(out, ("Failed to copy to the file newfile.txt"))
         g.log.info("Successfully copied to the file newfile.txt")
         out = g.run_local("ls /tmp")
@@ -115,7 +118,8 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         # Check if the brick is mounted
         for i in path:
             string_to_search = i
-            rcode, rout, rerr = g.run_local('grep %s %s' % (string_to_search, "/tmp/newfile.txt"))
+            rcode, rout, rerr = g.run_local(
+                'grep %s %s' % (string_to_search, "/tmp/newfile.txt"))
             if rcode == 0:
                 raise ConfigError("Particular %s brick entry is found" % i)
         datafile.close()

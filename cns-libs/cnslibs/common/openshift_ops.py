@@ -371,10 +371,10 @@ def oc_create_app_dc_with_io(
             "-ec",
             "trap \"rm -f /mnt/random-data-$HOSTNAME.log ; exit 0\" SIGTERM; "
             "while true; do "
-            "  (mount | grep '/mnt') && "
-            "    (head -c %s < /dev/urandom > /mnt/random-data-$HOSTNAME.log) || "
-            "      exit 1; "
-            "  sleep 1 ; "
+            " (mount | grep '/mnt') && "
+            "  (head -c %s < /dev/urandom > /mnt/random-data-$HOSTNAME.log) ||"
+            "   exit 1; "
+            " sleep 1 ; "
             "done" % space_to_use,
         ],
         "livenessProbe": {

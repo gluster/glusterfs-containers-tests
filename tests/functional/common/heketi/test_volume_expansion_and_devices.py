@@ -6,7 +6,7 @@ import unittest
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops, rebalance_ops
 
-from cnslibs.common.exceptions import ExecutionError, ConfigError
+from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
 from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
 from cnslibs.common import heketi_ops, podcmd
@@ -696,4 +696,3 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiClientSetupBaseClass):
             free_space_after_deletion > free_space_after_expansion,
             "Free space is not reclaimed after volume deletion of %s"
             % volume_id)
-

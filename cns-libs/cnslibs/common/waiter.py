@@ -7,6 +7,7 @@ It aims to avoid having to write boilerplate code comparing times.
 
 import time
 
+
 class Waiter(object):
     """A wait-retry loop as iterable.
     This object abstracts away the wait logic allowing functions
