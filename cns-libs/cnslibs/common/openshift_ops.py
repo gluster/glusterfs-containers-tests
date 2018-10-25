@@ -1188,3 +1188,71 @@ def verify_gluster_vol_for_pvc(hostname, pvc_name):
     g.log.info("verification of gluster vol %s for pvc %s is"
                "successful" % (gluster_vol, pvc_name))
     return True
+
+
+def get_events(hostname,
+               obj_name=None, obj_namespace=None, obj_type=None,
+               event_reason=None, event_type=None):
+    """Return filtered list of events.
+
+    Args:
+        hostname (str): hostname of oc client
+        obj_name (str): name of an object
+        obj_namespace (str): namespace where object is located
+        obj_type (str): type of an object, i.e. PersistentVolumeClaim or Pod
+        event_reason (str): reason why event was created,
+            i.e. Created, Started, Unhealthy, SuccessfulCreate, Scheduled ...
+        event_type (str): type of an event, i.e. Normal or Warning
+    Returns:
+        List of dictionaries, where the latter are of following structure:
+        {
+            "involvedObject": {
+                "kind": "ReplicationController",
+                "name": "foo-object-name",
+                "namespace": "foo-object-namespace",
+            },
+            "message": "Created pod: foo-object-name",
+            "metadata": {
+                "creationTimestamp": "2018-10-19T18:27:09Z",
+                "name": "foo-object-name.155f15db4e72cc2e",
+                "namespace": "foo-object-namespace",
+            },
+            "reason": "SuccessfulCreate",
+            "reportingComponent": "",
+            "reportingInstance": "",
+            "source": {"component": "replication-controller"},
+            "type": "Normal"
+        }
+    """
+    field_selector = []
+    if obj_name:
+        field_selector.append('involvedObject.name=%s' % obj_name)
+    if obj_namespace:
+        field_selector.append('involvedObject.namespace=%s' % obj_namespace)
+    if obj_type:
+        field_selector.append('involvedObject.kind=%s' % obj_type)
+    if event_reason:
+        field_selector.append('reason=%s' % event_reason)
+    if event_type:
+        field_selector.append('type=%s' % event_type)
+    cmd = "oc get events -o yaml --field-selector %s" % ",".join(
+        field_selector or "''")
+    return yaml.load(command.cmd_run(cmd, hostname=hostname))['items']
+
+
+def wait_for_events(hostname,
+                    obj_name=None, obj_namespace=None, obj_type=None,
+                    event_reason=None, event_type=None,
+                    timeout=120, wait_step=3):
+    """Wait for appearence of specific set of events."""
+    for w in waiter.Waiter(timeout, wait_step):
+        events = get_events(
+            hostname=hostname, obj_name=obj_name, obj_namespace=obj_namespace,
+            obj_type=obj_type, event_reason=event_reason,
+            event_type=event_type)
+        if events:
+            return events
+    if w.expired:
+        err_msg = ("Exceeded %ssec timeout waiting for events." % timeout)
+        g.log.error(err_msg)
+        raise exceptions.ExecutionError(err_msg)
