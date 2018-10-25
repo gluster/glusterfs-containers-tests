@@ -70,7 +70,8 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             self.addCleanup(
                 wait_for_resource_absence, self.node, 'pvc', pvc_name)
         for pvc_name in pvc_names:
-            self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
+            self.addCleanup(oc_delete, self.node, 'pvc', pvc_name,
+                            raise_on_absence=False)
 
         # Wait for PVCs to be in bound state
         for pvc_name in pvc_names:
@@ -320,3 +321,42 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         ret, out, err = oc_rsh(node, pod_name, cmd)
         self.assertEqual(
             ret, 0, "Failed to execute command %s on %s" % (cmd, node))
+
+    def test_dynamic_provisioning_glusterfile_heketidown_pvc_delete(self):
+        """ Delete PVC's when heketi is down CNS-438 """
+
+        # Create storage class and secret objects
+        self._create_storage_class()
+
+        self.pvc_name_list = self._create_and_wait_for_pvcs(
+            1, 'pvc-heketi-down', 3)
+
+        # remove heketi-pod
+        scale_dc_pod_amount_and_wait(self.ocp_client[0],
+                                     self.heketi_dc_name,
+                                     0,
+                                     self.cns_project_name)
+        try:
+            # delete pvc
+            for pvc in self.pvc_name_list:
+                oc_delete(self.ocp_client[0], 'pvc', pvc)
+            for pvc in self.pvc_name_list:
+                with self.assertRaises(ExecutionError):
+                    wait_for_resource_absence(
+                       self.ocp_client[0], 'pvc', pvc,
+                       interval=3, timeout=30)
+        finally:
+            # bring back heketi-pod
+            scale_dc_pod_amount_and_wait(self.ocp_client[0],
+                                         self.heketi_dc_name,
+                                         1,
+                                         self.cns_project_name)
+
+        # verify PVC's are deleted
+        for pvc in self.pvc_name_list:
+            wait_for_resource_absence(self.ocp_client[0], 'pvc',
+                                      pvc,
+                                      interval=1, timeout=120)
+
+        # create a new PVC
+        self._create_and_wait_for_pvc()
