@@ -78,9 +78,10 @@ class TestStorageClassCases(cns_baseclass.CnsBaseClass):
         {"secretname": "fakesecretname"},
         {"secretnamespace": "fakenamespace"},
         {"restuser": "fakeuser"},
+        {"volumenameprefix": "dept_qe"},
         )
     def test_sc_glusterfile_incorrect_parameter(self, parameter={}):
-        """ Polarion testcase id- CNS-708,709,713,714,715 """
+        """Polarion testcase id- CNS-708,709,713,714,715,921"""
         self.sc_incorrect_parameter("glusterfile", parameter)
 
     @ddt.data(
