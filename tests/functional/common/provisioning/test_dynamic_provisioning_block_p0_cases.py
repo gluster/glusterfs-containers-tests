@@ -312,3 +312,28 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
 
         # create a new PVC
         self._create_and_wait_for_pvc()
+
+    def test_recreate_app_pod_with_attached_block_pv(self):
+        """Test Case CNS-1392"""
+        datafile_path = '/mnt/temporary_test_file'
+
+        # Create DC with POD and attached PVC to it
+        dc_name, pod_name, pvc_name = self._create_dc_with_pvc()
+
+        # Write data
+        write_cmd = "oc exec %s -- dd if=/dev/urandom of=%s bs=4k count=10000"
+        self.cmd_run(write_cmd % (pod_name, datafile_path))
+
+        # Recreate app POD
+        scale_dc_pod_amount_and_wait(self.node, dc_name, 0)
+        scale_dc_pod_amount_and_wait(self.node, dc_name, 1)
+        new_pod_name = get_pod_name_from_dc(self.node, dc_name)
+
+        # Check presence of already written file
+        check_existing_file_cmd = (
+            "oc exec %s -- ls %s" % (new_pod_name, datafile_path))
+        out = self.cmd_run(check_existing_file_cmd)
+        self.assertIn(datafile_path, out)
+
+        # Perform I/O on the new POD
+        self.cmd_run(write_cmd % (new_pod_name, datafile_path))
