@@ -287,7 +287,8 @@ def oc_create_secret(hostname, secret_name_prefix="autotests-secret-",
 
 def oc_create_sc(hostname, sc_name_prefix="autotests-sc",
                  provisioner="kubernetes.io/glusterfs",
-                 allow_volume_expansion=False, **parameters):
+                 allow_volume_expansion=False,
+                 reclaim_policy="Delete", **parameters):
     """Create storage class using data provided as stdin input.
 
     Args:
@@ -316,6 +317,7 @@ def oc_create_sc(hostname, sc_name_prefix="autotests-sc",
         "apiVersion": "storage.k8s.io/v1",
         "metadata": {"name": sc_name},
         "provisioner": provisioner,
+        "reclaimPolicy": reclaim_policy,
         "parameters": parameters,
         "allowVolumeExpansion": allow_volume_expansion,
     })

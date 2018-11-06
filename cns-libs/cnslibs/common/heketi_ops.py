@@ -676,7 +676,8 @@ def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
 
 
 def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
-                         mode='cli', raw_cli_output=False, **kwargs):
+                         mode='cli', raw_cli_output=False,
+                         raise_on_error=True, **kwargs):
     """Executes heketi volume delete command.
 
     Args:
@@ -715,7 +716,8 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
         if ret != 0:
             err_msg += "Out: %s, \nErr: %s" % (out, err)
             g.log.error(err_msg)
-            raise exceptions.ExecutionError(err_msg)
+            if raise_on_error:
+                raise exceptions.ExecutionError(err_msg)
         return out
     else:
         try:
@@ -725,7 +727,8 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
             ret = conn.volume_delete(volume_id)
         except Exception:
             g.log.error(err_msg)
-            raise
+            if raise_on_error:
+                raise
         return ret
 
 
