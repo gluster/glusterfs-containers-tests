@@ -95,8 +95,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
                     pv_name = get_pv_name_from_pvc(self.node, pvc_name)
                     self.addCleanup(oc_delete, self.node, 'pv', pv_name,
                                     raise_on_absence=False)
-                    custom = (':.metadata.annotations."gluster\.kubernetes'
-                              '\.io\/heketi\-volume\-id"')
+                    custom = (r':.metadata.annotations."gluster\.kubernetes'
+                              r'\.io\/heketi\-volume\-id"')
                     vol_id = oc_get_custom_resource(
                         self.node, 'pv', custom, pv_name)[0]
                     self.addCleanup(heketi_blockvolume_delete,
@@ -408,8 +408,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         # get the name of volume
         pv_name = get_pv_name_from_pvc(self.node, self.pvc_name)
 
-        custom = [':.metadata.annotations."gluster\.org\/volume\-id"',
-                  ':.spec.persistentVolumeReclaimPolicy']
+        custom = [r':.metadata.annotations."gluster\.org\/volume\-id"',
+                  r':.spec.persistentVolumeReclaimPolicy']
         vol_id, reclaim_policy = oc_get_custom_resource(
             self.node, 'pv', custom, pv_name)
 

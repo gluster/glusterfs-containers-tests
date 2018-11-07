@@ -28,10 +28,10 @@ from cnslibs.common.heketi_ops import (
 )
 
 PODS_WIDE_RE = re.compile(
-    '(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+).*\n')
+    r'(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+).*\n')
 SERVICE_STATUS = "systemctl status %s"
 SERVICE_RESTART = "systemctl restart %s"
-SERVICE_STATUS_REGEX = "Active: active \((.*)\) since .*;.*"
+SERVICE_STATUS_REGEX = r"Active: active \((.*)\) since .*;.*"
 OC_VERSION = None
 
 
@@ -364,11 +364,11 @@ def oc_create_app_dc_with_io(
     Args:
         hostname (str): Node on which 'oc create' command will be executed.
         pvc_name (str): name of the Persistent Volume Claim to attach to
-                        the application PODs where constant I\O will run.
+                        the application PODs where constant I/O will run.
         dc_name_prefix (str): DC name will consist of this prefix and
                               random str.
         replicas (int): amount of application POD replicas.
-        space_to_use (int): value in bytes which will be used for I\O.
+        space_to_use (int): value in bytes which will be used for I/O.
     """
     dc_name = "%s-%s" % (dc_name_prefix, utils.get_random_str())
     container_data = {
@@ -713,9 +713,9 @@ def get_gluster_pod_names_by_pvc_name(ocp_node, pvc_name):
     """
     # Check storage provisioner
     sp_cmd = (
-        'oc get pvc %s --no-headers -o=custom-columns='
-        ':.metadata.annotations."volume\.beta\.kubernetes\.io\/'
-        'storage\-provisioner"' % pvc_name)
+        r'oc get pvc %s --no-headers -o=custom-columns='
+        r':.metadata.annotations."volume\.beta\.kubernetes\.io\/'
+        r'storage\-provisioner"' % pvc_name)
     sp_raw = command.cmd_run(sp_cmd, hostname=ocp_node)
     sp = sp_raw.strip()
 
@@ -836,10 +836,10 @@ def get_gluster_blockvol_info_by_pvc_name(ocp_node, heketi_server_url,
 
     # Get block volume Name and ID from PV which is bound to our PVC
     get_block_vol_data_cmd = (
-        'oc get pv --no-headers -o custom-columns='
-        ':.metadata.annotations.glusterBlockShare,'
-        ':.metadata.annotations."gluster\.org\/volume\-id",'
-        ':.spec.claimRef.name | grep "%s"' % pvc_name)
+        r'oc get pv --no-headers -o custom-columns='
+        r':.metadata.annotations.glusterBlockShare,'
+        r':.metadata.annotations."gluster\.org\/volume\-id",'
+        r':.spec.claimRef.name | grep "%s"' % pvc_name)
     out = command.cmd_run(get_block_vol_data_cmd, hostname=ocp_node)
     parsed_out = filter(None, map(str.strip, out.split(" ")))
     assert len(parsed_out) == 3, "Expected 3 fields in following: %s" % out
@@ -1205,11 +1205,10 @@ def get_vol_names_from_pv(hostname, pv_name):
                     otherwise raise Exception
     '''
     vol_dict = {}
-    cmd = ("oc get pv %s -o=custom-columns="
-           ":.metadata.annotations."
-           "'gluster\.kubernetes\.io\/heketi\-volume\-id',"
-           ":.spec.glusterfs.path"
-           % pv_name)
+    cmd = (r"oc get pv %s -o=custom-columns="
+           r":.metadata.annotations."
+           r"'gluster\.kubernetes\.io\/heketi\-volume\-id',"
+           r":.spec.glusterfs.path" % pv_name)
     vol_list = command.cmd_run(cmd, hostname=hostname).split()
     vol_dict = {"heketi_vol": vol_list[0],
                 "gluster_vol": vol_list[1]}
@@ -1413,9 +1412,9 @@ def match_pv_and_heketi_block_volumes(
         pvc_prefix (str): pv prefix given by user at the time of pvc creation
     """
     custom_columns = [
-        ':.spec.claimRef.name',
-        ':.metadata.annotations."pv\.kubernetes\.io\/provisioned\-by"',
-        ':.metadata.annotations."gluster\.org\/volume\-id"'
+        r':.spec.claimRef.name',
+        r':.metadata.annotations."pv\.kubernetes\.io\/provisioned\-by"',
+        r':.metadata.annotations."gluster\.org\/volume\-id"'
     ]
     pv_block_volumes = sorted([
         pv[2]
