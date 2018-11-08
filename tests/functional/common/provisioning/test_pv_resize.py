@@ -125,11 +125,9 @@ class TestPvResizeClass(CnsBaseClass):
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, node))
 
-    def test_pv_resize_no_free_space(self):
-        """Test case CNS-1040"""
+    def _pv_resize(self, exceed_free_space):
         dir_path = "/mnt"
-        pvc_size_gb = 1
-        min_free_space_gb = 3
+        pvc_size_gb, min_free_space_gb = 1, 3
 
         # Get available free space disabling redundant devices and nodes
         heketi_url = self.heketi_server_url
@@ -187,17 +185,51 @@ class TestPvResizeClass(CnsBaseClass):
         pod_name = get_pod_name_from_dc(self.node, dc_name)
         wait_for_pod_be_ready(self.node, pod_name)
 
-        # Try to expand existing PVC exceeding free space
-        resize_pvc(self.node, pvc_name, available_size_gb)
-        wait_for_events(
-            self.node, obj_name=pvc_name, event_reason='VolumeResizeFailed')
+        if exceed_free_space:
+            # Try to expand existing PVC exceeding free space
+            resize_pvc(self.node, pvc_name, available_size_gb)
+            wait_for_events(self.node, obj_name=pvc_name,
+                            event_reason='VolumeResizeFailed')
 
-        # Check that app POD is up and runnig then try to write data
-        wait_for_pod_be_ready(self.node, pod_name)
-        cmd = "dd if=/dev/urandom of=%s/autotest bs=100K count=1" % dir_path
-        ret, out, err = oc_rsh(self.node, pod_name, cmd)
-        self.assertEqual(
-            ret, 0, "Failed to write data after failed attempt to expand PVC.")
+            # Check that app POD is up and runnig then try to write data
+            wait_for_pod_be_ready(self.node, pod_name)
+            cmd = (
+                "dd if=/dev/urandom of=%s/autotest bs=100K count=1" % dir_path)
+            ret, out, err = oc_rsh(self.node, pod_name, cmd)
+            self.assertEqual(
+                ret, 0,
+                "Failed to write data after failed attempt to expand PVC.")
+        else:
+            # Expand existing PVC using all the available free space
+            expand_size_gb = available_size_gb - pvc_size_gb
+            resize_pvc(self.node, pvc_name, expand_size_gb)
+            verify_pvc_size(self.node, pvc_name, expand_size_gb)
+            pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+            verify_pv_size(self.node, pv_name, expand_size_gb)
+            wait_for_events(
+                self.node, obj_name=pvc_name,
+                event_reason='VolumeResizeSuccessful')
+
+            # Recreate app POD
+            oc_delete(self.node, 'pod', pod_name)
+            wait_for_resource_absence(self.node, 'pod', pod_name)
+            pod_name = get_pod_name_from_dc(self.node, dc_name)
+            wait_for_pod_be_ready(self.node, pod_name)
+
+            # Write data on the expanded PVC
+            cmd = ("dd if=/dev/urandom of=%s/autotest "
+                   "bs=1M count=1025" % dir_path)
+            ret, out, err = oc_rsh(self.node, pod_name, cmd)
+            self.assertEqual(
+                ret, 0, "Failed to write data on the expanded PVC")
+
+    def test_pv_resize_no_free_space(self):
+        """Test case CNS-1040"""
+        self._pv_resize(exceed_free_space=True)
+
+    def test_pv_resize_by_exact_free_space(self):
+        """Test case CNS-1041"""
+        self._pv_resize(exceed_free_space=False)
 
     def test_pv_resize_try_shrink_pv_size(self):
         """testcase CNS-1039 """
