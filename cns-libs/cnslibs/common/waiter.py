@@ -33,3 +33,6 @@ class Waiter(object):
             time.sleep(self.interval)
         self._attempt += 1
         return self
+
+    # NOTE(vponomar): py3 uses "__next__" method instead of "next" one.
+    __next__ = next
