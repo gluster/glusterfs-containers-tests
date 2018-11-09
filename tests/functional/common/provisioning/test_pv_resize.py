@@ -21,6 +21,7 @@ from cnslibs.common.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence)
 from cnslibs.cns.cns_baseclass import CnsBaseClass
+from cnslibs.common.exceptions import ExecutionError
 from glusto.core import Glusto as g
 
 
@@ -199,3 +200,43 @@ class TestPvResizeClass(CnsBaseClass):
         ret, out, err = oc_rsh(self.node, pod_name, cmd)
         self.assertEqual(
             ret, 0, "Failed to write data after failed attempt to expand PVC.")
+
+    def test_pv_resize_try_shrink_pv_size(self):
+        """testcase CNS-1039 """
+        dir_path = "/mnt/"
+        self._create_storage_class()
+        node = self.ocp_master_node[0]
+
+        pv_size = 5
+        # Create PVC
+        pvc_name = oc_create_pvc(node, self.sc_name, pvc_size=pv_size)
+        self.addCleanup(wait_for_resource_absence,
+                        node, 'pvc', pvc_name)
+        self.addCleanup(oc_delete, node, 'pvc', pvc_name)
+        verify_pvc_status_is_bound(node, pvc_name)
+
+        # Create DC with POD and attached PVC to it.
+        dc_name = oc_create_app_dc_with_io(node, pvc_name)
+        self.addCleanup(oc_delete, node, 'dc', dc_name)
+        self.addCleanup(scale_dc_pod_amount_and_wait,
+                        node, dc_name, 0)
+
+        pod_name = get_pod_name_from_dc(node, dc_name)
+        wait_for_pod_be_ready(node, pod_name)
+
+        cmd = ("dd if=/dev/urandom of=%sfile "
+               "bs=100K count=3000") % dir_path
+        ret, out, err = oc_rsh(node, pod_name, cmd)
+        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
+                             cmd, node))
+        pvc_resize = 2
+        with self.assertRaises(ExecutionError):
+            resize_pvc(node, pvc_name, pvc_resize)
+        verify_pvc_size(node, pvc_name, pv_size)
+        pv_name = get_pv_name_from_pvc(node, pvc_name)
+        verify_pv_size(node, pv_name, pv_size)
+        cmd = ("dd if=/dev/urandom of=%sfile_new "
+               "bs=100K count=2000") % dir_path
+        ret, out, err = oc_rsh(node, pod_name, cmd)
+        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
+                             cmd, node))
