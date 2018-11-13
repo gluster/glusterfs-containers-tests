@@ -19,7 +19,6 @@ from cnslibs.common.openshift_ops import (
     oc_delete,
     oc_get_custom_resource,
     oc_rsh,
-    oc_version,
     scale_dc_pod_amount_and_wait,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
@@ -421,9 +420,6 @@ class TestDynamicProvisioningP0(CnsBaseClass):
 
     def test_pvc_deletion_while_pod_is_running(self):
         # CNS-584 Verify PVC deletion while pod is running
-
-        if "v3.11" in oc_version(self.node):
-            self.skipTest("Blocked by BZ-1644696")
 
         self._create_storage_class()
         self._create_and_wait_for_pvc()

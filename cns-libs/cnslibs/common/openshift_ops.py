@@ -32,6 +32,7 @@ PODS_WIDE_RE = re.compile(
 SERVICE_STATUS = "systemctl status %s"
 SERVICE_RESTART = "systemctl restart %s"
 SERVICE_STATUS_REGEX = "Active: active \((.*)\) since .*;.*"
+OC_VERSION = None
 
 
 def oc_get_pods(ocp_node):
@@ -470,7 +471,17 @@ def oc_delete(ocp_node, rtype, name, raise_on_absence=True):
     if not oc_get_yaml(ocp_node, rtype, name,
                        raise_on_error=raise_on_absence):
         return
-    ret, out, err = g.run(ocp_node, ['oc', 'delete', rtype, name])
+    cmd = ['oc', 'delete', rtype, name]
+
+    global OC_VERSION
+    if not OC_VERSION:
+        OC_VERSION = oc_version(ocp_node)
+
+    versions = ['v3.6', 'v3.7', 'v3.9', 'v3.10']
+    if not OC_VERSION.rsplit('.', 1)[0] in versions:
+        cmd.append('--wait=false')
+
+    ret, out, err = g.run(ocp_node, cmd)
     if ret != 0:
         g.log.error('Failed to delete resource: %s, %s: %r; %r',
                     rtype, name, out, err)
