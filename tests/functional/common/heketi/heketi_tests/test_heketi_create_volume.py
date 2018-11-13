@@ -1,4 +1,4 @@
-from glustolibs.gluster.exceptions import ExecutionError, ConfigError
+from glustolibs.gluster.exceptions import ExecutionError
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 
@@ -156,47 +156,52 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
         g.log.info("All heketi cluster successfully listed")
 
     def test_to_check_deletion_of_node(self):
-        """
-        Deletion of a node which contains devices
-        """
+        """Deletion of a node which contains devices"""
 
-        # List of heketi node
-        g.log.info("List heketi nodes")
-        heketi_node_id_list = heketi_node_list(
-            self.heketi_client_node, self.heketi_server_url)
-        self.assertTrue(heketi_node_id_list, ("List of node IDs is empty."))
+        # Create Heketi volume to make sure we have devices with usages
+        heketi_url = self.heketi_server_url
+        vol = heketi_volume_create(
+            self.heketi_client_node, heketi_url, 1, json=True)
+        self.assertTrue(vol, "Failed to create heketi volume.")
+        g.log.info("Heketi volume successfully created")
+        volume_id = vol["bricks"][0]["volume"]
+        self.addCleanup(self.delete_volumes, volume_id)
 
-        g.log.info("Successfully got the list of nodes")
-        for node_id in heketi_node_id_list:
-            g.log.info("Retrieve the node info")
-            node_info_dict = heketi_node_info(
-                self.heketi_client_node, self.heketi_server_url,
-                node_id, json=True)
-            if not(node_info_dict["devices"][1]["storage"]["used"]):
-                raise ConfigError("No device in node %s" % node_id)
-            g.log.info("Used space in device %s" % node_info_dict[
-                       "devices"][1]["storage"]["used"])
-        node_id = heketi_node_id_list[0]
+        # Pick up suitable node
+        node_ids = heketi_node_list(self.heketi_client_node, heketi_url)
+        self.assertTrue(node_ids)
+        for node_id in node_ids:
+            node_info = heketi_node_info(
+                self.heketi_client_node, heketi_url, node_id, json=True)
+            if (node_info['state'].lower() != 'online' or
+                    not node_info['devices']):
+                continue
+            for device in node_info['devices']:
+                if device['state'].lower() != 'online':
+                    continue
+                if device['storage']['used']:
+                    node_id = node_info['id']
+                    break
+        else:
+            self.assertTrue(
+                node_id,
+                "Failed to find online node with online device which "
+                "has some usages.")
 
-        # Deleting a node
-        g.log.info("Trying to delete a node which"
-                   " contains devices in it:"
-                   " Expected to fail")
-        out = heketi_node_delete(self.heketi_client_node,
-                                 self.heketi_server_url,
-                                 node_id)
-        self.assertFalse(out, ("Successfully deletes a "
-                         "node %s" % str(node_id)))
-        g.log.info("Expected result: Unable to delete "
-                   "node %s because it contains devices")
+        # Try to delete the node by its ID
+        g.log.info("Trying to delete the node which contains devices in it. "
+                   "Expecting failure.")
+        out = heketi_node_delete(self.heketi_client_node, heketi_url, node_id)
+        self.assertFalse(out, "Node '%s' got unexpectedly deleted." % node_id)
 
-        # To confrim deletion failed, check node list
-        # TODO: fix following, it doesn't verify absence of the deleted nodes
+        # Make sure our node hasn't been deleted
         g.log.info("Listing heketi node list")
-        node_list = heketi_node_list(self.heketi_client_node,
-                                     self.heketi_server_url)
+        node_list = heketi_node_list(self.heketi_client_node, heketi_url)
         self.assertTrue(node_list, ("Failed to list heketi nodes"))
-        g.log.info("Successfully got the list of nodes")
+        self.assertIn(node_id, node_list)
+        node_info = heketi_node_info(
+            self.heketi_client_node, heketi_url, node_id, json=True)
+        self.assertEqual(node_info['state'].lower(), 'online')
 
     def test_blockvolume_create_no_free_space(self):
         """Test case CNS-550"""
