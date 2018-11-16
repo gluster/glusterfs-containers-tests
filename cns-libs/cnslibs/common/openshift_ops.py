@@ -632,11 +632,12 @@ def create_namespace(hostname, namespace):
 
 
 def wait_for_resource_absence(ocp_node, rtype, name,
-                              interval=10, timeout=120):
+                              interval=5, timeout=300):
     _waiter = waiter.Waiter(timeout=timeout, interval=interval)
+    resource, pv_name = None, None
     for w in _waiter:
         try:
-            oc_get_yaml(ocp_node, rtype, name, raise_on_error=True)
+            resource = oc_get_yaml(ocp_node, rtype, name, raise_on_error=True)
         except AssertionError:
             break
     if rtype == 'pvc':
@@ -644,11 +645,29 @@ def wait_for_resource_absence(ocp_node, rtype, name,
             name)
         for w in _waiter:
             ret, out, err = g.run(ocp_node, cmd, "root")
+            _pv_name = out.strip()
+            if _pv_name and not pv_name:
+                pv_name = _pv_name
             if ret != 0:
                 break
     if w.expired:
-        error_msg = "%s '%s' still exists after waiting for it %d seconds" % (
-            rtype, name, timeout)
+        # Gather more info for ease of debugging
+        try:
+            r_events = get_events(ocp_node, obj_name=name)
+        except Exception:
+            r_events = '?'
+        error_msg = (
+            "%s '%s' still exists after waiting for it %d seconds.\n"
+            "Resource info: %s\n"
+            "Resource related events: %s" % (
+                rtype, name, timeout, resource, r_events))
+        if rtype == 'pvc' and pv_name:
+            try:
+                pv_events = get_events(ocp_node, obj_name=pv_name)
+            except Exception:
+                pv_events = '?'
+            error_msg += "\nPV events: %s" % pv_events
+
         g.log.error(error_msg)
         raise exceptions.ExecutionError(error_msg)
 
