@@ -196,7 +196,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             total_size, max_size,
             "Volume has bigger size '%s' than expected - '%s'." % (
                 total_size, max_size))
-        min_available_size = int(max_size * 0.95)
+        min_available_size = int(max_size * 0.93)
         available_size = int(data[4])
         self.assertLessEqual(
             min_available_size, available_size,
