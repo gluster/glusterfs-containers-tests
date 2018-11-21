@@ -46,27 +46,26 @@ class TestPvResizeClass(CnsBaseClass):
                    "version %s " % self.version)
             g.log.error(msg)
             raise self.skipTest(msg)
+        self.sc = self.cns_storage_class.get(
+            'storage_class1', self.cns_storage_class.get('file_storage_class'))
 
     def _create_storage_class(self, volname_prefix=False):
-        sc = self.cns_storage_class['storage_class1']
-        secret = self.cns_secret['secret1']
-
         # create secret
         self.secret_name = oc_create_secret(
             self.node,
-            namespace=secret['namespace'],
+            namespace=self.sc.get('secretnamespace', 'default'),
             data_key=self.heketi_cli_key,
-            secret_type=secret['type'])
+            secret_type=self.sc.get('provisioner', 'kubernetes.io/glusterfs'))
         self.addCleanup(oc_delete, self.node, 'secret', self.secret_name)
 
         # create storageclass
         self.sc_name = oc_create_sc(
             self.node, provisioner='kubernetes.io/glusterfs',
-            resturl=sc['resturl'], restuser=sc['restuser'],
-            secretnamespace=sc['secretnamespace'],
+            resturl=self.sc['resturl'], restuser=self.sc['restuser'],
+            secretnamespace=self.sc['secretnamespace'],
             secretname=self.secret_name,
             allow_volume_expansion=True,
-            **({"volumenameprefix": sc['volumenameprefix']}
+            **({"volumenameprefix": self.sc['volumenameprefix']}
                 if volname_prefix else {})
         )
         self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
@@ -96,10 +95,9 @@ class TestPvResizeClass(CnsBaseClass):
         pod_name = get_pod_name_from_dc(node, dc_name)
         wait_for_pod_be_ready(node, pod_name)
         if volname_prefix:
-            storage_class = self.cns_storage_class['storage_class1']
             ret = heketi_ops.verify_volume_name_prefix(
-                node, storage_class['volumenameprefix'],
-                storage_class['secretnamespace'],
+                node, self.sc['volumenameprefix'],
+                self.sc['secretnamespace'],
                 pvc_name, self.heketi_server_url)
             self.assertTrue(ret, "verify volnameprefix failed")
         cmd = ("dd if=/dev/urandom of=%sfile "

@@ -40,17 +40,18 @@ class TestDynamicProvisioningP0(CnsBaseClass):
     def setUp(self):
         super(TestDynamicProvisioningP0, self).setUp()
         self.node = self.ocp_master_node[0]
-        self.sc = self.cns_storage_class['storage_class1']
+        self.sc = self.cns_storage_class.get(
+            'storage_class1', self.cns_storage_class.get('file_storage_class'))
 
     def _create_storage_class(
             self, create_name_prefix=False, reclaim_policy='Delete'):
-        sc = self.cns_storage_class['storage_class1']
-        secret = self.cns_secret['secret1']
 
         # Create secret file for usage in storage class
         self.secret_name = oc_create_secret(
-            self.node, namespace=secret['namespace'],
-            data_key=self.heketi_cli_key, secret_type=secret['type'])
+            self.node,
+            namespace=self.sc.get('secretnamespace', 'default'),
+            data_key=self.heketi_cli_key,
+            secret_type=self.sc.get('provisioner', 'kubernetes.io/glusterfs'))
         self.addCleanup(
             oc_delete, self.node, 'secret', self.secret_name)
 
@@ -58,10 +59,11 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         self.sc_name = oc_create_sc(
             self.node,
             reclaim_policy=reclaim_policy,
-            resturl=sc['resturl'],
-            restuser=sc['restuser'], secretnamespace=sc['secretnamespace'],
+            resturl=self.sc['resturl'],
+            restuser=self.sc['restuser'],
+            secretnamespace=self.sc['secretnamespace'],
             secretname=self.secret_name,
-            **({"volumenameprefix": sc['volumenameprefix']}
+            **({"volumenameprefix": self.sc['volumenameprefix']}
                if create_name_prefix else {})
         )
         self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
@@ -295,58 +297,56 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd, self.node))
 
     def test_storage_class_mandatory_params_glusterfile(self):
-        # CNS-442 storage-class mandatory parameters
-        sc = self.cns_storage_class['storage_class1']
-        secret = self.cns_secret['secret1']
-        node = self.ocp_master_node[0]
+        """Test case CNS-442 - storage-class mandatory parameters"""
+
         # create secret
         self.secret_name = oc_create_secret(
-            node,
-            namespace=secret['namespace'],
+            self.node,
+            namespace=self.sc.get('secretnamespace', 'default'),
             data_key=self.heketi_cli_key,
-            secret_type=secret['type'])
+            secret_type=self.sc.get('provisioner', 'kubernetes.io/glusterfs'))
         self.addCleanup(
-            oc_delete, node, 'secret', self.secret_name)
+            oc_delete, self.node, 'secret', self.secret_name)
 
         # create storage class with mandatory parameters only
         self.sc_name = oc_create_sc(
-            node, provisioner='kubernetes.io/glusterfs',
-            resturl=sc['resturl'], restuser=sc['restuser'],
-            secretnamespace=sc['secretnamespace'],
+            self.node, provisioner='kubernetes.io/glusterfs',
+            resturl=self.sc['resturl'], restuser=self.sc['restuser'],
+            secretnamespace=self.sc['secretnamespace'],
             secretname=self.secret_name
         )
-        self.addCleanup(oc_delete, node, 'sc', self.sc_name)
+        self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
 
         # Create PVC
-        pvc_name = oc_create_pvc(node, self.sc_name)
-        self.addCleanup(wait_for_resource_absence, node, 'pvc', pvc_name)
-        self.addCleanup(oc_delete, node, 'pvc', pvc_name)
-        verify_pvc_status_is_bound(node, pvc_name)
+        pvc_name = oc_create_pvc(self.node, self.sc_name)
+        self.addCleanup(wait_for_resource_absence, self.node, 'pvc', pvc_name)
+        self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
+        verify_pvc_status_is_bound(self.node, pvc_name)
 
         # Create DC with POD and attached PVC to it.
-        dc_name = oc_create_app_dc_with_io(node, pvc_name)
-        self.addCleanup(oc_delete, node, 'dc', dc_name)
-        self.addCleanup(scale_dc_pod_amount_and_wait, node, dc_name, 0)
+        dc_name = oc_create_app_dc_with_io(self.node, pvc_name)
+        self.addCleanup(oc_delete, self.node, 'dc', dc_name)
+        self.addCleanup(scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
 
-        pod_name = get_pod_name_from_dc(node, dc_name)
-        wait_for_pod_be_ready(node, pod_name)
+        pod_name = get_pod_name_from_dc(self.node, dc_name)
+        wait_for_pod_be_ready(self.node, pod_name)
 
         # Make sure we are able to work with files on the mounted volume
         filepath = "/mnt/file_for_testing_sc.log"
         cmd = "dd if=/dev/urandom of=%s bs=1K count=100" % filepath
-        ret, out, err = oc_rsh(node, pod_name, cmd)
+        ret, out, err = oc_rsh(self.node, pod_name, cmd)
         self.assertEqual(
-            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
+            ret, 0, "Failed to execute command %s on %s" % (cmd, self.node))
 
         cmd = "ls -lrt %s" % filepath
-        ret, out, err = oc_rsh(node, pod_name, cmd)
+        ret, out, err = oc_rsh(self.node, pod_name, cmd)
         self.assertEqual(
-            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
+            ret, 0, "Failed to execute command %s on %s" % (cmd, self.node))
 
         cmd = "rm -rf %s" % filepath
-        ret, out, err = oc_rsh(node, pod_name, cmd)
+        ret, out, err = oc_rsh(self.node, pod_name, cmd)
         self.assertEqual(
-            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
+            ret, 0, "Failed to execute command %s on %s" % (cmd, self.node))
 
     def test_dynamic_provisioning_glusterfile_heketidown_pvc_delete(self):
         """ Delete PVC's when heketi is down CNS-438 """

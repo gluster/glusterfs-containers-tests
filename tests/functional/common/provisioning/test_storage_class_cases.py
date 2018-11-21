@@ -34,12 +34,16 @@ class TestStorageClassCases(cns_baseclass.CnsBaseClass):
             parameter (dict): dictionary with storage class parameters
         """
         if vol_type == "glusterfile":
-            sc = self.cns_storage_class['storage_class1']
-            secret = self.cns_secret['secret1']
+            sc = self.cns_storage_class.get(
+                'storage_class1',
+                self.cns_storage_class.get('file_storage_class'))
+
             # Create secret file for usage in storage class
             self.secret_name = oc_create_secret(
-                self.ocp_master_node[0], namespace=secret['namespace'],
-                data_key=self.heketi_cli_key, secret_type=secret['type'])
+                self.ocp_master_node[0],
+                namespace=sc.get('secretnamespace', 'default'),
+                data_key=self.heketi_cli_key,
+                secret_type=sc.get('provisioner', 'kubernetes.io/glusterfs'))
             self.addCleanup(
                 oc_delete, self.ocp_master_node[0], 'secret', self.secret_name)
             sc_parameter = {
@@ -48,12 +52,16 @@ class TestStorageClassCases(cns_baseclass.CnsBaseClass):
                 "volumetype": "replicate:3"
             }
         elif vol_type == "glusterblock":
-            sc = self.cns_storage_class['storage_class2']
-            secret = self.cns_secret['secret2']
+            sc = self.cns_storage_class.get(
+                'storage_class2',
+                self.cns_storage_class.get('block_storage_class'))
+
             # Create secret file for usage in storage class
             self.secret_name = oc_create_secret(
-                self.ocp_master_node[0], namespace=secret['namespace'],
-                data_key=self.heketi_cli_key, secret_type=secret['type'])
+                self.ocp_master_node[0],
+                namespace=sc.get('restsecretnamespace', 'default'),
+                data_key=self.heketi_cli_key,
+                secret_type=sc.get('provisioner', 'gluster.org/glusterblock'))
             self.addCleanup(
                 oc_delete, self.ocp_master_node[0], 'secret', self.secret_name)
             sc_parameter = {

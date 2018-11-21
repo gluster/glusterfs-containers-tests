@@ -26,19 +26,24 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         if self.deployment_type != "cns":
             raise self.skipTest("This test can run only on CNS deployment.")
         self.node = self.ocp_master_node[0]
+        self.sc = self.cns_storage_class.get(
+            'storage_class1', self.cns_storage_class.get('file_storage_class'))
 
         # Mark one of the Heketi nodes as arbiter-supported if none of
         # existent nodes or devices already enabled to support it.
-        heketi_server_url = self.cns_storage_class['storage_class1']['resturl']
+        self.heketi_server_url = self.cns_storage_class.get(
+            'storage_class1',
+            self.cns_storage_class.get('file_storage_class'))['resturl']
         arbiter_tags = ('required', 'supported')
         arbiter_already_supported = False
 
         self.node_id_list = heketi_ops.heketi_node_list(
-            self.heketi_client_node, heketi_server_url)
+            self.heketi_client_node, self.heketi_server_url)
 
         for node_id in self.node_id_list[::-1]:
             node_info = heketi_ops.heketi_node_info(
-                self.heketi_client_node, heketi_server_url, node_id, json=True)
+                self.heketi_client_node, self.heketi_server_url,
+                node_id, json=True)
             if node_info.get('tags', {}).get('arbiter') in arbiter_tags:
                 arbiter_already_supported = True
                 break
@@ -51,7 +56,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             break
         if not arbiter_already_supported:
             self._set_arbiter_tag_with_further_revert(
-                self.heketi_client_node, heketi_server_url,
+                self.heketi_client_node, self.heketi_server_url,
                 'node', self.node_id_list[0], 'supported')
 
     def _set_arbiter_tag_with_further_revert(self, node, server_url,
@@ -75,13 +80,11 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                                 node, server_url, source, source_id)
 
     def _create_storage_class(self, avg_file_size=None):
-        sc = self.cns_storage_class['storage_class1']
-        secret = self.cns_secret['secret1']
-
         # Create secret file for usage in storage class
         self.secret_name = oc_create_secret(
-            self.node, namespace=secret['namespace'],
-            data_key=self.heketi_cli_key, secret_type=secret['type'])
+            self.node, namespace=self.sc.get('secretnamespace', 'default'),
+            data_key=self.heketi_cli_key,
+            secret_type=self.sc.get('provisioner', 'kubernetes.io/glusterfs'))
         self.addCleanup(
             oc_delete, self.node, 'secret', self.secret_name)
 
@@ -91,8 +94,9 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
 
         # Create storage class
         self.sc_name = oc_create_sc(
-            self.node, resturl=sc['resturl'],
-            restuser=sc['restuser'], secretnamespace=sc['secretnamespace'],
+            self.node, resturl=self.sc['resturl'],
+            restuser=self.sc['restuser'],
+            secretnamespace=self.sc['secretnamespace'],
             secretname=self.secret_name,
             volumeoptions=vol_options,
         )
@@ -213,11 +217,11 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         """Test case CNS-942"""
 
         # Set arbiter:disabled tag to the data devices and get their info
-        heketi_server_url = self.cns_storage_class['storage_class1']['resturl']
         data_nodes = []
         for node_id in self.node_id_list[0:2]:
             node_info = heketi_ops.heketi_node_info(
-                self.heketi_client_node, heketi_server_url, node_id, json=True)
+                self.heketi_client_node, self.heketi_server_url,
+                node_id, json=True)
 
             if len(node_info['devices']) < 2:
                 self.skipTest(
@@ -228,11 +232,11 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                     "Devices are expected to have more than 3Gb of free space")
             for device in node_info['devices']:
                 self._set_arbiter_tag_with_further_revert(
-                    self.heketi_client_node, heketi_server_url,
+                    self.heketi_client_node, self.heketi_server_url,
                     'device', device['id'], 'disabled',
                     device.get('tags', {}).get('arbiter'))
             self._set_arbiter_tag_with_further_revert(
-                self.heketi_client_node, heketi_server_url,
+                self.heketi_client_node, self.heketi_server_url,
                 'node', node_id, 'disabled',
                 node_info.get('tags', {}).get('arbiter'))
 
@@ -241,14 +245,15 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         # Set arbiter:required tag to all other nodes and their devices
         for node_id in self.node_id_list[2:]:
             node_info = heketi_ops.heketi_node_info(
-                self.heketi_client_node, heketi_server_url, node_id, json=True)
+                self.heketi_client_node, self.heketi_server_url,
+                node_id, json=True)
             self._set_arbiter_tag_with_further_revert(
-                self.heketi_client_node, heketi_server_url,
+                self.heketi_client_node, self.heketi_server_url,
                 'node', node_id, 'required',
                 node_info.get('tags', {}).get('arbiter'))
             for device in node_info['devices']:
                 self._set_arbiter_tag_with_further_revert(
-                    self.heketi_client_node, heketi_server_url,
+                    self.heketi_client_node, self.heketi_server_url,
                     'device', device['id'], 'required',
                     device.get('tags', {}).get('arbiter'))
 
@@ -300,14 +305,14 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             # to reduce its size, then enable smaller device back.
             try:
                 out = heketi_ops.heketi_device_disable(
-                    self.heketi_client_node, heketi_server_url,
+                    self.heketi_client_node, self.heketi_server_url,
                     smaller_device_id)
                 self.assertTrue(out)
                 self._create_and_wait_for_pvc(
                     int(helper_vol_size_kb / 1024.0**2) + 1)
             finally:
                 out = heketi_ops.heketi_device_enable(
-                    self.heketi_client_node, heketi_server_url,
+                    self.heketi_client_node, self.heketi_server_url,
                     smaller_device_id)
                 self.assertTrue(out)
 
@@ -432,22 +437,21 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         pvc_amount = 3
 
         # Get Heketi nodes info
-        heketi_server_url = self.cns_storage_class['storage_class1']['resturl']
         node_id_list = heketi_ops.heketi_node_list(
-            self.heketi_client_node, heketi_server_url)
+            self.heketi_client_node, self.heketi_server_url)
 
         # Set arbiter:required tags
         arbiter_node = heketi_ops.heketi_node_info(
-            self.heketi_client_node, heketi_server_url, node_id_list[0],
+            self.heketi_client_node, self.heketi_server_url, node_id_list[0],
             json=True)
         arbiter_nodes_ip_addresses = arbiter_node['hostnames']['storage']
         self._set_arbiter_tag_with_further_revert(
-            self.heketi_client_node, heketi_server_url, 'node',
+            self.heketi_client_node, self.heketi_server_url, 'node',
             node_id_list[0], ('required' if node_with_tag else None),
             revert_to=arbiter_node.get('tags', {}).get('arbiter'))
         for device in arbiter_node['devices']:
             self._set_arbiter_tag_with_further_revert(
-                self.heketi_client_node, heketi_server_url, 'device',
+                self.heketi_client_node, self.heketi_server_url, 'device',
                 device['id'], (None if node_with_tag else 'required'),
                 revert_to=device.get('tags', {}).get('arbiter'))
 
@@ -455,7 +459,8 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         data_nodes, data_nodes_ip_addresses = [], []
         for node_id in node_id_list[1:]:
             node_info = heketi_ops.heketi_node_info(
-                self.heketi_client_node, heketi_server_url, node_id, json=True)
+                self.heketi_client_node, self.heketi_server_url,
+                node_id, json=True)
             if not any([int(d['storage']['free']) > (pvc_amount * 1024**2)
                         for d in node_info['devices']]):
                 self.skipTest(
@@ -464,11 +469,11 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             data_nodes_ip_addresses.extend(node_info['hostnames']['storage'])
             for device in node_info['devices']:
                 self._set_arbiter_tag_with_further_revert(
-                    self.heketi_client_node, heketi_server_url, 'device',
+                    self.heketi_client_node, self.heketi_server_url, 'device',
                     device['id'], (None if node_with_tag else 'disabled'),
                     revert_to=device.get('tags', {}).get('arbiter'))
             self._set_arbiter_tag_with_further_revert(
-                self.heketi_client_node, heketi_server_url, 'node',
+                self.heketi_client_node, self.heketi_server_url, 'node',
                 node_id, ('disabled' if node_with_tag else None),
                 revert_to=node_info.get('tags', {}).get('arbiter'))
             data_nodes.append(node_info)
@@ -504,11 +509,11 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         # Set arbiter:disabled tags to the first 2 nodes
         data_nodes = []
         biggest_disks = []
-        heketi_server_url = self.cns_storage_class['storage_class1']['resturl']
         self.assertGreater(len(self.node_id_list), 2)
         for node_id in self.node_id_list[0:2]:
             node_info = heketi_ops.heketi_node_info(
-                self.heketi_client_node, heketi_server_url, node_id, json=True)
+                self.heketi_client_node, self.heketi_server_url,
+                node_id, json=True)
             biggest_disk_free_space = 0
             for device in node_info['devices']:
                 disk_free_space = int(device['storage']['free'])
@@ -519,12 +524,12 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                 if disk_free_space > biggest_disk_free_space:
                     biggest_disk_free_space = disk_free_space
                 self._set_arbiter_tag_with_further_revert(
-                    self.heketi_client_node, heketi_server_url, 'device',
+                    self.heketi_client_node, self.heketi_server_url, 'device',
                     device['id'], 'disabled',
                     revert_to=device.get('tags', {}).get('arbiter'))
             biggest_disks.append(biggest_disk_free_space)
             self._set_arbiter_tag_with_further_revert(
-                self.heketi_client_node, heketi_server_url, 'node',
+                self.heketi_client_node, self.heketi_server_url, 'node',
                 node_id, 'disabled',
                 revert_to=node_info.get('tags', {}).get('arbiter'))
             data_nodes.append(node_info)
@@ -533,14 +538,15 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         arbiter_nodes = []
         for node_id in self.node_id_list[2:]:
             node_info = heketi_ops.heketi_node_info(
-                self.heketi_client_node, heketi_server_url, node_id, json=True)
+                self.heketi_client_node, self.heketi_server_url,
+                node_id, json=True)
             for device in node_info['devices']:
                 self._set_arbiter_tag_with_further_revert(
-                    self.heketi_client_node, heketi_server_url, 'device',
+                    self.heketi_client_node, self.heketi_server_url, 'device',
                     device['id'], 'required',
                     revert_to=device.get('tags', {}).get('arbiter'))
             self._set_arbiter_tag_with_further_revert(
-                self.heketi_client_node, heketi_server_url, 'node',
+                self.heketi_client_node, self.heketi_server_url, 'node',
                 node_id, 'required',
                 revert_to=node_info.get('tags', {}).get('arbiter'))
             arbiter_nodes.append(node_info)

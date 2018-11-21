@@ -98,14 +98,6 @@ class CnsBaseClass(unittest.TestCase):
 
         cls.cns_storage_class = (g.config['cns']['dynamic_provisioning']
                                  ['storage_classes'])
-        cls.cns_secret = g.config['cns']['dynamic_provisioning']['secrets']
-        cls.cns_pvc_size_number_dict = (g.config['cns']
-                                        ['dynamic_provisioning']
-                                        ['pvc_size_number'])
-        cls.start_count_for_pvc = (g.config['cns']['dynamic_provisioning']
-                                   ['start_count_for_pvc'])
-        cls.app_pvc_count_dict = (g.config['cns']['dynamic_provisioning']
-                                  ['app_pvc_count_dict'])
         cmd = "echo -n %s | base64" % cls.heketi_cli_key
         ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
         if ret != 0:

@@ -51,16 +51,13 @@ class GlusterStabilityTestSetup(CnsBaseClass):
         # which uses time and date of test case
         self.prefix = "autotest-%s" % (self.glustotest_run_id.replace("_", ""))
 
-        _cns_storage_class = self.cns_storage_class['storage_class2']
+        _cns_storage_class = self.cns_storage_class.get(
+            'storage_class2',
+            self.cns_storage_class.get('block_storage_class'))
         self.provisioner = _cns_storage_class["provisioner"]
-        self.restsecretname = _cns_storage_class["restsecretname"]
         self.restsecretnamespace = _cns_storage_class["restsecretnamespace"]
         self.restuser = _cns_storage_class["restuser"]
         self.resturl = _cns_storage_class["resturl"]
-
-        _cns_secret = self.cns_secret['secret2']
-        self.secretnamespace = _cns_secret['namespace']
-        self.secrettype = _cns_secret['type']
 
         # using pvc size count as 1 by default
         self.pvcsize = 1
@@ -112,8 +109,8 @@ class GlusterStabilityTestSetup(CnsBaseClass):
             secretname (str): created secret file name
         """
         secretname = oc_create_secret(
-            self.oc_node, namespace=self.secretnamespace,
-            data_key=self.heketi_cli_key, secret_type=self.secrettype)
+            self.oc_node, namespace=self.restsecretnamespace,
+            data_key=self.heketi_cli_key, secret_type=self.provisioner)
         self.addCleanup(oc_delete, self.oc_node, 'secret', secretname)
 
         sc_name = oc_create_sc(

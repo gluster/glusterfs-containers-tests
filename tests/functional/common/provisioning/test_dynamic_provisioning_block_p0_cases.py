@@ -37,16 +37,18 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
     def setUp(self):
         super(TestDynamicProvisioningBlockP0, self).setUp()
         self.node = self.ocp_master_node[0]
-        self.sc = self.cns_storage_class['storage_class2']
+        self.sc = self.cns_storage_class.get(
+            'storage_class2',
+            self.cns_storage_class.get('block_storage_class'))
 
     def _create_storage_class(self, hacount=True, create_name_prefix=False,
                               reclaim_policy="Delete"):
-        secret = self.cns_secret['secret2']
-
         # Create secret file
         self.secret_name = oc_create_secret(
-            self.node, namespace=secret['namespace'],
-            data_key=self.heketi_cli_key, secret_type=secret['type'])
+            self.node,
+            namespace=self.sc.get('restsecretnamespace', 'default'),
+            data_key=self.heketi_cli_key,
+            secret_type=self.sc.get('provisioner', 'gluster.org/glusterblock'))
         self.addCleanup(oc_delete, self.node, 'secret', self.secret_name)
 
         # create storage class

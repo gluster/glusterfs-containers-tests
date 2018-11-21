@@ -1,17 +1,11 @@
-log_file: /var/log/tests/cns_tests.log
-log_level: DEBUG
-
 # 'ocp_servers' is info about ocp master, client and worker nodes.
-# 'region' can be <primary|infra>.
 # This section has to be defined.
 ocp_servers:
     master:
         master_node1:
             hostname: master_node1
-            region:
         master_node2:
             hostname: master_node2
-            region:
     client:
         client_node1:
             hostname: client_node1
@@ -20,10 +14,8 @@ ocp_servers:
     nodes:
         ocp_node1:
             hostname: ocp_node1
-            region:
         ocp_node2:
             hostname: ocp_node2
-            region:
 
 # 'gluster_servers' section covers the details of the nodes where gluster
 # servers are run. In the case of CNS, these are the nodes where gluster
@@ -41,16 +33,6 @@ gluster_servers:
         manage: gluster_server2
         storage: gluster_server2
         zone : 2
-        devices: [device1, device2]
-        additional_devices: [device3, device4]
-
-# 'additional_gluster_servers' section covers the details of the
-# additional gluster nodes to add to the gluster cluster.
-additional_gluster_servers:
-    gluster_server3:
-        manage: gluster_server3
-        storage: gluster_server3
-        zone : 3
         devices: [device1, device2]
         additional_devices: [device3, device4]
 
@@ -81,54 +63,25 @@ cns:
         heketi_ssh_key: "/etc/heketi/heketi_key"
         heketi_config_file: "/etc/heketi/heketi.json"
     heketi_volume:
-        size:
-        name:
-        expand_size:
+        size: 1
+        name: "autotests-heketi-vol-name"
+        expand_size: 2
     dynamic_provisioning:
-        pods_info:
-            nginx:
-                size: 5
-                number_of_pods: 3
-            mongo:
-                size: 6
-                number_of_pods: 7
         storage_classes:
-            storage_class1:
-                name: storage_class1
-                provisioner:
+            file_storage_class:
+                provisioner: "kubernetes.io/glusterfs"
                 resturl:
                 restuser:
-                secretnamespace:
-                secretname:
+                secretnamespace: "<fake-namespace-name>"
                 volumenameprefix: "cns-vol"
-            storage_class2:
-                name: storage_class2
-                provisioner:
+            block_storage_class:
+                provisioner: "gluster.org/glusterblock"
                 resturl:
                 restuser:
-                restsecretnamespace:
-                restsecretname:
+                restsecretnamespace: "<fake-namespace-name>"
                 hacount: "3"
                 chapauthenabled: "true"
                 volumenameprefix: "cns-vol"
-        secrets:
-            secret1:
-                secret_name: secret1
-                namespace:
-                data_key:
-                type:
-            secret2:
-                secret_name: secret2
-                namespace:
-                data_key:
-                type:
-        start_count_for_pvc: 1
-        pvc_size_number:
-            10: 2
-            20: 1
-        app_pvc_count_dict:
-           nginx: 2
-
 scale:
     - type: jenkins
       instances: 1
