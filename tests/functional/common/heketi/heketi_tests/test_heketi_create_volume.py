@@ -1,6 +1,9 @@
+import time
+
 from glustolibs.gluster.exceptions import ExecutionError
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
+import six
 
 from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
 from cnslibs.common.heketi_ops import (heketi_volume_create,
@@ -214,11 +217,15 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
             heketi_blockvolume_delete, self.heketi_client_node,
             self.heketi_server_url, blockvol1['id'])
 
+        # Sleep for couple of seconds to avoid races
+        time.sleep(2)
+
         # Get info about block hosting volume available space
         file_volumes = heketi_volume_list(
             self.heketi_client_node, self.heketi_server_url, json=True)
         self.assertTrue(file_volumes)
         max_freesize = 0
+        file_volumes_debug_info = []
         for vol_id in file_volumes["volumes"]:
             vol = heketi_volume_info(
                 self.heketi_client_node, self.heketi_server_url,
@@ -226,6 +233,13 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
             current_freesize = vol.get("blockinfo", {}).get("freesize", 0)
             if current_freesize > max_freesize:
                 max_freesize = current_freesize
+            if current_freesize:
+                file_volumes_debug_info.append(six.text_type({
+                    'id': vol.get('id', '?'),
+                    'name': vol.get('name', '?'),
+                    'size': vol.get('size', '?'),
+                    'blockinfo': vol.get('blockinfo', '?'),
+                }))
         self.assertGreater(max_freesize, 0)
 
         # Try to create blockvolume with size bigger than available
@@ -237,4 +251,9 @@ class TestHeketiVolume(HeketiClientSetupBaseClass):
             self.addCleanup(
                 heketi_blockvolume_delete, self.heketi_client_node,
                 self.heketi_server_url, blockvol2['id'])
-        self.assertFalse(blockvol2, 'Volume unexpectedly was created')
+        self.assertFalse(
+            blockvol2,
+            "Volume unexpectedly was created. Calculated 'max free size' is "
+            "'%s'.\nBlock volume info is: %s \n"
+            "Block hosting volumes which were considered: \n%s" % (
+                max_freesize, blockvol2, '\n'.join(file_volumes_debug_info)))
