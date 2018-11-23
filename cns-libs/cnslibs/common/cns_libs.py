@@ -4,7 +4,7 @@ import yaml
 from cnslibs.common.exceptions import (
     ExecutionError,
     NotSupportedException)
-from cnslibs.common.openshift_ops import oc_version
+from cnslibs.common.openshift_version import get_openshift_version
 
 
 MASTER_CONFIG_FILEPATH = "/etc/origin/master/master-config.yaml"
@@ -74,8 +74,8 @@ def enable_pvc_resize(master_node):
          bool: True if successful,
                otherwise raise Exception
     '''
-    version = oc_version(master_node)
-    if any(v in version for v in ("3.6", "3.7", "3.8")):
+    version = get_openshift_version()
+    if version < "3.9":
         msg = ("pv resize is not available in openshift "
                "version %s " % version)
         g.log.error(msg)
@@ -118,7 +118,7 @@ def enable_pvc_resize(master_node):
 
     g.log.info("successfully edited master-config.yaml file "
                "%s" % master_node)
-    if "3.9" in version:
+    if version == "3.9":
         cmd = ("systemctl restart atomic-openshift-master-api "
                "atomic-openshift-master-controllers")
     else:

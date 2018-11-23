@@ -9,13 +9,13 @@ from cnslibs.common.openshift_ops import (
     oc_create_app_dc_with_io,
     oc_delete,
     oc_rsh,
-    oc_version,
     scale_dc_pod_amount_and_wait,
     verify_pv_size,
     verify_pvc_size,
     wait_for_events,
     wait_for_pod_be_ready,
     wait_for_resource_absence)
+from cnslibs.common.openshift_version import get_openshift_version
 from cnslibs.cns.cns_baseclass import CnsBaseClass
 from cnslibs.common.exceptions import ExecutionError
 from glusto.core import Glusto as g
@@ -29,8 +29,7 @@ class TestPvResizeClass(CnsBaseClass):
     def setUpClass(cls):
         super(TestPvResizeClass, cls).setUpClass()
         cls.node = cls.ocp_master_node[0]
-        cls.version = oc_version(cls.node)
-        if any(v in cls.version for v in ("3.6", "3.7", "3.8")):
+        if get_openshift_version() < "3.9":
             cls.skip_me = True
             return
         enable_pvc_resize(cls.node)
