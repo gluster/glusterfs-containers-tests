@@ -2,6 +2,7 @@ from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
 from cnslibs.common.heketi_ops import (
     get_heketi_metrics,
     heketi_cluster_info,
+    heketi_cluster_list,
     heketi_topology_info,
     heketi_volume_create,
     heketi_volume_delete,
@@ -270,3 +271,38 @@ class TestHeketiMetrics(HeketiClientSetupBaseClass):
                 self.heketi_server_url)
             self.assertNotIn(vol['id'], volume_list)
             self.verify_volume_count()
+
+    def test_heketi_metrics_validating_cluster_count(self):
+        # CNS-1246 - Heketi_metrics_validating_cluster_count
+        cluster_list = heketi_cluster_list(
+            self.heketi_client_node, self.heketi_server_url, json=True)
+
+        self.assertTrue(cluster_list)
+        self.assertTrue(cluster_list.get('clusters'))
+
+        metrics = get_heketi_metrics(
+            self.heketi_client_node, self.heketi_server_url)
+
+        self.assertTrue(metrics)
+        self.assertTrue(metrics.get('heketi_cluster_count'))
+
+        self.assertEqual(
+            len(cluster_list['clusters']), metrics['heketi_cluster_count'])
+
+    def test_heketi_metrics_validating_existing_node_count(self):
+        # CNS-1247 - Heketi_metrics_validating_existing_node_count
+        metrics = get_heketi_metrics(
+            self.heketi_client_node, self.heketi_server_url)
+
+        self.assertTrue(metrics)
+        self.assertTrue(metrics.get('heketi_nodes_count'))
+
+        for cluster in metrics['heketi_nodes_count']:
+            cluster_info = heketi_cluster_info(
+                self.heketi_client_node, self.heketi_server_url,
+                cluster['cluster'], json=True)
+
+            self.assertTrue(cluster_info)
+            self.assertTrue(cluster_info.get('nodes'))
+
+            self.assertEqual(len(cluster_info['nodes']), cluster['value'])
