@@ -7,16 +7,12 @@ from cnslibs.common.openshift_ops import (
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
     oc_create_app_dc_with_io,
-    oc_create_pvc,
-    oc_create_secret,
-    oc_create_sc,
     oc_delete,
     oc_rsh,
     oc_version,
     scale_dc_pod_amount_and_wait,
     verify_pv_size,
     verify_pvc_size,
-    verify_pvc_status_is_bound,
     wait_for_events,
     wait_for_pod_be_ready,
     wait_for_resource_absence)
@@ -46,45 +42,19 @@ class TestPvResizeClass(CnsBaseClass):
                    "version %s " % self.version)
             g.log.error(msg)
             raise self.skipTest(msg)
-        self.sc = self.cns_storage_class.get(
-            'storage_class1', self.cns_storage_class.get('file_storage_class'))
-
-    def _create_storage_class(self, volname_prefix=False):
-        # create secret
-        self.secret_name = oc_create_secret(
-            self.node,
-            namespace=self.sc.get('secretnamespace', 'default'),
-            data_key=self.heketi_cli_key,
-            secret_type=self.sc.get('provisioner', 'kubernetes.io/glusterfs'))
-        self.addCleanup(oc_delete, self.node, 'secret', self.secret_name)
-
-        # create storageclass
-        self.sc_name = oc_create_sc(
-            self.node, provisioner='kubernetes.io/glusterfs',
-            resturl=self.sc['resturl'], restuser=self.sc['restuser'],
-            secretnamespace=self.sc['secretnamespace'],
-            secretname=self.secret_name,
-            allow_volume_expansion=True,
-            **({"volumenameprefix": self.sc['volumenameprefix']}
-                if volname_prefix else {})
-        )
-        self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
-
-        return self.sc_name
 
     @ddt.data(False, True)
-    def test_pv_resize_with_prefix_for_name(self, volname_prefix=False):
+    def test_pv_resize_with_prefix_for_name(self,
+                                            create_vol_name_prefix=False):
         """testcases CNS-1037 and CNS-1038 """
         dir_path = "/mnt/"
-        self._create_storage_class(volname_prefix)
-        node = self.ocp_master_node[0]
+        node = self.ocp_client[0]
 
         # Create PVC
-        pvc_name = oc_create_pvc(node, self.sc_name, pvc_size=1)
-        self.addCleanup(wait_for_resource_absence,
-                        node, 'pvc', pvc_name)
-        self.addCleanup(oc_delete, node, 'pvc', pvc_name)
-        verify_pvc_status_is_bound(node, pvc_name)
+        self.create_storage_class(
+            allow_volume_expansion=True,
+            create_vol_name_prefix=create_vol_name_prefix)
+        pvc_name = self.create_and_wait_for_pvc()
 
         # Create DC with POD and attached PVC to it.
         dc_name = oc_create_app_dc_with_io(node, pvc_name)
@@ -94,7 +64,7 @@ class TestPvResizeClass(CnsBaseClass):
 
         pod_name = get_pod_name_from_dc(node, dc_name)
         wait_for_pod_be_ready(node, pod_name)
-        if volname_prefix:
+        if create_vol_name_prefix:
             ret = heketi_ops.verify_volume_name_prefix(
                 node, self.sc['volumenameprefix'],
                 self.sc['secretnamespace'],
@@ -172,11 +142,8 @@ class TestPvResizeClass(CnsBaseClass):
         available_size_gb = int(min(nodes.values()) / (1024**2))
 
         # Create PVC
-        self._create_storage_class()
-        pvc_name = oc_create_pvc(self.node, self.sc_name, pvc_size=pvc_size_gb)
-        self.addCleanup(wait_for_resource_absence, self.node, 'pvc', pvc_name)
-        self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
-        verify_pvc_status_is_bound(self.node, pvc_name)
+        self.create_storage_class(allow_volume_expansion=True)
+        pvc_name = self.create_and_wait_for_pvc(pvc_size=pvc_size_gb)
 
         # Create DC with POD and attached PVC to it
         dc_name = oc_create_app_dc_with_io(self.node, pvc_name)
@@ -234,16 +201,12 @@ class TestPvResizeClass(CnsBaseClass):
     def test_pv_resize_try_shrink_pv_size(self):
         """testcase CNS-1039 """
         dir_path = "/mnt/"
-        self._create_storage_class()
         node = self.ocp_master_node[0]
 
-        pv_size = 5
         # Create PVC
-        pvc_name = oc_create_pvc(node, self.sc_name, pvc_size=pv_size)
-        self.addCleanup(wait_for_resource_absence,
-                        node, 'pvc', pvc_name)
-        self.addCleanup(oc_delete, node, 'pvc', pvc_name)
-        verify_pvc_status_is_bound(node, pvc_name)
+        pv_size = 5
+        self.create_storage_class(allow_volume_expansion=True)
+        pvc_name = self.create_and_wait_for_pvc(pvc_size=pv_size)
 
         # Create DC with POD and attached PVC to it.
         dc_name = oc_create_app_dc_with_io(node, pvc_name)
