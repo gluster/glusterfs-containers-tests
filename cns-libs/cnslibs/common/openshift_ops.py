@@ -326,7 +326,7 @@ def oc_create_sc(hostname, sc_name_prefix="autotests-sc",
     return sc_name
 
 
-def oc_create_pvc(hostname, sc_name, pvc_name_prefix="autotests-pvc",
+def oc_create_pvc(hostname, sc_name=None, pvc_name_prefix="autotests-pvc",
                   pvc_size=1):
     """Create PVC using data provided as stdin input.
 
@@ -338,15 +338,16 @@ def oc_create_pvc(hostname, sc_name, pvc_name_prefix="autotests-pvc",
         pvc_size (int/str): size of PVC in Gb
     """
     pvc_name = "%s-%s" % (pvc_name_prefix, utils.get_random_str())
+    metadata = {"name": pvc_name}
+    if sc_name:
+        metadata["annotations"] = {
+            "volume.kubernetes.io/storage-class": sc_name,
+            "volume.beta.kubernetes.io/storage-class": sc_name,
+        }
     pvc_data = json.dumps({
         "kind": "PersistentVolumeClaim",
         "apiVersion": "v1",
-        "metadata": {
-            "name": pvc_name,
-            "annotations": {
-                "volume.beta.kubernetes.io/storage-class": sc_name,
-            },
-        },
+        "metadata": metadata,
         "spec": {
             "accessModes": ["ReadWriteOnce"],
             "resources": {"requests": {"storage": "%sGi" % pvc_size}}

@@ -490,3 +490,58 @@ class TestDynamicProvisioningP0(CnsBaseClass):
 
         oc_delete(self.node, 'pv', pv_name)
         wait_for_resource_absence(self.node, 'pv', pv_name)
+
+    def test_usage_of_default_storage_class(self):
+        """Test case CNS-928"""
+
+        # Unset 'default' option from all the existing Storage Classes
+        unset_sc_annotation_cmd = (
+            r"""oc annotate sc %s """
+            r""""storageclass%s.kubernetes.io/is-default-class"-""")
+        set_sc_annotation_cmd = (
+            r"""oc patch storageclass %s -p'{"metadata": {"annotations": """
+            r"""{"storageclass%s.kubernetes.io/is-default-class": "%s"}}}'""")
+        get_sc_cmd = (
+            r'oc get sc --no-headers '
+            r'-o=custom-columns=:.metadata.name,'
+            r':".metadata.annotations.storageclass\.'
+            r'kubernetes\.io\/is-default-class",:".metadata.annotations.'
+            r'storageclass\.beta\.kubernetes\.io\/is-default-class"')
+        sc_list = self.cmd_run(get_sc_cmd)
+        for sc in sc_list.split("\n"):
+            sc = sc.split()
+            if len(sc) != 3:
+                self.skipTest(
+                    "Unexpected output for list of storage classes. "
+                    "Following is expected to contain 3 keys:: %s" % sc)
+            for value, api_type in ((sc[1], ''), (sc[2], '.beta')):
+                if value == '<none>':
+                    continue
+                self.cmd_run(unset_sc_annotation_cmd % (sc[0], api_type))
+                self.addCleanup(
+                    self.cmd_run,
+                    set_sc_annotation_cmd % (sc[0], api_type, value))
+
+        # Create new SC
+        prefix = "autotests-default-sc"
+        self._create_storage_class(prefix)
+
+        # Make new SC be the default one and sleep for 1 sec to avoid races
+        self.cmd_run(set_sc_annotation_cmd % (self.sc_name, '', 'true'))
+        self.cmd_run(set_sc_annotation_cmd % (self.sc_name, '.beta', 'true'))
+        time.sleep(1)
+
+        # Create PVC without specification of SC
+        pvc_name = oc_create_pvc(
+            self.node, sc_name=None, pvc_name_prefix=prefix)
+        self.addCleanup(
+            wait_for_resource_absence, self.node, 'pvc', pvc_name)
+        self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
+
+        # Wait for successful creation of PVC and check its SC
+        verify_pvc_status_is_bound(self.node, pvc_name)
+        get_sc_of_pvc_cmd = (
+            "oc get pvc %s --no-headers "
+            "-o=custom-columns=:.spec.storageClassName" % pvc_name)
+        out = self.cmd_run(get_sc_of_pvc_cmd)
+        self.assertEqual(out, self.sc_name)
