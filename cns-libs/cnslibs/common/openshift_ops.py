@@ -785,6 +785,34 @@ def get_gluster_pod_names_by_pvc_name(ocp_node, pvc_name):
     return data
 
 
+def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd):
+    """Run shell command on either Gluster POD or Gluster node.
+
+    Args:
+        ocp_client_node (str): Node to execute OCP commands on.
+        cmd (str): shell command to run.
+    Returns:
+        Output of a shell command as string object.
+    """
+    # Containerized Glusterfs
+    gluster_pods = get_ocp_gluster_pod_names(ocp_client_node)
+    if gluster_pods:
+        pod_cmd = "oc exec %s -- %s" % (gluster_pods[0], cmd)
+        return command.cmd_run(pod_cmd, hostname=ocp_client_node)
+
+    # Standalone Glusterfs
+    for g_host in g.config.get("gluster_servers", {}).keys():
+        try:
+            return command.cmd_run(cmd, hostname=g_host)
+        except Exception as e:
+            g.log.error(
+                "Failed to run '%s' command on '%s' Gluster node. "
+                "Error: %s" % (cmd, g_host,  e))
+
+    raise exceptions.ConfigError(
+        "Haven't found neither Gluster PODs nor Gluster nodes.")
+
+
 def get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name):
     """Get Gluster volume info based on the PVC name.
 
@@ -807,13 +835,8 @@ def get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name):
     vol_id = command.cmd_run(get_pv_cmd, hostname=ocp_node)
     assert vol_id, "Gluster volume ID should not be empty: '%s'" % vol_id
 
-    # Get name of one the Gluster PODs
-    gluster_pod = get_ocp_gluster_pod_names(ocp_node)[1]
-
-    # Get Gluster volume info
-    vol_info_cmd = "oc exec %s -- gluster v info %s --xml" % (
-        gluster_pod, vol_id)
-    vol_info = command.cmd_run(vol_info_cmd, hostname=ocp_node)
+    vol_info_cmd = "gluster v info %s --xml" % vol_id
+    vol_info = cmd_run_on_gluster_pod_or_node(ocp_node, vol_info_cmd)
 
     # Parse XML output to python dict
     with mock.patch('glusto.core.Glusto.run', return_value=(0, vol_info, '')):
