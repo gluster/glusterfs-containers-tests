@@ -13,8 +13,8 @@ from cnslibs.common.openshift_ops import (
     get_pod_names_from_dc,
     oc_create_secret,
     oc_create_sc,
-    oc_create_pvc,
     oc_create_app_dc_with_io,
+    oc_create_pvc,
     oc_create_tiny_pod_with_volume,
     oc_delete,
     oc_get_custom_resource,
@@ -40,85 +40,14 @@ class TestDynamicProvisioningP0(CnsBaseClass):
     def setUp(self):
         super(TestDynamicProvisioningP0, self).setUp()
         self.node = self.ocp_master_node[0]
-        self.sc = self.cns_storage_class.get(
-            'storage_class1', self.cns_storage_class.get('file_storage_class'))
 
-    def _create_storage_class(
-            self, create_name_prefix=False, reclaim_policy='Delete'):
-
-        # Create secret file for usage in storage class
-        self.secret_name = oc_create_secret(
-            self.node,
-            namespace=self.sc.get('secretnamespace', 'default'),
-            data_key=self.heketi_cli_key,
-            secret_type=self.sc.get('provisioner', 'kubernetes.io/glusterfs'))
-        self.addCleanup(
-            oc_delete, self.node, 'secret', self.secret_name)
-
-        # Create storage class
-        self.sc_name = oc_create_sc(
-            self.node,
-            reclaim_policy=reclaim_policy,
-            resturl=self.sc['resturl'],
-            restuser=self.sc['restuser'],
-            secretnamespace=self.sc['secretnamespace'],
-            secretname=self.secret_name,
-            **({"volumenameprefix": self.sc['volumenameprefix']}
-               if create_name_prefix else {})
-        )
-        self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
-
-    def _create_and_wait_for_pvcs(self, pvc_size=1,
-                                  pvc_name_prefix='autotests-pvc',
-                                  pvc_amount=1):
-        # Create PVCs
-        pvc_names = []
-        for i in range(pvc_amount):
-            pvc_name = oc_create_pvc(
-                self.node, self.sc_name, pvc_name_prefix=pvc_name_prefix,
-                pvc_size=pvc_size)
-            pvc_names.append(pvc_name)
-            self.addCleanup(
-                wait_for_resource_absence, self.node, 'pvc', pvc_name)
-
-        # Wait for PVCs to be in bound state
-        try:
-            for pvc_name in pvc_names:
-                verify_pvc_status_is_bound(self.node, pvc_name)
-        finally:
-            reclaim_policy = oc_get_custom_resource(
-                self.node, 'sc', ':.reclaimPolicy', self.sc_name)[0]
-
-            for pvc_name in pvc_names:
-                if reclaim_policy == 'Retain':
-                    pv_name = get_pv_name_from_pvc(self.node, pvc_name)
-                    self.addCleanup(oc_delete, self.node, 'pv', pv_name,
-                                    raise_on_absence=False)
-                    custom = (r':.metadata.annotations."gluster\.kubernetes'
-                              r'\.io\/heketi\-volume\-id"')
-                    vol_id = oc_get_custom_resource(
-                        self.node, 'pv', custom, pv_name)[0]
-                    self.addCleanup(heketi_volume_delete,
-                                    self.heketi_client_node,
-                                    self.heketi_server_url, vol_id,
-                                    raise_on_error=False)
-                self.addCleanup(oc_delete, self.node, 'pvc', pvc_name,
-                                raise_on_absence=False)
-
-        return pvc_names
-
-    def _create_and_wait_for_pvc(self, pvc_size=1,
-                                 pvc_name_prefix='autotests-pvc'):
-        self.pvc_name = self._create_and_wait_for_pvcs(
-            pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix)[0]
-        return self.pvc_name
-
-    def dynamic_provisioning_glusterfile(self, heketi_volname_prefix=False):
+    def dynamic_provisioning_glusterfile(self, create_vol_name_prefix):
         # Create secret and storage class
-        self._create_storage_class(heketi_volname_prefix)
+        self.create_storage_class(
+            create_vol_name_prefix=create_vol_name_prefix)
 
         # Create PVC
-        pvc_name = self._create_and_wait_for_pvc()
+        pvc_name = self.create_and_wait_for_pvc()
 
         # Create DC with POD and attached PVC to it.
         dc_name = oc_create_app_dc_with_io(self.node, pvc_name)
@@ -129,7 +58,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         wait_for_pod_be_ready(self.node, pod_name)
 
         # Verify Heketi volume name for prefix presence if provided
-        if heketi_volname_prefix:
+        if create_vol_name_prefix:
             ret = verify_volume_name_prefix(self.node,
                                             self.sc['volumenameprefix'],
                                             self.sc['secretnamespace'],
@@ -160,10 +89,10 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         datafile_path = '%s/fake_file_for_%s' % (mount_path, self.id())
 
         # Create secret and storage class
-        self._create_storage_class()
+        self.create_storage_class()
 
         # Create PVC
-        app_1_pvc_name = self._create_and_wait_for_pvc()
+        app_1_pvc_name = self.create_and_wait_for_pvc()
 
         # Create app POD with attached volume
         app_1_pod_name = oc_create_tiny_pod_with_volume(
@@ -197,12 +126,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         wait_for_resource_absence(self.node, 'pod', heketi_pod_name)
 
         # Create second PVC
-        app_2_pvc_name = oc_create_pvc(
-            self.node, self.sc_name, pvc_name_prefix='autotests-pvc',
-            pvc_size=1)
-        self.addCleanup(
-            wait_for_resource_absence, self.node, 'pvc', app_2_pvc_name)
-        self.addCleanup(oc_delete, self.node, 'pvc', app_2_pvc_name)
+        app_2_pvc_name = self.create_and_wait_for_pvc()
 
         # Check status of the second PVC after small pause
         time.sleep(2)
@@ -246,10 +170,10 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         datafile_path = '%s/fake_file_for_%s' % (mount_path, self.id())
 
         # Create secret and storage class
-        self._create_storage_class()
+        self.create_storage_class()
 
         # Create PVC
-        pvc_name = self._create_and_wait_for_pvc()
+        pvc_name = self.create_and_wait_for_pvc()
 
         # Create app POD with attached volume
         pod_name = oc_create_tiny_pod_with_volume(
@@ -309,19 +233,16 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             oc_delete, self.node, 'secret', self.secret_name)
 
         # create storage class with mandatory parameters only
-        self.sc_name = oc_create_sc(
+        sc_name = oc_create_sc(
             self.node, provisioner='kubernetes.io/glusterfs',
             resturl=self.sc['resturl'], restuser=self.sc['restuser'],
             secretnamespace=self.sc['secretnamespace'],
             secretname=self.secret_name
         )
-        self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
+        self.addCleanup(oc_delete, self.node, 'sc', sc_name)
 
         # Create PVC
-        pvc_name = oc_create_pvc(self.node, self.sc_name)
-        self.addCleanup(wait_for_resource_absence, self.node, 'pvc', pvc_name)
-        self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
-        verify_pvc_status_is_bound(self.node, pvc_name)
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
 
         # Create DC with POD and attached PVC to it.
         dc_name = oc_create_app_dc_with_io(self.node, pvc_name)
@@ -351,10 +272,9 @@ class TestDynamicProvisioningP0(CnsBaseClass):
     def test_dynamic_provisioning_glusterfile_heketidown_pvc_delete(self):
         """ Delete PVC's when heketi is down CNS-438 """
 
-        # Create storage class and secret objects
-        self._create_storage_class()
-
-        self.pvc_name_list = self._create_and_wait_for_pvcs(
+        # Create storage class, secret and PVCs
+        self.create_storage_class()
+        self.pvc_name_list = self.create_and_wait_for_pvcs(
             1, 'pvc-heketi-down', 3)
 
         # remove heketi-pod
@@ -385,17 +305,15 @@ class TestDynamicProvisioningP0(CnsBaseClass):
                                       interval=1, timeout=120)
 
         # create a new PVC
-        self._create_and_wait_for_pvc()
+        self.create_and_wait_for_pvc()
 
     def test_validate_pvc_in_multiple_app_pods(self):
         """Test case CNS-574"""
         replicas = 5
 
-        # Create secret and storage class
-        self._create_storage_class()
-
         # Create PVC
-        pvc_name = self._create_and_wait_for_pvc()
+        sc_name = self.create_storage_class()
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
 
         # Create DC with application PODs
         dc_name = oc_create_app_dc_with_io(
@@ -419,20 +337,14 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             self.assertIn("temp_%s" % pod_name, ls_out)
 
     def test_pvc_deletion_while_pod_is_running(self):
-        # CNS-584 Verify PVC deletion while pod is running
+        """Test case CNS-584 - Verify PVC deletion while pod is running"""
 
-        self._create_storage_class()
-        self._create_and_wait_for_pvc()
+        # Create DC with POD and attached PVC to it
+        sc_name = self.create_storage_class()
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
 
-        # Create DC with POD and attached PVC to it.
-        dc_name = oc_create_app_dc_with_io(self.node, self.pvc_name)
-        self.addCleanup(oc_delete, self.node, 'dc', dc_name)
-        self.addCleanup(scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
-
-        pod_name = get_pod_name_from_dc(self.node, dc_name)
-        wait_for_pod_be_ready(self.node, pod_name, timeout=300, wait_step=10)
-
-        # delete PVC
+        # Delete PVC
         oc_delete(self.node, 'pvc', self.pvc_name)
 
         with self.assertRaises(ExecutionError):
@@ -450,8 +362,8 @@ class TestDynamicProvisioningP0(CnsBaseClass):
     def test_dynamic_provisioning_glusterfile_reclaim_policy_retain(self):
         # CNS-1390 - Retain policy - glusterfs - delete pvc
 
-        self._create_storage_class(reclaim_policy='Retain')
-        self._create_and_wait_for_pvc()
+        self.create_storage_class(reclaim_policy='Retain')
+        self.create_and_wait_for_pvc()
 
         # get the name of the volume
         pv_name = get_pv_name_from_pvc(self.node, self.pvc_name)
@@ -524,7 +436,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
 
         # Create new SC
         prefix = "autotests-default-sc"
-        self._create_storage_class(prefix)
+        self.create_storage_class(sc_name_prefix=prefix)
 
         # Make new SC be the default one and sleep for 1 sec to avoid races
         self.cmd_run(set_sc_annotation_cmd % (self.sc_name, '', 'true'))

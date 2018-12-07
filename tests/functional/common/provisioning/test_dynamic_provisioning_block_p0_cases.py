@@ -9,9 +9,6 @@ from cnslibs.common.openshift_ops import (
     get_pv_name_from_pvc,
     get_pvc_status,
     oc_create_app_dc_with_io,
-    oc_create_secret,
-    oc_create_sc,
-    oc_create_pvc,
     oc_delete,
     oc_get_custom_resource,
     oc_rsh,
@@ -37,108 +34,18 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
     def setUp(self):
         super(TestDynamicProvisioningBlockP0, self).setUp()
         self.node = self.ocp_master_node[0]
-        self.sc = self.cns_storage_class.get(
-            'storage_class2',
-            self.cns_storage_class.get('block_storage_class'))
-
-    def _create_storage_class(self, hacount=True, create_name_prefix=False,
-                              reclaim_policy="Delete"):
-        # Create secret file
-        self.secret_name = oc_create_secret(
-            self.node,
-            namespace=self.sc.get('restsecretnamespace', 'default'),
-            data_key=self.heketi_cli_key,
-            secret_type=self.sc.get('provisioner', 'gluster.org/glusterblock'))
-        self.addCleanup(oc_delete, self.node, 'secret', self.secret_name)
-
-        # create storage class
-        kwargs = {
-            "provisioner": "gluster.org/glusterblock",
-            "resturl": self.sc['resturl'],
-            "restuser": self.sc['restuser'],
-            "restsecretnamespace": self.sc['restsecretnamespace'],
-            "restsecretname": self.secret_name
-        }
-        if hacount:
-            kwargs["hacount"] = self.sc['hacount']
-        if create_name_prefix:
-            kwargs["volumenameprefix"] = self.sc.get(
-                    'volumenameprefix', 'autotest-blk')
-
-        self.sc_name = oc_create_sc(
-            self.node, reclaim_policy=reclaim_policy, **kwargs)
-        self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
-
-        return self.sc_name
-
-    def _create_and_wait_for_pvcs(self, pvc_size=1,
-                                  pvc_name_prefix='autotests-block-pvc',
-                                  pvc_amount=1):
-        # Create PVCs
-        pvc_names = []
-        for i in range(pvc_amount):
-            pvc_name = oc_create_pvc(
-                self.node, self.sc_name, pvc_name_prefix=pvc_name_prefix,
-                pvc_size=pvc_size)
-            pvc_names.append(pvc_name)
-            self.addCleanup(
-                wait_for_resource_absence, self.node, 'pvc', pvc_name)
-
-        # Wait for PVCs to be in bound state
-        try:
-            for pvc_name in pvc_names:
-                verify_pvc_status_is_bound(self.node, pvc_name)
-        finally:
-            reclaim_policy = oc_get_custom_resource(
-                self.node, 'sc', ':.reclaimPolicy', self.sc_name)[0]
-
-            for pvc_name in pvc_names:
-                if reclaim_policy == 'Retain':
-                    pv_name = get_pv_name_from_pvc(self.node, pvc_name)
-                    self.addCleanup(oc_delete, self.node, 'pv', pv_name,
-                                    raise_on_absence=False)
-                    custom = (r':.metadata.annotations."gluster\.kubernetes'
-                              r'\.io\/heketi\-volume\-id"')
-                    vol_id = oc_get_custom_resource(
-                        self.node, 'pv', custom, pv_name)[0]
-                    self.addCleanup(heketi_blockvolume_delete,
-                                    self.heketi_client_node,
-                                    self.heketi_server_url, vol_id)
-                self.addCleanup(oc_delete, self.node, 'pvc', pvc_name,
-                                raise_on_absence=False)
-
-        return pvc_names
-
-    def _create_and_wait_for_pvc(self, pvc_size=1,
-                                 pvc_name_prefix='autotests-block-pvc'):
-        self.pvc_name = self._create_and_wait_for_pvcs(
-            pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix)[0]
-        return self.pvc_name
-
-    def _create_dc_with_pvc(self, hacount=True, create_name_prefix=False):
-        # Create storage class and secret objects
-        self._create_storage_class(
-                hacount, create_name_prefix=create_name_prefix)
-
-        # Create PVC
-        pvc_name = self._create_and_wait_for_pvc()
-
-        # Create DC with POD and attached PVC to it
-        dc_name = oc_create_app_dc_with_io(self.node, pvc_name)
-        self.addCleanup(oc_delete, self.node, 'dc', dc_name)
-        self.addCleanup(scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
-        pod_name = get_pod_name_from_dc(self.node, dc_name)
-        wait_for_pod_be_ready(self.node, pod_name)
-
-        return dc_name, pod_name, pvc_name
 
     def dynamic_provisioning_glusterblock(
-            self, hacount=True, create_name_prefix=False):
+            self, set_hacount, create_vol_name_prefix=False):
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
 
         # Create DC with attached PVC
-        dc_name, pod_name, pvc_name = self._create_dc_with_pvc(
-                hacount, create_name_prefix=create_name_prefix)
+        sc_name = self.create_storage_class(
+            set_hacount=set_hacount,
+            create_vol_name_prefix=create_vol_name_prefix)
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix='autotest-block', sc_name=sc_name)
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
 
         # Check that we can write data
         for cmd in ("dd if=/dev/urandom of=%s bs=1K count=100",
@@ -152,18 +59,20 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
 
     def test_dynamic_provisioning_glusterblock_hacount_true(self):
         """ CNS-435 dynamic provisioning glusterblock """
-        self.dynamic_provisioning_glusterblock()
+        self.dynamic_provisioning_glusterblock(set_hacount=True)
 
     def test_dynamic_provisioning_glusterblock_hacount_false(self):
         """ CNS-716 storage-class mandatory parameters for block """
-        self.dynamic_provisioning_glusterblock(hacount=False)
+        self.dynamic_provisioning_glusterblock(set_hacount=False)
 
     def test_dynamic_provisioning_glusterblock_heketipod_failure(self):
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
 
         # Create DC with attached PVC
-        app_1_dc_name, app_1_pod_name, app_1_pvc_name = (
-            self._create_dc_with_pvc())
+        sc_name = self.create_storage_class()
+        app_1_pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix='autotest-block', sc_name=sc_name)
+        app_1_dc_name, app_1_pod_name = self.create_dc_with_pvc(app_1_pvc_name)
 
         # Write test data
         write_data_cmd = (
@@ -185,12 +94,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         wait_for_resource_absence(self.node, 'pod', heketi_pod_name)
 
         # Create second PVC
-        app_2_pvc_name = oc_create_pvc(
-            self.node, self.sc_name, pvc_name_prefix='autotests-block-pvc',
-            pvc_size=1)
-        self.addCleanup(
-            wait_for_resource_absence, self.node, 'pvc', app_2_pvc_name)
-        self.addCleanup(oc_delete, self.node, 'pvc', app_2_pvc_name)
+        app_2_pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix='autotests-block2')
 
         # Check status of the second PVC after small pause
         time.sleep(2)
@@ -232,7 +137,10 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
 
         # Create DC with attached PVC
-        dc_name, pod_name, pvc_name = self._create_dc_with_pvc()
+        sc_name = self.create_storage_class()
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix='autotest-block', sc_name=sc_name)
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
 
         # Run IO in background
         io_cmd = "oc rsh %s dd if=/dev/urandom of=%s bs=1000K count=900" % (
@@ -278,11 +186,9 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         gb_prov_name, gb_prov_status = out.split()
         self.assertEqual(gb_prov_status, 'Running')
 
-        # Create storage class and secret objects
-        self._create_storage_class()
-
-        # Create PVC
-        self._create_and_wait_for_pvc()
+        # Create Secret, SC and PVC
+        self.create_storage_class()
+        self.create_and_wait_for_pvc()
 
         # Get list of Gluster PODs
         g_pod_list_cmd = (
@@ -313,10 +219,9 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
     def test_dynamic_provisioning_glusterblock_heketidown_pvc_delete(self):
         """ Delete PVC's when heketi is down CNS-439 """
 
-        # Create storage class and secret objects
-        self._create_storage_class()
-
-        self.pvc_name_list = self._create_and_wait_for_pvcs(
+        # Create Secret, SC and PVCs
+        self.create_storage_class()
+        self.pvc_name_list = self.create_and_wait_for_pvcs(
             1, 'pvc-heketi-down', 3)
 
         # remove heketi-pod
@@ -347,14 +252,17 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
                                       interval=1, timeout=120)
 
         # create a new PVC
-        self._create_and_wait_for_pvc()
+        self.create_and_wait_for_pvc()
 
     def test_recreate_app_pod_with_attached_block_pv(self):
         """Test Case CNS-1392"""
         datafile_path = '/mnt/temporary_test_file'
 
         # Create DC with POD and attached PVC to it
-        dc_name, pod_name, pvc_name = self._create_dc_with_pvc()
+        sc_name = self.create_storage_class()
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix='autotest-block', sc_name=sc_name)
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
 
         # Write data
         write_cmd = "oc exec %s -- dd if=/dev/urandom of=%s bs=4k count=10000"
@@ -377,7 +285,8 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
     def test_volname_prefix_glusterblock(self):
         # CNS-926 - custom_volname_prefix_blockvol
 
-        self.dynamic_provisioning_glusterblock(create_name_prefix=True)
+        self.dynamic_provisioning_glusterblock(
+            set_hacount=False, create_vol_name_prefix=True)
 
         pv_name = get_pv_name_from_pvc(self.node, self.pvc_name)
         vol_name = oc_get_custom_resource(
@@ -390,13 +299,13 @@ class TestDynamicProvisioningBlockP0(CnsGlusterBlockBaseClass):
         self.assertIn(vol_name, block_vol_list)
 
         self.assertTrue(vol_name.startswith(
-            self.sc.get('volumenameprefix', 'autotest-blk')))
+            self.sc.get('volumenameprefix', 'autotest')))
 
     def test_dynamic_provisioning_glusterblock_reclaim_policy_retain(self):
         # CNS-1391 - Retain policy - gluster-block - delete pvc
 
-        self._create_storage_class(reclaim_policy='Retain')
-        self._create_and_wait_for_pvc()
+        self.create_storage_class(reclaim_policy='Retain')
+        self.create_and_wait_for_pvc()
 
         dc_name = oc_create_app_dc_with_io(self.node, self.pvc_name)
 

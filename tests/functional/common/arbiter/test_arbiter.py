@@ -6,8 +6,6 @@ from cnslibs.common.openshift_ops import (
     get_gluster_vol_info_by_pvc_name,
     get_ocp_gluster_pod_names,
     oc_create_pvc,
-    oc_create_sc,
-    oc_create_secret,
     oc_create_tiny_pod_with_volume,
     oc_delete,
     verify_pvc_status_is_bound,
@@ -79,49 +77,14 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                 self.addCleanup(heketi_ops.rm_arbiter_tag,
                                 node, server_url, source, source_id)
 
-    def _create_storage_class(self, avg_file_size=None):
-        # Create secret file for usage in storage class
-        self.secret_name = oc_create_secret(
-            self.node, namespace=self.sc.get('secretnamespace', 'default'),
-            data_key=self.heketi_cli_key,
-            secret_type=self.sc.get('provisioner', 'kubernetes.io/glusterfs'))
-        self.addCleanup(
-            oc_delete, self.node, 'secret', self.secret_name)
-
-        vol_options = "user.heketi.arbiter true"
-        if avg_file_size:
-            vol_options += ",user.heketi.average-file-size %s" % avg_file_size
-
-        # Create storage class
-        self.sc_name = oc_create_sc(
-            self.node, resturl=self.sc['resturl'],
-            restuser=self.sc['restuser'],
-            secretnamespace=self.sc['secretnamespace'],
-            secretname=self.secret_name,
-            volumeoptions=vol_options,
-        )
-        self.addCleanup(oc_delete, self.node, 'sc', self.sc_name)
-
-    def _create_and_wait_for_pvc(self, pvc_size=1):
-        # Create PVC
-        self.pvc_name = oc_create_pvc(
-            self.node, self.sc_name, pvc_name_prefix='arbiter-pvc',
-            pvc_size=pvc_size)
-        self.addCleanup(
-            wait_for_resource_absence, self.node, 'pvc', self.pvc_name)
-        self.addCleanup(oc_delete, self.node, 'pvc', self.pvc_name)
-
-        # Wait for PVC to be in bound state
-        verify_pvc_status_is_bound(self.node, self.pvc_name)
-
     def test_arbiter_pvc_create(self):
         """Test case CNS-944"""
 
         # Create sc with gluster arbiter info
-        self._create_storage_class()
+        self.create_storage_class(is_arbiter_vol=True)
 
         # Create PVC and wait for it to be in 'Bound' state
-        self._create_and_wait_for_pvc()
+        self.create_and_wait_for_pvc()
 
         # Get vol info
         vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
@@ -150,10 +113,10 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         """Test case CNS-945"""
 
         # Create sc with gluster arbiter info
-        self._create_storage_class()
+        self.create_storage_class(is_arbiter_vol=True)
 
         # Create PVC and wait for it to be in 'Bound' state
-        self._create_and_wait_for_pvc()
+        self.create_and_wait_for_pvc()
 
         # Create POD with attached volume
         mount_path = "/mnt"
@@ -278,7 +241,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                     break
 
         # Create sc with gluster arbiter info
-        self._create_storage_class()
+        self.create_storage_class(is_arbiter_vol=True)
 
         # Create helper arbiter vol if not all the data devices have
         # half of required free space.
@@ -308,7 +271,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                     self.heketi_client_node, self.heketi_server_url,
                     smaller_device_id)
                 self.assertTrue(out)
-                self._create_and_wait_for_pvc(
+                self.create_and_wait_for_pvc(
                     int(helper_vol_size_kb / 1024.0**2) + 1)
             finally:
                 out = heketi_ops.heketi_device_enable(
@@ -317,7 +280,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                 self.assertTrue(out)
 
         # Create target arbiter volume
-        self._create_and_wait_for_pvc(int(target_vol_size_kb / 1024.0**2))
+        self.create_and_wait_for_pvc(int(target_vol_size_kb / 1024.0**2))
 
         # Get gluster volume info
         vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
@@ -361,10 +324,11 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         """Test cases CNS-1182-1190"""
 
         # Create sc with gluster arbiter info
-        self._create_storage_class(avg_file_size)
+        self.create_storage_class(
+            is_arbiter_vol=True, arbiter_avg_file_size=avg_file_size)
 
         # Create PVC and wait for it to be in 'Bound' state
-        self._create_and_wait_for_pvc(pvc_size_gb)
+        self.create_and_wait_for_pvc(pvc_size_gb)
 
         # Get volume info
         vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
@@ -479,9 +443,9 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             data_nodes.append(node_info)
 
         # Create PVCs and check that their bricks are correctly located
-        self._create_storage_class()
+        self.create_storage_class(is_arbiter_vol=True)
         for i in range(pvc_amount):
-            self._create_and_wait_for_pvc(1)
+            self.create_and_wait_for_pvc(1)
 
             # Get gluster volume info
             vol_info = get_gluster_vol_info_by_pvc_name(
@@ -556,7 +520,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         pvc_amount = max([len(n['devices']) for n in data_nodes]) + 1
 
         # Create sc with gluster arbiter info
-        self._create_storage_class()
+        self.create_storage_class(is_arbiter_vol=True)
 
         # Create and delete 3 small volumes concurrently
         pvc_names = []
