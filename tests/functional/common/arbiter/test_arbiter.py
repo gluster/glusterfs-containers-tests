@@ -20,9 +20,6 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
     def setUp(self):
         super(TestArbiterVolumeCreateExpandDelete, self).setUp()
 
-        # Skip test if it is not CNS deployment
-        if self.deployment_type != "cns":
-            raise self.skipTest("This test can run only on CNS deployment.")
         self.node = self.ocp_master_node[0]
         self.sc = self.cns_storage_class.get(
             'storage_class1', self.cns_storage_class.get('file_storage_class'))
