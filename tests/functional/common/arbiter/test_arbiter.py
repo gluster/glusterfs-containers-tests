@@ -74,6 +74,47 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                 self.addCleanup(heketi_ops.rm_arbiter_tag,
                                 node, server_url, source, source_id)
 
+    def verify_amount_and_proportion_of_arbiter_and_data_bricks(
+            self, vol_info, arbiter_bricks=1, data_bricks=2):
+        # Verify amount and proportion of arbiter and data bricks
+        bricks_list = vol_info['bricks']['brick']
+        bricks = {
+            'arbiter_list': [],
+            'data_list': [],
+            'arbiter_amount': 0,
+            'data_amount': 0
+        }
+
+        for brick in bricks_list:
+            if int(brick['isArbiter']) == 1:
+                bricks['arbiter_list'].append(brick)
+            else:
+                bricks['data_list'].append(brick)
+
+        bricks['arbiter_amount'] = len(bricks['arbiter_list'])
+        bricks['data_amount'] = len(bricks['data_list'])
+
+        self.assertGreaterEqual(
+            bricks['arbiter_amount'], arbiter_bricks,
+            "Arbiter brick amount is expected to be Greater or Equal to %s. "
+            "Actual amount is '%s'." % (
+                arbiter_bricks, bricks['arbiter_amount']))
+
+        self.assertGreaterEqual(
+            bricks['data_amount'], data_bricks,
+            "Data brick amount is expected to be Greater or Equal to %s. "
+            "Actual amount is '%s'." % (data_bricks, bricks['data_amount']))
+
+        self.assertEqual(
+            bricks['data_amount'],
+            (bricks['arbiter_amount'] * 2),
+            "Expected 1 arbiter brick per 2 data bricks. "
+            "Arbiter brick amount is '%s', Data brick amount is '%s'." % (
+                bricks['arbiter_amount'], bricks['data_amount'])
+        )
+
+        return bricks
+
     def test_arbiter_pvc_create(self):
         """Test case CNS-944"""
 
@@ -86,25 +127,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         # Get vol info
         vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
 
-        # Verify amount proportion of data and arbiter bricks
-        bricks = vol_info['bricks']['brick']
-        arbiter_brick_amount = sum([int(b['isArbiter']) for b in bricks])
-        data_brick_amount = len(bricks) - arbiter_brick_amount
-        self.assertGreater(
-            data_brick_amount, 0,
-            "Data brick amount is expected to be bigger than 0. "
-            "Actual amount is '%s'." % arbiter_brick_amount)
-        self.assertGreater(
-            arbiter_brick_amount, 0,
-            "Arbiter brick amount is expected to be bigger than 0. "
-            "Actual amount is '%s'." % arbiter_brick_amount)
-        self.assertEqual(
-            data_brick_amount,
-            (arbiter_brick_amount * 2),
-            "Expected 1 arbiter brick per 2 data bricks. "
-            "Arbiter brick amount is '%s', Data brick amount is '%s'." % (
-                arbiter_brick_amount, data_brick_amount)
-        )
+        self.verify_amount_and_proportion_of_arbiter_and_data_bricks(vol_info)
 
     def test_arbiter_pvc_mount_on_pod(self):
         """Test case CNS-945"""
@@ -282,24 +305,8 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
         # Get gluster volume info
         vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
 
-        # Check amount of bricks
-        bricks = vol_info['bricks']['brick']
-        arbiter_brick_amount = sum([int(b['isArbiter']) for b in bricks])
-        data_brick_amount = len(bricks) - arbiter_brick_amount
-        self.assertEqual(
-            data_brick_amount,
-            (arbiter_brick_amount * 2),
-            "Expected 1 arbiter brick per 2 data bricks. "
-            "Arbiter brick amount is '%s', Data brick amount is '%s'." % (
-                arbiter_brick_amount, data_brick_amount))
-        self.assertGreater(
-            data_brick_amount, 3,
-            "Data brick amount is expected to be bigger than 3. "
-            "Actual amount is '%s'." % data_brick_amount)
-        self.assertGreater(
-            arbiter_brick_amount, 1,
-            "Arbiter brick amount is expected to be bigger than 1. "
-            "Actual amount is '%s'." % arbiter_brick_amount)
+        self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
+                vol_info, arbiter_bricks=2, data_bricks=4)
 
     # NOTE(vponomar): do not create big volumes setting value less than 64
     # for 'avg_file_size'. It will cause creation of very huge amount of files
@@ -329,41 +336,21 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
 
         # Get volume info
         vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
-        bricks = vol_info['bricks']['brick']
-        arbiter_bricks = []
-        data_bricks = []
-        for brick in bricks:
-            if int(brick['isArbiter']) == 1:
-                arbiter_bricks.append(brick)
-            else:
-                data_bricks.append(brick)
 
         # Verify proportion of data and arbiter bricks
-        arbiter_brick_amount = len(arbiter_bricks)
-        data_brick_amount = len(data_bricks)
+        bricks_info = (
+            self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
+                vol_info))
+
         expected_file_amount = pvc_size_gb * 1024**2 / (avg_file_size or 64)
-        expected_file_amount = expected_file_amount / arbiter_brick_amount
-        self.assertGreater(
-            data_brick_amount, 0,
-            "Data brick amount is expected to be bigger than 0. "
-            "Actual amount is '%s'." % arbiter_brick_amount)
-        self.assertGreater(
-            arbiter_brick_amount, 0,
-            "Arbiter brick amount is expected to be bigger than 0. "
-            "Actual amount is '%s'." % arbiter_brick_amount)
-        self.assertEqual(
-            data_brick_amount,
-            (arbiter_brick_amount * 2),
-            "Expected 1 arbiter brick per 2 data bricks. "
-            "Arbiter brick amount is '%s', Data brick amount is '%s'." % (
-                arbiter_brick_amount, data_brick_amount)
-        )
+        expected_file_amount = (expected_file_amount /
+                                bricks_info['arbiter_amount'])
 
         # Try to create expected amount of files on arbiter brick mount
         passed_arbiter_bricks = []
         not_found = "Mount Not Found"
         gluster_pods = get_ocp_gluster_pod_names(self.node)
-        for brick in arbiter_bricks:
+        for brick in bricks_info['arbiter_list']:
             for gluster_pod in gluster_pods:
                 # "brick path" looks like following:
                 # ip_addr:/path/to/vg/brick_unique_name/brick
@@ -384,7 +371,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                     break
 
         # Make sure all the arbiter bricks were checked
-        for brick in arbiter_bricks:
+        for brick in bricks_info['arbiter_list']:
             self.assertIn(
                 brick["name"].split(":")[-1], passed_arbiter_bricks,
                 "Arbiter brick '%s' was not verified. Looks like it was "
