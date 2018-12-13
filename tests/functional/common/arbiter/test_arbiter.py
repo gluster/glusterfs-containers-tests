@@ -8,6 +8,8 @@ from cnslibs.common.openshift_ops import (
     oc_create_pvc,
     oc_create_tiny_pod_with_volume,
     oc_delete,
+    resize_pvc,
+    verify_pvc_size,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
@@ -545,3 +547,26 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
                 raise
             oc_delete(self.node, 'pvc', pvc_name)
             wait_for_resource_absence(self.node, 'pvc', pvc_name)
+
+    def test_arbiter_volume_expand_using_pvc(self):
+        """Test case CNS-954"""
+        # Create sc with gluster arbiter info
+        self.create_storage_class(
+            is_arbiter_vol=True, allow_volume_expansion=True)
+
+        # Create PVC and wait for it to be in 'Bound' state
+        self.create_and_wait_for_pvc()
+
+        # Get vol info
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+
+        self.verify_amount_and_proportion_of_arbiter_and_data_bricks(vol_info)
+
+        pvc_size = 2
+        resize_pvc(self.node, self.pvc_name, pvc_size)
+        verify_pvc_size(self.node, self.pvc_name, pvc_size)
+
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+
+        self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
+            vol_info, arbiter_bricks=2, data_bricks=4)
