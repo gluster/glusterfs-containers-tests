@@ -38,19 +38,12 @@ gluster_servers:
 
 cns:
     setup:
-        routing_config: "cloudapps.mystorage.com"
-        insecure_registry: "INSECURE_REGISTRY='--insecure-registry registry.access.redhat.com"
-        add_registry: "ADD_REGISTRY='--add-registry registry.access.redhat.com"
         cns_project_name: "storage-project"
         cns_username: "test-admin"
         cns_password:
 
-    # 'deployment_type' can be crs_heketi_outside_openshift|crs_heketi_inside_openshift|cns
-    deployment_type:
-    # 'executor' can be ssh|kube|mock
-    executor: ssh
-    executor_user: root
-    executor_port: 22
+    # 'deployment_type' can be cns|crs
+    deployment_type: 'cns'
     trusted_storage_pool_list:
         - [gluster_server1, gluster_server2]
     heketi_config:
