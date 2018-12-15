@@ -240,7 +240,8 @@ class CnsBaseClass(unittest.TestCase):
                     else:
                         self.addCleanup(heketi_blockvolume_delete,
                                         self.heketi_client_node,
-                                        self.heketi_server_url, vol_id)
+                                        self.heketi_server_url, vol_id,
+                                        raise_on_error=False)
                 self.addCleanup(oc_delete, node, 'pvc', pvc_name,
                                 raise_on_absence=False)
 

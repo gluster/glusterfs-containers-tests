@@ -1,3 +1,4 @@
+from cnslibs.common import exceptions
 from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common.heketi_ops import (
     get_heketi_metrics,
@@ -174,7 +175,7 @@ class TestHeketiMetrics(HeketiBaseClass):
             self.heketi_dc_name, pod_amount=1)
 
         # verify that metrics is not accessable when heketi pod is down
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(exceptions.ExecutionError):
             get_heketi_metrics(
                 self.heketi_client_node,
                 self.heketi_server_url,

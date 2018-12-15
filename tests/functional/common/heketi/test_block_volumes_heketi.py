@@ -57,7 +57,8 @@ class TestBlockVolumeOps(HeketiBaseClass):
         self.assertNotEqual(block_vol, False,
                             "Block volume creation has failed")
         self.addCleanup(heketi_blockvolume_delete, self.heketi_client_node,
-                        self.heketi_server_url, block_vol["id"])
+                        self.heketi_server_url, block_vol["id"],
+                        raise_on_error=False)
         block_delete_output = heketi_blockvolume_delete(
             self.heketi_client_node, self.heketi_server_url,
             block_vol["id"], json=True)

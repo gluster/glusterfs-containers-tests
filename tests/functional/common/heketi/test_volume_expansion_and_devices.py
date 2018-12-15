@@ -542,17 +542,11 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
 
         free_space_after_creation = self.get_devices_summary_free_space()
 
-        ret, out, err = heketi_ops.heketi_volume_expand(
-            self.heketi_client_node, self.heketi_server_url,
-            volume_id, 50, raw_cli_output=True)
-
-        self.assertEqual(ret, 255, "volume expansion did not fail ret- %s "
-                         "out- %s err= %s" % (ret, out, err))
-        g.log.info("Volume expansion failed as expected, err- %s" % err)
-
-        if ret == 0:
-            out_json = json.loads(out)
-            self.addCleanup(self.delete_volumes, out_json["id"])
+        self.assertRaises(
+            ExecutionError,
+            heketi_ops.heketi_volume_expand,
+            self.heketi_client_node, self.heketi_server_url, volume_id,
+            50, raw_cli_output=True)
 
         self.enable_devices(additional_devices_attached)
 

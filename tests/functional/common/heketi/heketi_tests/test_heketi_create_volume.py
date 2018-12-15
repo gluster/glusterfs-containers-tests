@@ -1,10 +1,10 @@
 import time
 
-from glustolibs.gluster.exceptions import ExecutionError
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 import six
 
+from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common.heketi_ops import (heketi_volume_create,
                                        heketi_volume_list,
@@ -64,10 +64,11 @@ class TestHeketiVolume(HeketiBaseClass):
         g.log.info("Successfully got the volumes list")
 
         # Check the volume count are equal
-        if (len(volumes["volumes"]) != len(out)):
-            raise ExecutionError("Heketi volume list %s is"
-                                 " not equal to gluster"
-                                 " volume list %s" % ((volumes), (out)))
+        self.assertEqual(
+            len(volumes["volumes"]), len(out),
+            "Lengths of gluster '%s' and heketi '%s' volume lists are "
+            "not equal." % (out, volumes)
+        )
         g.log.info("Heketi volumes list %s and"
                    " gluster volumes list %s" % ((volumes), (out)))
 
@@ -141,11 +142,11 @@ class TestHeketiVolume(HeketiBaseClass):
         g.log.info("Trying to delete a heketi cluster"
                    " which contains volumes and/or nodes:"
                    " Expected to fail")
-        out = heketi_cluster_delete(self.heketi_client_node,
-                                    self.heketi_server_url,
-                                    cluster_id)
-        self.assertFalse(out, ("Successfully deleted a "
-                         "cluster %s" % cluster_id))
+        self.assertRaises(
+            ExecutionError,
+            heketi_cluster_delete,
+            self.heketi_client_node, self.heketi_server_url, cluster_id,
+        )
         g.log.info("Expected result: Unable to delete cluster %s"
                    " because it contains volumes "
                    " and/or nodes" % cluster_id)
@@ -194,8 +195,10 @@ class TestHeketiVolume(HeketiBaseClass):
         # Try to delete the node by its ID
         g.log.info("Trying to delete the node which contains devices in it. "
                    "Expecting failure.")
-        out = heketi_node_delete(self.heketi_client_node, heketi_url, node_id)
-        self.assertFalse(out, "Node '%s' got unexpectedly deleted." % node_id)
+        self.assertRaises(
+            ExecutionError,
+            heketi_node_delete,
+            self.heketi_client_node, heketi_url, node_id)
 
         # Make sure our node hasn't been deleted
         g.log.info("Listing heketi node list")
@@ -244,9 +247,13 @@ class TestHeketiVolume(HeketiBaseClass):
 
         # Try to create blockvolume with size bigger than available
         too_big_vol_size = max_freesize + 1
-        blockvol2 = heketi_blockvolume_create(
-            self.heketi_client_node, self.heketi_server_url,
-            too_big_vol_size, json=True)
+        try:
+            blockvol2 = heketi_blockvolume_create(
+                self.heketi_client_node, self.heketi_server_url,
+                too_big_vol_size, json=True)
+        except ExecutionError:
+            return
+
         if blockvol2 and blockvol2.get('id'):
             self.addCleanup(
                 heketi_blockvolume_delete, self.heketi_client_node,
