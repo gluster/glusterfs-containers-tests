@@ -1,28 +1,10 @@
 from collections import OrderedDict
 from cnslibs.common import command
-from cnslibs.common.exceptions import (
-    ConfigError,
-    ExecutionError)
+from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_ops import (
     heketi_blockvolume_delete,
-    heketi_create_topology,
-    heketi_volume_delete,
-    hello_heketi)
-from cnslibs.common.cns_libs import (
-    edit_iptables_cns,
-    enable_kernel_module,
-    edit_master_config_file,
-    edit_multipath_conf_file,
-    setup_router,
-    start_rpcbind_service,
-    update_nameserver_resolv_conf,
-    update_router_ip_dnsmasq_conf)
-from cnslibs.common.docker_libs import (
-    docker_add_registry,
-    docker_insecure_registry)
+    heketi_volume_delete)
 from cnslibs.common.openshift_ops import (
-    create_namespace,
-    get_ocp_gluster_pod_names,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
     oc_create_app_dc_with_io,
@@ -31,7 +13,6 @@ from cnslibs.common.openshift_ops import (
     oc_create_secret,
     oc_delete,
     oc_get_custom_resource,
-    oc_rsh,
     scale_dc_pod_amount_and_wait,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
@@ -68,14 +49,7 @@ class CnsBaseClass(unittest.TestCase):
         cls.cns_username = g.config['cns']['setup']['cns_username']
         cls.cns_password = g.config['cns']['setup']['cns_password']
         cls.cns_project_name = g.config['cns']['setup']['cns_project_name']
-        cls.add_registry = g.config['cns']['setup']['add_registry']
-        cls.insecure_registry = g.config['cns']['setup']['insecure_registry']
-        cls.routingconfig_subdomain = (g.config['cns']['setup']
-                                       ['routing_config'])
         cls.deployment_type = g.config['cns']['deployment_type']
-        cls.executor = g.config['cns']['executor']
-        cls.executor_user = g.config['cns']['executor_user']
-        cls.executor_port = g.config['cns']['executor_port']
 
         # Initializes heketi config variables
         heketi_config = g.config['cns']['heketi_config']
@@ -290,168 +264,6 @@ class CnsBaseClass(unittest.TestCase):
         return dc_name, pod_name
 
 
-class CnsSetupBaseClass(CnsBaseClass):
-    '''
-     This class does the basic CNS setup
-    '''
-    @classmethod
-    def setUpClass(cls):
-        '''
-         CNS setup
-        '''
-        super(CnsSetupBaseClass, cls).setUpClass()
-        mod_names = ('dm_thin_pool', 'dm_multipath', 'target_core_user')
-        for node in cls.ocp_all_nodes:
-            for mod_name in mod_names:
-                if not enable_kernel_module(node, mod_name):
-                    raise ExecutionError(
-                        "failed to enable kernel module %s" % mod_name)
-            if not start_rpcbind_service(node):
-                raise ExecutionError("failed to start rpcbind service")
-            if not edit_iptables_cns(node):
-                raise ExecutionError("failed to edit iptables")
-        cmd = "systemctl reload iptables"
-        cmd_results = g.run_parallel(cls.ocp_all_nodes, cmd, "root")
-        for node, ret_values in cmd_results.iteritems():
-            ret, out, err = ret_values
-            if ret != 0:
-                raise ExecutionError("failed to execute cmd %s on %s out: "
-                                     "%s err: %s" % (
-                                         cmd, node, out, err))
-        if not edit_master_config_file(cls.ocp_master_node[0],
-                                       cls.routingconfig_subdomain):
-            raise ExecutionError("failed to edit master.conf file")
-        cmd = "systemctl restart atomic-openshift-node.service"
-        cmd_results = g.run_parallel(cls.ocp_nodes, cmd, "root")
-        for node, ret_values in cmd_results.iteritems():
-            ret, out, err = ret_values
-            if ret != 0:
-                raise ExecutionError("failed to execute cmd %s on %s out: "
-                                     "%s err: %s" % (
-                                         cmd, node, out, err))
-        cmd = ("systemctl restart  atomic-openshift-master-api "
-               "atomic-openshift-master-controllers")
-        ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: %s "
-                                 "err: %s" % (
-                                     cmd, cls.ocp_master_node[0], out, err))
-        cmd = ("oc login -u system:admin && oadm policy "
-               "add-cluster-role-to-user cluster-admin %s") % cls.cns_username
-        ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: %s "
-                                 "err: %s" % (
-                                     cmd, cls.ocp_master_node[0], out, err))
-        for node in cls.ocp_all_nodes:
-            ret = docker_add_registry(node, cls.add_registry)
-            if not ret:
-                raise ExecutionError("failed to edit add_registry in docker "
-                                     "file on %s" % node)
-            ret = docker_insecure_registry(node, cls.insecure_registry)
-            if not ret:
-                raise ExecutionError("failed to edit insecure_registry in "
-                                     "docker file on %s" % node)
-        cmd = "systemctl restart docker"
-        cmd_results = g.run_parallel(cls.ocp_all_nodes, cmd, "root")
-        for node, ret_values in cmd_results.iteritems():
-            ret, out, err = ret_values
-            if ret != 0:
-                raise ExecutionError("failed to execute cmd %s on %s out: "
-                                     "%s err: %s" % (
-                                         cmd, node, out, err))
-        cmd = ("oc login %s:8443 -u %s -p %s --insecure-skip-tls-verify="
-               "true" % (
-                  cls.ocp_master_node[0], cls.cns_username, cls.cns_password))
-        ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: "
-                                 "%s err: %s" % (
-                                     cmd, cls.ocp_client[0], out, err))
-        cmd = 'oadm policy add-scc-to-user privileged -z default'
-        ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: "
-                                 "%s err: %s" % (
-                                     cmd, cls.ocp_client[0], out, err))
-        ret = create_namespace(cls.ocp_client[0], cls.cns_project_name)
-        if not ret:
-            raise ExecutionError("failed to create namespace")
-        cmd = 'oc project %s' % cls.cns_project_name
-        ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: "
-                                 "%s err: %s" % (
-                                     cmd, cls.ocp_client[0], out, err))
-        cls.router_name = "%s-router" % cls.cns_project_name
-        if not setup_router(cls.ocp_client[0], cls.router_name):
-            raise ExecutionError("failed to setup router")
-        if not update_router_ip_dnsmasq_conf(cls.ocp_client[0],
-                                             cls.router_name,
-                                             cls.routingconfig_subdomain):
-            raise ExecutionError("failed to update router ip in dnsmasq.conf")
-        cmd = "systemctl restart dnsmasq.service"
-        ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: "
-                                 "%s err: %s" % (
-                                     cmd, cls.ocp_client[0], out, err))
-        cmd = 'oc project %s' % cls.cns_project_name
-        ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: "
-                                 "%s err: %s" % (
-                                     cmd, cls.ocp_master_node[0], out, err))
-        if not update_router_ip_dnsmasq_conf(cls.ocp_master_node[0],
-                                             cls.router_name,
-                                             cls.routingconfig_subdomain):
-            raise ExecutionError("failed to update router ip in dnsmasq.conf")
-        cmd = "systemctl restart dnsmasq.service"
-        ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: "
-                                 "%s err: %s" % (
-                                     cmd, cls.ocp_master_node[0], out, err))
-        if not update_nameserver_resolv_conf(cls.ocp_master_node[0], "EOF"):
-            raise ExecutionError("failed to update namserver in resolv.conf")
-        if cls.ocp_master_node[0] != cls.ocp_client[0]:
-            if not update_nameserver_resolv_conf(cls.ocp_client[0]):
-                raise ExecutionError(
-                    "failed to update namserver in resolv.conf")
-
-    @classmethod
-    def cns_deploy(cls):
-        '''
-         This function runs the cns-deploy
-        '''
-        ret = heketi_create_topology(cls.heketi_client_node,
-                                     cls.topology_info)
-        if not ret:
-            raise ConfigError("Failed to create heketi topology file on %s"
-                              % cls.heketi_client_node)
-        # temporary workaround till we get fix for bug -
-        # https://bugzilla.redhat.com/show_bug.cgi?id=1505948
-        cmd = "sed -i s/'exec -it'/'exec -i'/g /usr/bin/cns-deploy"
-        ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: "
-                                 "%s err: %s" % (
-                                     cmd, cls.ocp_client[0], out, err))
-        cmd = (
-            "cns-deploy -n %s -g -c oc -t /usr/share/heketi/templates -l "
-            "cns_deploy.log -v -w 600 -y /usr/share/heketi/topology.json" % (
-               cls.cns_project_name))
-        ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
-        if ret != 0:
-            raise ExecutionError("failed to execute cmd %s on %s out: "
-                                 "%s err: %s" % (
-                                     cmd, cls.ocp_client[0], out, err))
-        # Checks if heketi server is alive
-        if not hello_heketi(cls.heketi_client_node, cls.heketi_server_url):
-            raise ConfigError("Heketi server %s is not alive"
-                              % cls.heketi_server_url)
-
-
 class CnsGlusterBlockBaseClass(CnsBaseClass):
     '''
      This class is for setting up glusterblock on CNS
@@ -465,39 +277,6 @@ class CnsGlusterBlockBaseClass(CnsBaseClass):
         cls.sc = cls.cns_storage_class.get(
             'storage_class2',
             cls.cns_storage_class.get('block_storage_class'))
-        for node in cls.ocp_all_nodes:
-            if not edit_iptables_cns(node):
-                raise ExecutionError("failed to edit iptables")
-        cmd = "systemctl reload iptables"
-        cmd_results = g.run_parallel(cls.ocp_all_nodes, cmd, "root")
-        gluster_pod_list = get_ocp_gluster_pod_names(cls.ocp_master_node[0])
-        g.log.info("gluster_pod_list - %s" % gluster_pod_list)
-        for pod in gluster_pod_list:
-            cmd = "systemctl start gluster-blockd"
-            ret, out, err = oc_rsh(cls.ocp_master_node[0], pod, cmd)
-            if ret != 0:
-                raise ExecutionError("failed to execute cmd %s on %s out: "
-                                     "%s err: %s" % (
-                                         cmd, cls.ocp_master_node[0],
-                                         out, err))
-        cmd = "mpathconf --enable"
-        cmd_results = g.run_parallel(cls.ocp_nodes, cmd, "root")
-        for node, ret_values in cmd_results.iteritems():
-            ret, out, err = ret_values
-            if ret != 0:
-                raise ExecutionError("failed to execute cmd %s on %s out: "
-                                     "%s err: %s" % (cmd, node, out, err))
-        for node in cls.ocp_nodes:
-            ret = edit_multipath_conf_file(node)
-            if not ret:
-                raise ExecutionError("failed to edit multipath.conf file")
-        cmd = "systemctl restart multipathd"
-        cmd_results = g.run_parallel(cls.ocp_nodes, cmd, "root")
-        for node, ret_values in cmd_results.iteritems():
-            ret, out, err = ret_values
-            if ret != 0:
-                raise ExecutionError("failed to execute cmd %s on %s out: "
-                                     "%s err: %s" % (cmd, node, out, err))
 
 
 class PodScalabilityBaseClass(CnsBaseClass):

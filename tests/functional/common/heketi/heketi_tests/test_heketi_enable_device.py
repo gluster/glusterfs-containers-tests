@@ -1,7 +1,7 @@
 """Test cases to enable device in heketi."""
 import json
 
-from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
+from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common.heketi_ops import (heketi_node_enable,
                                        heketi_node_info,
                                        heketi_node_disable,
@@ -13,7 +13,7 @@ from cnslibs.common.heketi_ops import (heketi_node_enable,
 from glusto.core import Glusto as g
 
 
-class TestHeketiDeviceEnable(HeketiClientSetupBaseClass):
+class TestHeketiDeviceEnable(HeketiBaseClass):
     """Test device enable functionality from heketi-cli."""
 
     def enable_node(self, node_id):

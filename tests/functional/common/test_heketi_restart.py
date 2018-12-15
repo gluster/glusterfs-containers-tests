@@ -1,6 +1,6 @@
 from jsondiff import diff
 
-from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
+from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common.heketi_ops import (
     hello_heketi,
     heketi_volume_create,
@@ -12,7 +12,7 @@ from cnslibs.common.openshift_ops import (
     wait_for_resource_absence)
 
 
-class TestRestartHeketi(HeketiClientSetupBaseClass):
+class TestRestartHeketi(HeketiBaseClass):
 
     def test_restart_heketi_pod(self):
         """ CNS-450 Restarting heketi pod """

@@ -2,7 +2,7 @@ from cnslibs.common import heketi_libs
 from cnslibs.common import heketi_ops
 
 
-class TestHeketiDeviceInfo(heketi_libs.HeketiClientSetupBaseClass):
+class TestHeketiDeviceInfo(heketi_libs.HeketiBaseClass):
 
     def test_heketi_devices_info_verification(self):
         """Test case CNS-765"""

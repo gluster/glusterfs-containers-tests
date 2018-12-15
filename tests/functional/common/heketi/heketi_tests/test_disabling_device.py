@@ -8,7 +8,7 @@ from cnslibs.common import openshift_ops
 from cnslibs.common import podcmd
 
 
-class TestDisableHeketiDevice(heketi_libs.HeketiClientSetupBaseClass):
+class TestDisableHeketiDevice(heketi_libs.HeketiBaseClass):
     @podcmd.GlustoPod()
     def test_create_volumes_enabling_and_disabling_heketi_devices(self):
         """Test case CNS-763"""

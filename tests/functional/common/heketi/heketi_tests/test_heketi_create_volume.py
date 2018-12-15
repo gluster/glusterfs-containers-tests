@@ -5,7 +5,7 @@ from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 import six
 
-from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
+from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common.heketi_ops import (heketi_volume_create,
                                        heketi_volume_list,
                                        heketi_volume_info,
@@ -20,7 +20,7 @@ from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
 from cnslibs.common import podcmd
 
 
-class TestHeketiVolume(HeketiClientSetupBaseClass):
+class TestHeketiVolume(HeketiBaseClass):
     """
     Class to test heketi volume create
     """

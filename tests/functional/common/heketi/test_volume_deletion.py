@@ -1,11 +1,11 @@
 from __future__ import division
 
 from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
+from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common import heketi_ops
 
 
-class TestVolumeDeleteTestCases(HeketiClientSetupBaseClass):
+class TestVolumeDeleteTestCases(HeketiBaseClass):
     """
     Class for volume deletion related test cases
 

@@ -1,4 +1,4 @@
-from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
+from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common.heketi_ops import (
     get_heketi_metrics,
     heketi_cluster_info,
@@ -15,7 +15,7 @@ from cnslibs.common.openshift_ops import (
     )
 
 
-class TestHeketiMetrics(HeketiClientSetupBaseClass):
+class TestHeketiMetrics(HeketiBaseClass):
 
     def verify_heketi_metrics_with_topology_info(self):
         topology = heketi_topology_info(

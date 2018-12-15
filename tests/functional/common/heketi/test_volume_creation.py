@@ -8,7 +8,7 @@ from cnslibs.common import openshift_ops
 from cnslibs.common import podcmd
 
 
-class TestVolumeCreationTestCases(heketi_libs.HeketiClientSetupBaseClass):
+class TestVolumeCreationTestCases(heketi_libs.HeketiBaseClass):
     """
     Class for volume creation related test cases
     """

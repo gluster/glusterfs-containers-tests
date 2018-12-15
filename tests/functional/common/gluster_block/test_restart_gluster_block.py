@@ -1,4 +1,4 @@
-from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
+from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common.heketi_ops import (
     heketi_blockvolume_create,
     heketi_blockvolume_delete)
@@ -9,7 +9,7 @@ from cnslibs.common.openshift_ops import (
     wait_for_resource_absence)
 
 
-class TestRestartGlusterBlockPod(HeketiClientSetupBaseClass):
+class TestRestartGlusterBlockPod(HeketiBaseClass):
 
     def test_restart_gluster_block_provisioner_pod(self):
         # CNS-542 - Restart gluster-block provisioner pod

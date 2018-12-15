@@ -2,12 +2,12 @@ from glusto.core import Glusto as g
 from glustolibs.gluster.exceptions import ExecutionError
 from glustolibs.gluster.peer_ops import get_pool_list
 
-from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
+from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common import heketi_ops, podcmd
 from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
 
 
-class TestHeketiVolume(HeketiClientSetupBaseClass):
+class TestHeketiVolume(HeketiBaseClass):
     """
     Class to test heketi volume create
     """

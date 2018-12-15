@@ -1,9 +1,7 @@
 from unittest import skip
 
 from glusto.core import Glusto as g
-from cnslibs.common.heketi_ops import (heketi_create_topology,
-                                       heketi_topology_load,
-                                       heketi_volume_delete,
+from cnslibs.common.heketi_ops import (heketi_volume_delete,
                                        heketi_volume_create,
                                        heketi_volume_expand,
                                        heketi_volume_info,
@@ -15,11 +13,11 @@ from cnslibs.common.heketi_ops import (heketi_create_topology,
                                        heketi_device_delete,
                                        heketi_node_info,
                                        heketi_node_list)
-from cnslibs.common.heketi_libs import HeketiClientSetupBaseClass
-from cnslibs.common.exceptions import ExecutionError, ConfigError
+from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.exceptions import ExecutionError
 
 
-class TestHeketiVolumeOperations(HeketiClientSetupBaseClass):
+class TestHeketiVolumeOperations(HeketiBaseClass):
     """
     Class to test heketi volume operations - create, expand
     """
@@ -27,20 +25,6 @@ class TestHeketiVolumeOperations(HeketiClientSetupBaseClass):
     @classmethod
     def setUpClass(cls):
         super(TestHeketiVolumeOperations, cls).setUpClass()
-
-        if cls.deployment_type == "crs_heketi_outside_openshift":
-            ret = heketi_create_topology(cls.heketi_client_node,
-                                         cls.topology_info)
-            if not ret:
-                raise ConfigError("Failed to create heketi topology file on %s"
-                                  % cls.heketi_client_node)
-
-            ret = heketi_topology_load(cls.heketi_client_node,
-                                       cls.heketi_server_url)
-            if not ret:
-                raise ConfigError("Failed to load heketi topology on %s"
-                                  % cls.heketi_client_node)
-
         cls.volume_id = None
 
     def volume_cleanup(self, volume_id):
