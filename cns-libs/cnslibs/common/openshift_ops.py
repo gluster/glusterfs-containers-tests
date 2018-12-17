@@ -116,6 +116,28 @@ def get_ocp_gluster_pod_names(ocp_node):
     return [pod for pod in pod_names if pod.startswith('glusterfs-')]
 
 
+def get_amount_of_gluster_nodes(ocp_node):
+    """Calculate amount of Gluster nodes.
+
+    Args:
+        ocp_node (str): node to run 'oc' commands on.
+    Returns:
+        Integer value as amount of either GLuster PODs or Gluster nodes.
+    """
+    # Containerized Gluster
+    gluster_pods = get_ocp_gluster_pod_names(ocp_node)
+    if gluster_pods:
+        return len(gluster_pods)
+
+    # Standalone Gluster
+    configured_gluster_nodes = len(g.config.get("gluster_servers", {}))
+    if configured_gluster_nodes:
+        return configured_gluster_nodes
+
+    raise exceptions.ConfigError(
+        "Haven't found neither Gluster PODs nor Gluster nodes.")
+
+
 def oc_login(ocp_node, username, password):
     """Login to ocp master node.
 
@@ -879,11 +901,11 @@ def get_gluster_blockvol_info_by_pvc_name(ocp_node, heketi_server_url,
         ocp_node, heketi_server_url, block_hosting_vol_id, json=True)['name']
 
     # Get Gluster block volume info
-    vol_info_cmd = "oc exec %s -- gluster-block info %s/%s --json" % (
-        get_ocp_gluster_pod_names(ocp_node)[0],
+    vol_info_cmd = "gluster-block info %s/%s --json" % (
         block_hosting_vol_name, block_vol_name)
+    vol_info = cmd_run_on_gluster_pod_or_node(ocp_node, vol_info_cmd)
 
-    return json.loads(command.cmd_run(vol_info_cmd, hostname=ocp_node))
+    return json.loads(vol_info)
 
 
 def wait_for_pod_be_ready(hostname, pod_name,

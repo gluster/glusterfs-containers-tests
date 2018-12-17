@@ -6,8 +6,8 @@ from glusto.core import Glusto as g
 from cnslibs.cns import cns_baseclass
 from cnslibs.common.cns_libs import validate_multipath_pod
 from cnslibs.common.openshift_ops import (
+    get_amount_of_gluster_nodes,
     get_gluster_blockvol_info_by_pvc_name,
-    get_ocp_gluster_pod_names,
     get_pod_name_from_dc,
     oc_create_app_dc_with_io,
     oc_create_pvc,
@@ -190,7 +190,7 @@ class TestStorageClassCases(cns_baseclass.CnsBaseClass):
            gluster pods count
         '''
         # get hacount as no of gluster pods the pvc creation
-        hacount = len(get_ocp_gluster_pod_names(self.ocp_master_node[0]))
+        hacount = get_amount_of_gluster_nodes(self.ocp_master_node[0])
 
         # create storage class and pvc with given parameters
         self.create_sc_with_parameter(
@@ -209,7 +209,7 @@ class TestStorageClassCases(cns_baseclass.CnsBaseClass):
            value
         '''
         # get hacount as no of gluster pods + 1 to fail the pvc creation
-        hacount = len(get_ocp_gluster_pod_names(self.ocp_master_node[0])) + 1
+        hacount = get_amount_of_gluster_nodes(self.ocp_master_node[0]) + 1
 
         # create storage class and pvc with given parameters
         self.create_sc_with_parameter(
