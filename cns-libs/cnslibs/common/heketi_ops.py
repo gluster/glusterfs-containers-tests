@@ -62,7 +62,7 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
     Returns:
         dict: volume create info on success, only cli option is specified
             without --json option, then it returns raw string output.
-        Tuple (ret, out, err): if raw_cli_output is True
+        Tuple (ret, out, err): if raw_cli_output is True.
     Raises:
         exceptions.ExecutionError when error occurs and raw_cli_output is False
 
@@ -91,7 +91,7 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
     durability_arg = ("--durability %s" % kwargs.get("durability")
                       if kwargs.get("durability") else "")
     gid_arg = "--gid %d" % int(kwargs.get("gid")) if kwargs.get("gid") else ""
-    gluster_volume_options_arg = ("--gluster-volume-options %s"
+    gluster_volume_options_arg = ("--gluster-volume-options '%s'"
                                   % kwargs.get("gluster_volume_options")
                                   if kwargs.get("gluster_volume_options")
                                   else "")
@@ -1434,7 +1434,7 @@ def get_heketi_metrics(heketi_client_node, heketi_server_url,
 
     Args:
         - heketi_client_node (str) : Node where we want to run our commands.
-        - heketi_server_url (str) : This is a heketi server url
+        - heketi_server_url (str) : This is a heketi server url.
         - prometheus_format (bool) : control the format of output
             by default it is False, So it will parse prometheus format into
             python dict. If we need prometheus format we have to set it True.
