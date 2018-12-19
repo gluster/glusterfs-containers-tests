@@ -53,12 +53,6 @@ cns:
         heketi_server_url: "http://heketi-storage-project.cloudapps.mystorage.com"
         heketi_cli_user: "admin"
         heketi_cli_key: "admin"
-        heketi_ssh_key: "/etc/heketi/heketi_key"
-        heketi_config_file: "/etc/heketi/heketi.json"
-    heketi_volume:
-        size: 1
-        name: "autotests-heketi-vol-name"
-        expand_size: 2
     dynamic_provisioning:
         storage_classes:
             file_storage_class:

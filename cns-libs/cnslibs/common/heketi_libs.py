@@ -45,12 +45,6 @@ class HeketiBaseClass(unittest.TestCase):
         cls.gluster_servers = g.config['gluster_servers'].keys()
         cls.gluster_servers_info = g.config['gluster_servers']
         cls.topo_info = g.config['cns']['trusted_storage_pool_list']
-        cls.heketi_ssh_key = heketi_config['heketi_ssh_key']
-        cls.heketi_config_file = heketi_config['heketi_config_file']
-        cls.heketi_volume = {
-            'size': g.config['cns']['heketi_volume']['size'],
-            'name': g.config['cns']['heketi_volume']['name'],
-            'expand_size': g.config['cns']['heketi_volume']['expand_size']}
 
         # Constructs topology info dictionary
         cls.topology_info = OrderedDict()
