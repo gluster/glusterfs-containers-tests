@@ -19,6 +19,7 @@ import yaml
 
 from cnslibs.common import command
 from cnslibs.common import exceptions
+from cnslibs.common import openshift_version
 from cnslibs.common import podcmd
 from cnslibs.common import utils
 from cnslibs.common import waiter
@@ -32,7 +33,6 @@ PODS_WIDE_RE = re.compile(
 SERVICE_STATUS = "systemctl status %s"
 SERVICE_RESTART = "systemctl restart %s"
 SERVICE_STATUS_REGEX = r"Active: active \((.*)\) since .*;.*"
-OC_VERSION = None
 
 
 def oc_get_pods(ocp_node):
@@ -495,13 +495,7 @@ def oc_delete(ocp_node, rtype, name, raise_on_absence=True):
                        raise_on_error=raise_on_absence):
         return
     cmd = ['oc', 'delete', rtype, name]
-
-    global OC_VERSION
-    if not OC_VERSION:
-        OC_VERSION = oc_version(ocp_node)
-
-    versions = ['v3.6', 'v3.7', 'v3.9', 'v3.10']
-    if not OC_VERSION.rsplit('.', 1)[0] in versions:
+    if openshift_version.get_openshift_version() >= '3.11':
         cmd.append('--wait=false')
 
     ret, out, err = g.run(ocp_node, cmd)
@@ -1076,29 +1070,6 @@ def verify_pvc_status_is_bound(hostname, pvc_name, timeout=120, wait_step=3):
                "to reach the 'Bound' status." % (timeout, pvc_name))
         g.log.error(msg)
         raise AssertionError(msg)
-
-
-def oc_version(hostname):
-    '''
-     Get Openshift version from oc version command
-     Args:
-        hostname (str): Node on which the ocp command will run.
-     Returns:
-        str : oc version if successful,
-              otherwise raise Exception
-    '''
-    cmd = "oc version | grep openshift | cut -d ' ' -f 2"
-    ret, out, err = g.run(hostname, cmd, "root")
-    if ret != 0:
-        msg = ("failed to get oc version err %s; out %s" % (err, out))
-        g.log.error(msg)
-        raise AssertionError(msg)
-    if not out:
-        error_msg = "Empty string found for oc version"
-        g.log.error(error_msg)
-        raise exceptions.ExecutionError(error_msg)
-
-    return out.strip()
 
 
 def resize_pvc(hostname, pvc_name, size):
