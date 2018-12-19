@@ -110,11 +110,10 @@ class TestVolumeCreationTestCases(heketi_libs.HeketiBaseClass):
             node_info_list.append(node_info)
 
         # Disable 4th and other nodes
-        if len(node_id_list) > 3:
-            for node in node_id_list[3:]:
-                heketi_ops.heketi_node_disable(node, server_url, node_id)
-                self.addCleanup(
-                    heketi_ops.heketi_node_enable, node, server_url, node_id)
+        for node_id in node_id_list[3:]:
+            heketi_ops.heketi_node_disable(node, server_url, node_id)
+            self.addCleanup(
+                heketi_ops.heketi_node_enable, node, server_url, node_id)
 
         # Disable second and other devices on the first 3 nodes
         for node_info in node_info_list[0:3]:
