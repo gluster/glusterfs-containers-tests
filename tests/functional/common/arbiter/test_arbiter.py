@@ -572,7 +572,8 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
             vol_info, arbiter_bricks=2, data_bricks=4)
 
     @ddt.data(True, False)
-    def test_arbiter_volume_expand_using_pvc_node_tags(self, node_tags):
+    def test_expand_arbiter_volume_setting_tags_on_nodes_or_devices(
+            self, node_tags):
         """Test case CNS-1523, CNS-1524
             This test case is going to run two tests.
             If value is True it is going to set tags on nodes and run test
