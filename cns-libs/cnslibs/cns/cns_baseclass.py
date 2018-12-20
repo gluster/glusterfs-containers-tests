@@ -49,7 +49,6 @@ class CnsBaseClass(unittest.TestCase):
         cls.cns_username = g.config['cns']['setup']['cns_username']
         cls.cns_password = g.config['cns']['setup']['cns_password']
         cls.cns_project_name = g.config['cns']['setup']['cns_project_name']
-        cls.deployment_type = g.config['cns']['deployment_type']
 
         # Initializes heketi config variables
         heketi_config = g.config['cns']['heketi_config']

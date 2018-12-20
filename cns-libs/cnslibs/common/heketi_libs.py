@@ -8,8 +8,7 @@ from cnslibs.common.exceptions import ExecutionError, ConfigError
 from cnslibs.common.heketi_ops import (hello_heketi,
                                        heketi_volume_delete,
                                        heketi_blockvolume_delete)
-from cnslibs.common.openshift_ops import (oc_login, switch_oc_project,
-                                          get_ocp_gluster_pod_names)
+from cnslibs.common import openshift_ops
 
 
 class HeketiBaseClass(unittest.TestCase):
@@ -32,8 +31,6 @@ class HeketiBaseClass(unittest.TestCase):
         cls.cns_project_name = g.config['cns']['setup']['cns_project_name']
         cls.ocp_master_nodes = g.config['ocp_servers']['master'].keys()
         cls.ocp_master_node = cls.ocp_master_nodes[0]
-
-        cls.deployment_type = g.config['cns']['deployment_type']
 
         heketi_config = g.config['cns']['heketi_config']
         cls.heketi_dc_name = heketi_config['heketi_dc_name']
@@ -65,19 +62,15 @@ class HeketiBaseClass(unittest.TestCase):
             raise ConfigError("Heketi server %s is not alive"
                               % cls.heketi_server_url)
 
-        if cls.deployment_type == "cns":
-            if not oc_login(cls.ocp_master_node, cls.cns_username,
-                            cls.cns_password):
-                raise ExecutionError("Failed to do oc login on node %s"
-                                     % cls.ocp_master_node)
-
-            if not switch_oc_project(cls.ocp_master_node,
-                                     cls.cns_project_name):
-                raise ExecutionError("Failed to switch oc project on node %s"
-                                     % cls.ocp_master_node)
-
-            cls.gluster_pods = get_ocp_gluster_pod_names(cls.ocp_master_node)
-            g.pod_name = cls.gluster_pods[0]
+        # Switch to the storage project
+        if not openshift_ops.oc_login(
+                cls.ocp_master_node, cls.cns_username, cls.cns_password):
+            raise ExecutionError("Failed to do oc login on node %s"
+                                 % cls.ocp_master_node)
+        if not openshift_ops.switch_oc_project(
+                cls.ocp_master_node, cls.cns_project_name):
+            raise ExecutionError("Failed to switch oc project on node %s"
+                                 % cls.ocp_master_node)
 
         # Have a unique string to recognize the test run for logging
         if 'glustotest_run_id' not in g.config:

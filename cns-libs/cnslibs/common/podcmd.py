@@ -51,6 +51,8 @@ import types
 
 from glusto.core import Glusto as g
 
+from cnslibs.common import openshift_ops
+
 # Define a namedtuple that allows us to address pods instead of just
 # hosts,
 Pod = namedtuple('Pod', 'node podname')
@@ -61,11 +63,15 @@ def run(target, command, log_level=None, orig_run=g.run):
     Wraps glusto's run function.
 
     Args:
-        target (str|Pod): If target is a anything other than a Pod
-            object the command will be run directly on the target
-            (hostname or IP). If target is a Pod object it will run
-            on the named pod, going through the node named in the
-            Pod object.
+        target (str|Pod): If target is str object and
+            it equals to 'auto_get_gluster_endpoint', then
+            Gluster endpoint gets autocalculated to be any of
+            Gluster PODs or nodes depending on the deployment type of
+            a Gluster cluster.
+            If it is str object with other value, then it is considered to be
+            an endpoint for command.
+            If 'target' is of the 'Pod' type,
+            then command will run on the specified POD.
         command (str|list): Command to run.
         log_level (str|None): log level to be passed on to glusto's
             run method
@@ -78,6 +84,15 @@ def run(target, command, log_level=None, orig_run=g.run):
     # NOTE: orig_run captures the glusto run method at function
     # definition time in order to capture the method before
     # any additional monkeypatching by other code
+
+    if target == 'auto_get_gluster_endpoint':
+        ocp_client_node = list(g.config['ocp_servers']['client'].keys())[0]
+        gluster_pods = openshift_ops.get_ocp_gluster_pod_names(ocp_client_node)
+        if gluster_pods:
+            target = Pod(ocp_client_node, gluster_pods[0])
+        else:
+            target = list(g.config.get("gluster_servers", {}).keys())[0]
+
     if isinstance(target, Pod):
         prefix = ['oc', 'rsh', target.podname]
         if isinstance(command, types.StringTypes):

@@ -10,17 +10,12 @@ import types
 
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
-from glustolibs.gluster.brick_libs import (
-    are_bricks_online,
-    get_all_bricks,
-    get_online_bricks_list)
 import mock
 import yaml
 
 from cnslibs.common import command
 from cnslibs.common import exceptions
 from cnslibs.common import openshift_version
-from cnslibs.common import podcmd
 from cnslibs.common import utils
 from cnslibs.common import waiter
 from cnslibs.common.heketi_ops import (
@@ -1233,96 +1228,6 @@ def get_vol_names_from_pv(hostname, pv_name):
                " is %s for pv %s"
                % (vol_list[1], vol_list[0], pv_name))
     return vol_dict
-
-
-@podcmd.GlustoPod()
-def verify_brick_count_gluster_vol(hostname, brick_count,
-                                   gluster_vol):
-    '''
-     Verify brick count for gluster volume
-     Args:
-         hostname (str): hostname on which we want
-                         to check brick count
-         brick_count (int): integer value to verify
-         gluster_vol (str): gluster vol name
-     Returns:
-         bool: True, if successful
-               otherwise raise Exception
-    '''
-    gluster_pod = get_ocp_gluster_pod_names(hostname)[1]
-    p = podcmd.Pod(hostname, gluster_pod)
-    out = get_online_bricks_list(p, gluster_vol)
-    if brick_count == len(out):
-        g.log.info("successfully verified brick count %s "
-                   "for vol %s" % (brick_count, gluster_vol))
-        return True
-    err_msg = ("verification of brick count %s for vol %s"
-               "failed, count found %s" % (
-                   brick_count, gluster_vol, len(out)))
-    raise AssertionError(err_msg)
-
-
-@podcmd.GlustoPod()
-def verify_brick_status_online_gluster_vol(hostname,
-                                           gluster_vol):
-    '''
-     Verify if all the bricks are online for the
-     gluster volume
-     Args:
-         hostname (str): hostname on which we want
-                         to check brick status
-         gluster_vol (str): gluster vol name
-     Returns:
-         bool: True, if successful
-               otherwise raise Exception
-    '''
-    gluster_pod = get_ocp_gluster_pod_names(hostname)[1]
-    p = podcmd.Pod(hostname, gluster_pod)
-    brick_list = get_all_bricks(p, gluster_vol)
-    if brick_list is None:
-        error_msg = ("failed to get brick list for vol"
-                     " %s" % gluster_vol)
-        g.log.error(error_msg)
-        raise exceptions.ExecutionError(error_msg)
-    out = are_bricks_online(p, gluster_vol, brick_list)
-    if out:
-        g.log.info("verification of brick status as online"
-                   " for gluster vol %s successful"
-                   % gluster_vol)
-        return True
-    error_msg = ("verification of brick status as online"
-                 " for gluster vol %s failed" % gluster_vol)
-
-    g.log.error(error_msg)
-    raise exceptions.ExecutionError(error_msg)
-
-
-def verify_gluster_vol_for_pvc(hostname, pvc_name):
-    '''
-     Verify gluster volume has been created for
-     the corresponding PVC
-     Also checks if all the bricks of that gluster
-     volume are online
-     Args:
-         hostname (str): hostname on which we want
-                         to find gluster vol
-         pvc_name (str): pvc_name for which we
-                         want to find corresponding
-                         gluster vol
-     Returns:
-         bool: True if successful
-               otherwise raise Exception
-    '''
-    verify_pvc_status_is_bound(hostname, pvc_name)
-    pv_name = get_pv_name_from_pvc(hostname, pvc_name)
-    vol_dict = get_vol_names_from_pv(hostname, pv_name)
-    gluster_vol = vol_dict["gluster_vol"]
-    verify_brick_status_online_gluster_vol(hostname,
-                                           gluster_vol)
-
-    g.log.info("verification of gluster vol %s for pvc %s is"
-               "successful" % (gluster_vol, pvc_name))
-    return True
 
 
 def get_events(hostname,

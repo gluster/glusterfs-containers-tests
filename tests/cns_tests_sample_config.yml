@@ -41,9 +41,6 @@ cns:
         cns_project_name: "storage-project"
         cns_username: "test-admin"
         cns_password:
-
-    # 'deployment_type' can be cns|crs
-    deployment_type: 'cns'
     trusted_storage_pool_list:
         - [gluster_server1, gluster_server2]
     heketi_config:

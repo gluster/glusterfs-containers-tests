@@ -8,7 +8,6 @@ from glustolibs.gluster import volume_ops, rebalance_ops
 
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_libs import HeketiBaseClass
-from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
 from cnslibs.common import heketi_ops, podcmd
 
 
@@ -19,101 +18,52 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
 
     @podcmd.GlustoPod()
     def get_num_of_bricks(self, volume_name):
-        """
-        Method to determine number of
-        bricks at present in the volume
-        """
-        brick_info = []
+        """Method to determine number of bricks at present in the volume."""
 
-        if self.deployment_type == "cns":
-
-            gluster_pod = get_ocp_gluster_pod_names(
-                self.heketi_client_node)[1]
-
-            p = podcmd.Pod(self.heketi_client_node, gluster_pod)
-
-            volume_info_before_expansion = volume_ops.get_volume_info(
-                p, volume_name)
-
-        elif self.deployment_type == "crs":
-            volume_info_before_expansion = volume_ops.get_volume_info(
-                self.heketi_client_node, volume_name)
-
+        volume_info = volume_ops.get_volume_info(
+            'auto_get_gluster_endpoint', volume_name)
         self.assertIsNotNone(
-            volume_info_before_expansion,
-            "Volume info is None")
+            volume_info, "'%s' volume info is None" % volume_name)
 
-        for brick_details in (volume_info_before_expansion
-                              [volume_name]["bricks"]["brick"]):
-
-            brick_info.append(brick_details["name"])
-
-        num_of_bricks = len(brick_info)
-
-        return num_of_bricks
+        return len([b for b in volume_info[volume_name]["bricks"]["brick"]])
 
     @podcmd.GlustoPod()
     def get_rebalance_status(self, volume_name):
-        """
-        Rebalance status after expansion
-        """
-        if self.deployment_type == "cns":
-            gluster_pod = get_ocp_gluster_pod_names(
-                self.heketi_client_node)[1]
+        """Rebalance status after expansion."""
+        wait_reb = rebalance_ops.wait_for_rebalance_to_complete(
+            'auto_get_gluster_endpoint', volume_name)
+        self.assertTrue(
+            wait_reb,
+            "Rebalance for '%s' volume was not completed." % volume_name)
 
-            p = podcmd.Pod(self.heketi_client_node, gluster_pod)
-
-            wait_reb = rebalance_ops.wait_for_rebalance_to_complete(
-                p, volume_name)
-            self.assertTrue(wait_reb, "Rebalance not complete")
-
-            reb_status = rebalance_ops.get_rebalance_status(
-                p, volume_name)
-
-        elif self.deployment_type == "crs":
-            wait_reb = rebalance_ops.wait_for_rebalance_to_complete(
-                self.heketi_client_node, volume_name)
-            self.assertTrue(wait_reb, "Rebalance not complete")
-
-            reb_status = rebalance_ops.get_rebalance_status(
-                self.heketi_client_node, volume_name)
-
-        self.assertEqual(reb_status["aggregate"]["statusStr"],
-                         "completed", "Rebalance not yet completed")
+        reb_status = rebalance_ops.get_rebalance_status(
+            'auto_get_gluster_endpoint', volume_name)
+        self.assertEqual(
+            reb_status["aggregate"]["statusStr"], "completed",
+            "Failed to get rebalance status for '%s' volume." % volume_name)
 
     @podcmd.GlustoPod()
     def get_brick_and_volume_status(self, volume_name):
-        """
-        Status of each brick in a volume
-        for background validation
-        """
-        brick_info = []
+        """Status of each brick in a volume for background validation."""
 
-        if self.deployment_type == "cns":
-            gluster_pod = get_ocp_gluster_pod_names(
-                self.heketi_client_node)[1]
+        volume_info = volume_ops.get_volume_info(
+            'auto_get_gluster_endpoint', volume_name)
+        self.assertIsNotNone(
+            volume_info, "'%s' volume info is empty" % volume_name)
 
-            p = podcmd.Pod(self.heketi_client_node, gluster_pod)
-
-            volume_info = volume_ops.get_volume_info(p, volume_name)
-            volume_status = volume_ops.get_volume_status(p, volume_name)
-
-        elif self.deployment_type == "crs":
-            volume_info = volume_ops.get_volume_info(
-                self.heketi_client_node, volume_name)
-            volume_status = volume_ops.get_volume_status(
-                self.heketi_client_node, volume_name)
-
-        self.assertIsNotNone(volume_info, "Volume info is empty")
-        self.assertIsNotNone(volume_status, "Volume status is empty")
+        volume_status = volume_ops.get_volume_status(
+            'auto_get_gluster_endpoint', volume_name)
+        self.assertIsNotNone(
+            volume_status, "'%s' volume status is empty" % volume_name)
 
         self.assertEqual(int(volume_info[volume_name]["status"]), 1,
                          "Volume not up")
+
+        brick_info = []
         for brick_details in volume_info[volume_name]["bricks"]["brick"]:
             brick_info.append(brick_details["name"])
-
-        if brick_info == []:
-            raise ExecutionError("Brick details empty for %s" % volume_name)
+        self.assertTrue(
+            brick_info, "Brick details are empty for %s" % volume_name)
 
         for brick in brick_info:
             brick_data = brick.strip().split(":")

@@ -4,7 +4,6 @@ from glustolibs.gluster.peer_ops import get_pool_list
 
 from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common import heketi_ops, podcmd
-from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
 
 
 class TestHeketiVolume(HeketiBaseClass):
@@ -44,13 +43,7 @@ class TestHeketiVolume(HeketiBaseClass):
         hostname = []
 
         g.log.info("Get the pool list")
-        if self.deployment_type == "cns":
-            gluster_pod = get_ocp_gluster_pod_names(
-                self.heketi_client_node)[1]
-            p = podcmd.Pod(self.heketi_client_node, gluster_pod)
-            list_of_pools = get_pool_list(p)
-        else:
-            list_of_pools = get_pool_list(self.heketi_client_node)
+        list_of_pools = get_pool_list('auto_get_gluster_endpoint')
         self.assertTrue(list_of_pools, ("Failed to get the "
                         "pool list from gluster pods/nodes"))
         g.log.info("Successfully got the pool list from gluster pods/nodes")

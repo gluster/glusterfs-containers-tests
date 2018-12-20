@@ -16,7 +16,6 @@ from cnslibs.common.heketi_ops import (heketi_volume_create,
                                        heketi_node_info,
                                        heketi_node_list,
                                        heketi_node_delete)
-from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
 from cnslibs.common import podcmd
 
 
@@ -53,24 +52,18 @@ class TestHeketiVolume(HeketiBaseClass):
         g.log.info("Heketi volumes successfully listed")
 
         g.log.info("List gluster volumes")
-        if self.deployment_type == "cns":
-            gluster_pod = get_ocp_gluster_pod_names(
-                self.heketi_client_node)[1]
-            p = podcmd.Pod(self.heketi_client_node, gluster_pod)
-            out = get_volume_list(p)
-        else:
-            out = get_volume_list(self.heketi_client_node)
-        self.assertTrue(out, ("Unable to get volumes list"))
+        vol_list = get_volume_list('auto_get_gluster_endpoint')
+        self.assertTrue(vol_list, ("Unable to get volumes list"))
         g.log.info("Successfully got the volumes list")
 
         # Check the volume count are equal
         self.assertEqual(
-            len(volumes["volumes"]), len(out),
+            len(volumes["volumes"]), len(vol_list),
             "Lengths of gluster '%s' and heketi '%s' volume lists are "
-            "not equal." % (out, volumes)
+            "not equal." % (vol_list, volumes)
         )
         g.log.info("Heketi volumes list %s and"
-                   " gluster volumes list %s" % ((volumes), (out)))
+                   " gluster volumes list %s" % (volumes, vol_list))
 
     @podcmd.GlustoPod()
     def test_create_vol_and_retrieve_vol_info(self):
@@ -97,15 +90,8 @@ class TestHeketiVolume(HeketiBaseClass):
         g.log.info("Successfully got the heketi volume info")
         name = out["name"]
 
-        if self.deployment_type == "cns":
-            gluster_pod = get_ocp_gluster_pod_names(
-                self.heketi_client_node)[1]
-            p = podcmd.Pod(self.heketi_client_node, gluster_pod)
-            out = get_volume_info(p, volname=name)
-        else:
-            out = get_volume_info(self.heketi_client_node,
-                                  volname=name)
-        self.assertTrue(out, ("Failed to get volume info %s" % name))
+        vol_info = get_volume_info('auto_get_gluster_endpoint', volname=name)
+        self.assertTrue(vol_info, "Failed to get volume info %s" % name)
         g.log.info("Successfully got the volume info %s" % name)
 
     def test_to_check_deletion_of_cluster(self):

@@ -4,7 +4,6 @@ from glustolibs.gluster.volume_ops import get_volume_info
 from cnslibs.common import exceptions
 from cnslibs.common import heketi_libs
 from cnslibs.common import heketi_ops
-from cnslibs.common import openshift_ops
 from cnslibs.common import podcmd
 
 
@@ -122,12 +121,6 @@ class TestDisableHeketiDevice(heketi_libs.HeketiBaseClass):
         name = out["name"]
 
         # Get gluster volume info
-        if self.deployment_type == "cns":
-            gluster_pod = openshift_ops.get_ocp_gluster_pod_names(
-                self.heketi_client_node)[1]
-            p = podcmd.Pod(self.heketi_client_node, gluster_pod)
-            out = get_volume_info(p, volname=name)
-        else:
-            out = get_volume_info(self.heketi_client_node, volname=name)
-        self.assertTrue(out, "Failed to get '%s' volume info." % name)
+        vol_info = get_volume_info('auto_get_gluster_endpoint', volname=name)
+        self.assertTrue(vol_info, "Failed to get '%s' volume info." % name)
         g.log.info("Successfully got the '%s' volume info." % name)

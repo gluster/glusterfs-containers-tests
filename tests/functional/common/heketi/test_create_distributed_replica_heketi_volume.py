@@ -14,7 +14,6 @@ from cnslibs.common.heketi_ops import (heketi_node_list,
                                        heketi_volume_create,
                                        heketi_volume_list,
                                        heketi_volume_delete)
-from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
 from cnslibs.common import podcmd
 
 
@@ -107,12 +106,8 @@ class TestHeketiVolume(HeketiBaseClass):
 
         # Get gluster volume info
         g.log.info("Get gluster volume '%s' info" % vol_name)
-        if self.deployment_type == "cns":
-            gluster_pod = get_ocp_gluster_pod_names(self.master_node)[0]
-            p = podcmd.Pod(self.master_node, gluster_pod)
-            gluster_vol = get_volume_info(p, volname=vol_name)
-        else:
-            gluster_vol = get_volume_info(self.gluster_node, volname=vol_name)
+        gluster_vol = get_volume_info(
+            'auto_get_gluster_endpoint', volname=vol_name)
         self.assertTrue(
             gluster_vol, "Failed to get volume '%s' info" % vol_name)
         g.log.info("Successfully got volume '%s' info" % vol_name)
@@ -157,13 +152,9 @@ class TestHeketiVolume(HeketiBaseClass):
 
         # Check the gluster volume list
         g.log.info("Get the gluster volume list")
-        if self.deployment_type == "cns":
-            gluster_pod = get_ocp_gluster_pod_names(self.master_node)[0]
-            p = podcmd.Pod(self.master_node, gluster_pod)
-            gluster_volumes = get_volume_list(p)
-        else:
-            gluster_volumes = get_volume_list(self.gluster_node)
+        gluster_volumes = get_volume_list('auto_get_gluster_endpoint')
         self.assertTrue(gluster_volumes, "Unable to get Gluster volume list")
+
         g.log.info("Successfully got Gluster volume list" % gluster_volumes)
         self.assertNotIn(vol_id, gluster_volumes)
         self.assertNotIn(vol_name, gluster_volumes)

@@ -4,7 +4,6 @@ from glustolibs.gluster import volume_ops
 from cnslibs.common import exceptions
 from cnslibs.common import heketi_libs
 from cnslibs.common import heketi_ops
-from cnslibs.common import openshift_ops
 from cnslibs.common import podcmd
 
 
@@ -60,25 +59,14 @@ class TestVolumeCreationTestCases(heketi_libs.HeketiBaseClass):
                          "Hosts and gluster servers not matching for %s"
                          % volume_id)
 
-        if self.deployment_type == "cns":
-            gluster_pod = openshift_ops.get_ocp_gluster_pod_names(
-                self.heketi_client_node)[1]
+        volume_info = volume_ops.get_volume_info(
+            'auto_get_gluster_endpoint', volume_name)
+        self.assertIsNotNone(volume_info, "get_volume_info returned None")
 
-            p = podcmd.Pod(self.heketi_client_node, gluster_pod)
-
-            volume_info = volume_ops.get_volume_info(p, volume_name)
-            volume_status = volume_ops.get_volume_status(p, volume_name)
-
-        elif self.deployment_type == "crs":
-            volume_info = volume_ops.get_volume_info(
-                self.heketi_client_node, volume_name)
-            volume_status = volume_ops.get_volume_status(
-                self.heketi_client_node, volume_name)
-
-        self.assertNotEqual(volume_info, None,
-                            "get_volume_info returned None")
-        self.assertNotEqual(volume_status, None,
-                            "get_volume_status returned None")
+        volume_status = volume_ops.get_volume_status(
+            'auto_get_gluster_endpoint', volume_name)
+        self.assertIsNotNone(
+            volume_status, "get_volume_status returned None")
 
         self.assertEqual(int(volume_info[volume_name]["status"]), 1,
                          "Volume %s status down" % volume_id)
