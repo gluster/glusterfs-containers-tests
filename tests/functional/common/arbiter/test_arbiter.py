@@ -570,3 +570,84 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
 
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info, arbiter_bricks=2, data_bricks=4)
+
+    @ddt.data(True, False)
+    def test_arbiter_volume_expand_using_pvc_node_tags(self, node_tags):
+        """Test case CNS-1523, CNS-1524
+            This test case is going to run two tests.
+            If value is True it is going to set tags on nodes and run test
+            If value is False it is going to set tags on devices and run test
+        """
+
+        data_nodes = []
+        arbiter_nodes = []
+
+        # set tags arbiter:disabled, arbiter:required
+        for i, node_id in enumerate(self.node_id_list):
+            if node_tags:
+                self._set_arbiter_tag_with_further_revert(
+                    self.heketi_client_node, self.heketi_server_url, 'node',
+                    node_id, 'disabled' if i < 2 else 'required')
+
+            node_info = heketi_ops.heketi_node_info(
+                self.heketi_client_node, self.heketi_server_url,
+                node_id, json=True)
+
+            if not node_tags:
+                for device in node_info['devices']:
+                    self._set_arbiter_tag_with_further_revert(
+                        self.heketi_client_node, self.heketi_server_url,
+                        'device', device['id'],
+                        'disabled' if i < 2 else 'required')
+                    device_info = heketi_ops.heketi_device_info(
+                        self.heketi_client_node, self.heketi_server_url,
+                        device['id'], json=True)
+                    self.assertEqual(
+                        device_info['tags']['arbiter'],
+                        'disabled' if i < 2 else 'required')
+
+            node = {
+                'id': node_id, 'host': node_info['hostnames']['storage'][0]}
+            if node_tags:
+                self.assertEqual(
+                    node_info['tags']['arbiter'],
+                    'disabled' if i < 2 else 'required')
+            data_nodes.append(node) if i < 2 else arbiter_nodes.append(
+                node)
+
+        # Create sc with gluster arbiter info
+        self.create_storage_class(
+            is_arbiter_vol=True, allow_volume_expansion=True)
+
+        # Create PVC and wait for it to be in 'Bound' state
+        self.create_and_wait_for_pvc()
+
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+
+        bricks = self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
+            vol_info)
+
+        arbiter_hosts = [obj['host'] for obj in arbiter_nodes]
+        data_hosts = [obj['host'] for obj in data_nodes]
+
+        for brick in bricks['arbiter_list']:
+            self.assertIn(brick['name'].split(':')[0], arbiter_hosts)
+
+        for brick in bricks['data_list']:
+            self.assertIn(brick['name'].split(':')[0], data_hosts)
+
+        # Expand PVC and verify the size
+        pvc_size = 2
+        resize_pvc(self.node, self.pvc_name, pvc_size)
+        verify_pvc_size(self.node, self.pvc_name, pvc_size)
+
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+
+        bricks = self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
+            vol_info, arbiter_bricks=2, data_bricks=4)
+
+        for brick in bricks['arbiter_list']:
+            self.assertIn(brick['name'].split(':')[0], arbiter_hosts)
+
+        for brick in bricks['data_list']:
+            self.assertIn(brick['name'].split(':')[0], data_hosts)
