@@ -27,7 +27,7 @@ class TestHeketiVolume(HeketiBaseClass):
     @classmethod
     def setUpClass(cls):
         super(TestHeketiVolume, cls).setUpClass()
-        cls.volume_size = cls.heketi_volume['size']
+        cls.volume_size = 1
 
     @podcmd.GlustoPod()
     def test_volume_create_and_list_volume(self):
@@ -40,7 +40,7 @@ class TestHeketiVolume(HeketiBaseClass):
                                    self.heketi_server_url,
                                    self.volume_size, json=True)
         self.assertTrue(out, ("Failed to create heketi "
-                        "volume of size %s" % str(self.volume_size)))
+                        "volume of size %s" % self.volume_size))
         g.log.info("Heketi volume successfully created" % out)
         volume_id = out["bricks"][0]["volume"]
         self.addCleanup(self.delete_volumes, volume_id)
@@ -84,7 +84,7 @@ class TestHeketiVolume(HeketiBaseClass):
                                    self.heketi_server_url,
                                    self.volume_size, json=True)
         self.assertTrue(out, ("Failed to create heketi "
-                        "volume of size %s" % str(self.volume_size)))
+                        "volume of size %s" % self.volume_size))
         g.log.info("Heketi volume successfully created" % out)
         volume_id = out["bricks"][0]["volume"]
         self.addCleanup(self.delete_volumes, volume_id)
@@ -124,7 +124,7 @@ class TestHeketiVolume(HeketiBaseClass):
                                        self.heketi_server_url,
                                        self.volume_size, json=True)
             self.assertTrue(out, ("Failed to create heketi "
-                            "volume of size %s" % str(self.volume_size)))
+                            "volume of size %s" % self.volume_size))
             g.log.info("Heketi volume successfully created" % out)
             volume_id = out["bricks"][0]["volume"]
             self.addCleanup(self.delete_volumes, volume_id)

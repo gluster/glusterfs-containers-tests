@@ -26,6 +26,7 @@ class TestHeketiVolumeOperations(HeketiBaseClass):
     def setUpClass(cls):
         super(TestHeketiVolumeOperations, cls).setUpClass()
         cls.volume_id = None
+        cls.volume_size = 1
 
     def volume_cleanup(self, volume_id):
         """
@@ -81,39 +82,35 @@ class TestHeketiVolumeOperations(HeketiBaseClass):
         Test to create volume with default options.
         """
 
-        volume_size = self.heketi_volume['size']
-        kwargs = {"json": True}
         vol_info = heketi_volume_create(self.heketi_client_node,
-                                        self.heketi_server_url, volume_size,
-                                        **kwargs)
+                                        self.heketi_server_url,
+                                        self.volume_size, json=True)
         self.assertTrue(vol_info, ("Failed to create heketi volume of size %s"
-                                   % str(volume_size)))
+                                   % self.volume_size))
         self.addCleanup(self.volume_cleanup, vol_info['id'])
 
-        self.assertEqual(vol_info['size'], int(volume_size),
+        self.assertEqual(vol_info['size'], self.volume_size,
                          ("Failed to create volume with default options."
                           "Expected Size: %s, Actual Size: %s"
-                          % (str(volume_size), str(vol_info['size']))))
+                          % (self.volume_size, vol_info['size'])))
 
     def test_heketi_with_expand_volume(self):
         """
         Test volume expand and size if updated correctly in heketi-cli info
         """
 
-        kwargs = {"json": True}
-        volume_size = self.heketi_volume['size']
         vol_info = heketi_volume_create(self.heketi_client_node,
-                                        self.heketi_server_url, volume_size,
-                                        **kwargs)
+                                        self.heketi_server_url,
+                                        self.volume_size, json=True)
         self.assertTrue(vol_info, ("Failed to create heketi volume of size %s"
-                                   % str(volume_size)))
+                                   % self.volume_size))
         self.addCleanup(self.volume_cleanup, vol_info['id'])
-        self.assertEqual(vol_info['size'], int(volume_size),
+        self.assertEqual(vol_info['size'], self.volume_size,
                          ("Failed to create volume."
                           "Expected Size: %s, Actual Size: %s"
-                          % (str(volume_size), str(vol_info['size']))))
+                          % (self.volume_size, vol_info['size'])))
         volume_id = vol_info["id"]
-        expand_size = self.heketi_volume['expand_size']
+        expand_size = 2
         ret = heketi_volume_expand(self.heketi_client_node,
                                    self.heketi_server_url, volume_id,
                                    expand_size)
@@ -121,8 +118,8 @@ class TestHeketiVolumeOperations(HeketiBaseClass):
                               % volume_id))
         volume_info = heketi_volume_info(self.heketi_client_node,
                                          self.heketi_server_url,
-                                         volume_id, **kwargs)
-        expected_size = int(volume_size) + int(expand_size)
+                                         volume_id, json=True)
+        expected_size = self.volume_size + expand_size
         self.assertEqual(volume_info['size'], expected_size,
                          ("Volume Expansion failed Expected Size: %s, Actual "
                           "Size: %s" % (str(expected_size),
@@ -239,19 +236,17 @@ class TestHeketiVolumeOperations(HeketiBaseClass):
         Test to create volume after a device removal and with new device added.
         """
 
-        volume_size = self.heketi_volume['size']
-
         vol_info = heketi_volume_create(self.heketi_client_node,
-                                        self.heketi_server_url, volume_size,
-                                        json=True)
+                                        self.heketi_server_url,
+                                        self.volume_size, json=True)
         self.assertTrue(vol_info, ("Failed to create heketi volume of size %s"
-                                   % str(volume_size)))
+                                   % self.volume_size))
         self.addCleanup(self.volume_cleanup, vol_info['id'])
 
-        self.assertEqual(vol_info['size'], int(volume_size),
+        self.assertEqual(vol_info['size'], self.volume_size,
                          ("Failed to create volume with default options."
                           "Expected Size: %s, Actual Size: %s"
-                          % (str(volume_size), str(vol_info['size']))))
+                          % (self.volume_size, vol_info['size'])))
 
         # 1. Device addition
         gluster_srvrs = self.gluster_servers
@@ -324,8 +319,8 @@ class TestHeketiVolumeOperations(HeketiBaseClass):
 
         # Volume creation after device update
         vol_info = heketi_volume_create(self.heketi_client_node,
-                                        self.heketi_server_url, volume_size,
-                                        json=True)
+                                        self.heketi_server_url,
+                                        self.volume_size, json=True)
         self.assertTrue(vol_info, ("Failed to create heketi volume of size %s"
-                                   % str(volume_size)))
+                                   % self.volume_size))
         self.addCleanup(self.volume_cleanup, vol_info['id'])
