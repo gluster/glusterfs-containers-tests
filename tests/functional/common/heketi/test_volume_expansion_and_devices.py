@@ -192,6 +192,8 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
         All the devices attached are gracefully
         detached in this function
         """
+        if not isinstance(device_id_list, (tuple, set, list)):
+            device_id_list = [device_id_list]
         for device_id in device_id_list:
             device_disable = heketi_ops.heketi_device_disable(
                 self.heketi_client_node, self.heketi_server_url, device_id)
@@ -455,153 +457,123 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
                         % volume_id)
 
     def test_volume_expansion_no_free_space(self):
-        """
-        To test volume expansion when there is no free
-        space
-        """
+        """Test case CNS-467: volume expansion when there is no free space."""
 
-        additional_devices_attached = {}
-        heketi_node_id_list = heketi_ops.heketi_node_list(
-            self.heketi_client_node, self.heketi_server_url)
+        vol_size, expand_size, additional_devices_attached = None, 10, {}
+        h_node, h_server_url = self.heketi_client_node, self.heketi_server_url
 
-        for node_id in heketi_node_id_list:
-            node_info_dict = heketi_ops.heketi_node_info(
-                self.heketi_client_node, self.heketi_server_url,
-                node_id, json=True)
-            self.assertNotEqual(node_info_dict, False,
-                                "Heketi node info for %s failed" % node_id)
+        # Get nodes info
+        heketi_node_id_list = heketi_ops.heketi_node_list(h_node, h_server_url)
+        if len(heketi_node_id_list) < 3:
+            self.skipTest("3 Heketi nodes are required.")
+
+        # Disable 4th and other nodes
+        for node_id in heketi_node_id_list[3:]:
+            heketi_ops.heketi_node_disable(h_node, h_server_url, node_id)
+            self.addCleanup(
+                heketi_ops.heketi_node_enable, h_node, h_server_url, node_id)
+
+        # Prepare first 3 nodes
+        smallest_size = None
+        for node_id in heketi_node_id_list[0:3]:
+            node_info = heketi_ops.heketi_node_info(
+                h_node, h_server_url, node_id, json=True)
+
+            # Disable second and other devices
+            devices = node_info["devices"]
+            self.assertTrue(
+                devices, "Node '%s' does not have devices." % node_id)
+            if devices[0]["state"].strip().lower() != "online":
+                self.skipTest("Test expects first device to be enabled.")
+            if (smallest_size is None or
+                    devices[0]["storage"]["free"] < smallest_size):
+                smallest_size = devices[0]["storage"]["free"]
+            for device in node_info["devices"][1:]:
+                heketi_ops.heketi_device_disable(
+                    h_node, h_server_url, device["id"])
+                self.addCleanup(
+                    heketi_ops.heketi_device_enable,
+                    h_node, h_server_url, device["id"])
+
+            # Gather info about additional devices
             for gluster_server in self.gluster_servers:
-                gluster_server_ip = (
-                    self.gluster_servers_info[gluster_server]["storage"])
-                node_ip = node_info_dict["hostnames"]["storage"][0]
+                gluster_server_data = self.gluster_servers_info[gluster_server]
+                g_manage = gluster_server_data["manage"]
+                g_storage = gluster_server_data["storage"]
+                if not (g_manage in node_info["hostnames"]["manage"] or
+                        g_storage in node_info["hostnames"]["storage"]):
+                    continue
 
-                if gluster_server_ip == node_ip:
-                    addition_status = (
-                        heketi_ops.heketi_device_add(
-                            self.heketi_client_node,
-                            self.heketi_server_url,
-                            self.gluster_servers_info[gluster_server]
-                            ["additional_devices"][0], node_id))
+                heketi_ops.heketi_device_add(
+                    h_node, h_server_url,
+                    gluster_server_data["additional_devices"][0], node_id)
+                additional_devices_attached.update(
+                    {node_id: gluster_server_data["additional_devices"][0]})
 
-                    self.assertNotEqual(addition_status, False,
-                                        "Addition of device %s failed"
-                                        % self.gluster_servers_info
-                                        [gluster_server]
-                                        ["additional_devices"][0])
-
-                additional_devices_attached.update({node_id:
-                                                   self.gluster_servers_info
-                                                   [gluster_server]
-                                                   ["additional_devices"][0]})
-
-        additional_devices_ids = []
+        # Schedule cleanup of the added devices
         for node_id in additional_devices_attached.keys():
             node_info = heketi_ops.heketi_node_info(
-                self.heketi_client_node, self.heketi_server_url,
-                node_id, json=True)
-
+                h_node, h_server_url, node_id, json=True)
             for device in node_info["devices"]:
-                if device["name"] == additional_devices_attached[node_id]:
-                    additional_devices_ids.append(device["id"])
+                if device["name"] != additional_devices_attached[node_id]:
+                    continue
+                self.addCleanup(self.detach_devices_attached, device["id"])
+                break
+            else:
+                self.fail("Could not find ID for added device on "
+                          "'%s' node." % node_id)
 
-        self.addCleanup(self.detach_devices_attached,
-                        additional_devices_ids)
-
-        for node_id in additional_devices_attached.keys():
-            flag_device_added = False
-            node_info = heketi_ops.heketi_node_info(
-                self.heketi_client_node, self.heketi_server_url,
-                node_id, json=True)
-            for device in node_info["devices"]:
-                if device["name"] == additional_devices_attached[node_id]:
-                    flag_device_added = True
-
-            self.assertTrue(flag_device_added)
-
+        # Temporary disable new devices
         self.disable_devices(additional_devices_attached)
 
+        # Create volume and save info about it
+        vol_size = int(smallest_size / (1024**2)) - 1
         creation_info = heketi_ops.heketi_volume_create(
-            self.heketi_client_node, self.heketi_server_url, 675, json=True)
-
-        self.assertNotEqual(creation_info, False, "Volume creation failed")
-
-        volume_name = creation_info["name"]
-        volume_id = creation_info["id"]
+            h_node, h_server_url, vol_size, json=True)
+        volume_name, volume_id = creation_info["name"], creation_info["id"]
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete,
+            h_node, h_server_url, volume_id, raise_on_error=False)
 
         volume_info_before_expansion = heketi_ops.heketi_volume_info(
-            self.heketi_client_node,
-            self.heketi_server_url,
-            volume_id, json=True)
-
-        heketi_vol_info_size_before_expansion = (
-            volume_info_before_expansion["size"])
-
+            h_node, h_server_url, volume_id, json=True)
         num_of_bricks_before_expansion = self.get_num_of_bricks(volume_name)
-
         self.get_brick_and_volume_status(volume_name)
+        free_space_before_expansion = self.get_devices_summary_free_space()
 
-        free_space_after_creation = self.get_devices_summary_free_space()
-
+        # Try to expand volume with not enough device space
         self.assertRaises(
-            ExecutionError,
-            heketi_ops.heketi_volume_expand,
-            self.heketi_client_node, self.heketi_server_url, volume_id,
-            50, raw_cli_output=True)
+            ExecutionError, heketi_ops.heketi_volume_expand,
+            h_node, h_server_url, volume_id, expand_size)
 
+        # Enable new devices to be able to expand our volume
         self.enable_devices(additional_devices_attached)
 
-        expansion_info = heketi_ops.heketi_volume_expand(
-            self.heketi_client_node, self.heketi_server_url,
-            volume_id, 50, json=True)
-
-        self.assertNotEqual(expansion_info, False,
-                            "Volume %s could not be expanded" % volume_id)
-
+        # Expand volume and validate results
+        heketi_ops.heketi_volume_expand(
+            h_node, h_server_url, volume_id, expand_size, json=True)
         free_space_after_expansion = self.get_devices_summary_free_space()
-
-        self.assertTrue(
-            free_space_after_creation > free_space_after_expansion,
+        self.assertGreater(
+            free_space_before_expansion, free_space_after_expansion,
             "Free space not consumed after expansion of %s" % volume_id)
-
         num_of_bricks_after_expansion = self.get_num_of_bricks(volume_name)
-
         self.get_brick_and_volume_status(volume_name)
-
         volume_info_after_expansion = heketi_ops.heketi_volume_info(
-            self.heketi_client_node,
-            self.heketi_server_url,
-            volume_id, json=True)
+            h_node, h_server_url, volume_id, json=True)
+        self.assertGreater(
+            volume_info_after_expansion["size"],
+            volume_info_before_expansion["size"],
+            "Size of %s not increased" % volume_id)
+        self.assertGreater(
+            num_of_bricks_after_expansion, num_of_bricks_before_expansion)
+        self.assertEqual(
+            num_of_bricks_after_expansion % num_of_bricks_before_expansion, 0)
 
-        self.assertNotEqual(
-            volume_info_after_expansion, False,
-            "Heketi volume info for %s failed" % volume_id)
-
-        heketi_vol_info_size_after_expansion = (
-            volume_info_after_expansion["size"])
-
-        difference_size_after_expansion = (
-                           heketi_vol_info_size_after_expansion -
-                           heketi_vol_info_size_before_expansion)
-
-        self.assertTrue(difference_size_after_expansion > 0,
-                        "Size of %s not increased" % volume_id)
-
-        num_of_bricks_added_after_expansion = (num_of_bricks_after_expansion -
-                                               num_of_bricks_before_expansion)
-
-        self.assertEqual(num_of_bricks_added_after_expansion, 3)
-
-        deletion_info = heketi_ops.heketi_volume_delete(
-            self.heketi_client_node, self.heketi_server_url, volume_id,
-            json=True)
-
-        self.assertNotEqual(deletion_info, False,
-                            "Deletion of %s not successful" % volume_id)
-
+        # Delete volume and validate release of the used space
+        heketi_ops.heketi_volume_delete(h_node, h_server_url, volume_id)
         free_space_after_deletion = self.get_devices_summary_free_space()
-
-        self.assertTrue(
-            free_space_after_deletion > free_space_after_expansion,
+        self.assertGreater(
+            free_space_after_deletion, free_space_after_expansion,
             "Free space not reclaimed after deletion of volume %s" % volume_id)
 
     @podcmd.GlustoPod()
