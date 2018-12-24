@@ -8,7 +8,6 @@ from cnslibs.common.heketi_ops import (
 from cnslibs.common.openshift_ops import (
     get_gluster_pod_names_by_pvc_name,
     get_pv_name_from_pvc,
-    get_pvc_status,
     get_pod_name_from_dc,
     get_pod_names_from_dc,
     oc_create_secret,
@@ -89,10 +88,12 @@ class TestDynamicProvisioningP0(BaseClass):
         datafile_path = '%s/fake_file_for_%s' % (mount_path, self.id())
 
         # Create secret and storage class
-        self.create_storage_class()
+        sc_name = self.create_storage_class()
 
         # Create PVC
-        app_1_pvc_name = self.create_and_wait_for_pvc()
+        app_1_pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix="autotest-file", sc_name=sc_name
+        )
 
         # Create app POD with attached volume
         app_1_pod_name = oc_create_tiny_pod_with_volume(
@@ -125,16 +126,14 @@ class TestDynamicProvisioningP0(BaseClass):
         self.cmd_run(heketi_down_cmd)
         wait_for_resource_absence(self.node, 'pod', heketi_pod_name)
 
-        # Create second PVC
-        app_2_pvc_name = self.create_and_wait_for_pvc()
-
-        # Check status of the second PVC after small pause
-        time.sleep(2)
-        ret, status = get_pvc_status(self.node, app_2_pvc_name)
-        self.assertTrue(ret, "Failed to get pvc status of %s" % app_2_pvc_name)
-        self.assertEqual(
-            status, "Pending",
-            "PVC status of %s is not in Pending state" % app_2_pvc_name)
+        app_2_pvc_name = oc_create_pvc(
+            self.node, pvc_name_prefix="autotest-file2", sc_name=sc_name
+        )
+        self.addCleanup(
+            wait_for_resource_absence, self.node, 'pvc', app_2_pvc_name)
+        self.addCleanup(
+            oc_delete, self.node, 'pvc', app_2_pvc_name, raise_on_absence=False
+        )
 
         # Create second app POD
         app_2_pod_name = oc_create_tiny_pod_with_volume(

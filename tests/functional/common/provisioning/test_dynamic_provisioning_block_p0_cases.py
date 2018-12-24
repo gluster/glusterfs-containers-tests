@@ -1,4 +1,3 @@
-import time
 from unittest import skip
 
 from cnslibs.cns.cns_baseclass import GlusterBlockBaseClass
@@ -7,8 +6,8 @@ from cnslibs.common.openshift_ops import (
     get_gluster_pod_names_by_pvc_name,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
-    get_pvc_status,
     oc_create_app_dc_with_io,
+    oc_create_pvc,
     oc_delete,
     oc_get_custom_resource,
     oc_rsh,
@@ -94,16 +93,14 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         wait_for_resource_absence(self.node, 'pod', heketi_pod_name)
 
         # Create second PVC
-        app_2_pvc_name = self.create_and_wait_for_pvc(
-            pvc_name_prefix='autotests-block2')
-
-        # Check status of the second PVC after small pause
-        time.sleep(2)
-        ret, status = get_pvc_status(self.node, app_2_pvc_name)
-        self.assertTrue(ret, "Failed to get pvc status of %s" % app_2_pvc_name)
-        self.assertEqual(
-            status, "Pending",
-            "PVC status of %s is not in Pending state" % app_2_pvc_name)
+        app_2_pvc_name = oc_create_pvc(
+            self.node, pvc_name_prefix='autotest-block2', sc_name=sc_name
+        )
+        self.addCleanup(
+            wait_for_resource_absence, self.node, 'pvc', app_2_pvc_name)
+        self.addCleanup(
+            oc_delete, self.node, 'pvc', app_2_pvc_name
+        )
 
         # Create second app POD
         app_2_dc_name = oc_create_app_dc_with_io(self.node, app_2_pvc_name)
