@@ -1,7 +1,7 @@
 import time
 from unittest import skip
 
-from cnslibs.cns.cns_baseclass import CnsBaseClass
+from cnslibs.cns.cns_baseclass import BaseClass
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_ops import (
     verify_volume_name_prefix)
@@ -31,7 +31,7 @@ from cnslibs.common.waiter import Waiter
 from glusto.core import Glusto as g
 
 
-class TestDynamicProvisioningP0(CnsBaseClass):
+class TestDynamicProvisioningP0(BaseClass):
     '''
      Class that contain P0 dynamic provisioning test cases for
      glusterfile volume
@@ -116,9 +116,9 @@ class TestDynamicProvisioningP0(CnsBaseClass):
 
         # Remove Heketi pod
         heketi_down_cmd = "oc scale --replicas=0 dc/%s --namespace %s" % (
-            self.heketi_dc_name, self.cns_project_name)
+            self.heketi_dc_name, self.storage_project_name)
         heketi_up_cmd = "oc scale --replicas=1 dc/%s --namespace %s" % (
-            self.heketi_dc_name, self.cns_project_name)
+            self.heketi_dc_name, self.storage_project_name)
         self.addCleanup(self.cmd_run, heketi_up_cmd)
         heketi_pod_name = get_pod_name_from_dc(
             self.node, self.heketi_dc_name, timeout=10, wait_step=3)
@@ -281,7 +281,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
         scale_dc_pod_amount_and_wait(self.ocp_client[0],
                                      self.heketi_dc_name,
                                      0,
-                                     self.cns_project_name)
+                                     self.storage_project_name)
         try:
             # delete pvc
             for pvc in self.pvc_name_list:
@@ -296,7 +296,7 @@ class TestDynamicProvisioningP0(CnsBaseClass):
             scale_dc_pod_amount_and_wait(self.ocp_client[0],
                                          self.heketi_dc_name,
                                          1,
-                                         self.cns_project_name)
+                                         self.storage_project_name)
 
         # verify PVC's are deleted
         for pvc in self.pvc_name_list:

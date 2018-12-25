@@ -2,20 +2,16 @@
 # This section has to be defined.
 ocp_servers:
     master:
-        master_node1:
-            hostname: master_node1
-        master_node2:
-            hostname: master_node2
+        master_node1_ip:
+            hostname: master_node1_hostname
     client:
-        client_node1:
-            hostname: client_node1
-        client_node2:
-            hostname: client_node2
+        client_node1_ip:
+            hostname: client_node1_hostname
     nodes:
-        ocp_node1:
-            hostname: ocp_node1
-        ocp_node2:
-            hostname: ocp_node2
+        ocp_node1_ip:
+            hostname: ocp_node1_hostname
+        ocp_node2_ip:
+            hostname: ocp_node2_hostname
 
 # 'gluster_servers' section covers the details of the nodes where gluster
 # servers are run. In the case of CNS, these are the nodes where gluster
@@ -23,60 +19,53 @@ ocp_servers:
 # servers are configured.
 # This section has to be defined.
 gluster_servers:
-    gluster_server1:
-        manage: gluster_server1
-        storage: gluster_server1
-        zone: 1
-        devices: [device1, device2]
+    gluster_server1_ip:
+        manage: gluster_server1_hostname
+        storage: gluster_server1_ip
+        # 'additional_devices' option is used for couple of test cases
+        # which test Heketi device "add" operation.
         additional_devices: [device3, device4]
-    gluster_server2:
-        manage: gluster_server2
-        storage: gluster_server2
-        zone : 2
-        devices: [device1, device2]
+    gluster_server2_ip:
+        manage: gluster_server2_hostname
+        storage: gluster_server2_ip
         additional_devices: [device3, device4]
 
-cns:
-    setup:
-        cns_project_name: "storage-project"
-        cns_username: "test-admin"
-        cns_password:
-    trusted_storage_pool_list:
-        - [gluster_server1, gluster_server2]
+openshift:
+    storage_project_name: "<storage-project-name>"
     heketi_config:
-        heketi_dc_name: "fake-name-of-heketi-deployment-config"
-        heketi_service_name: "fake-name-of-heketi-service"
-        heketi_client_node:
-        heketi_server_url: "http://heketi-storage-project.cloudapps.mystorage.com"
-        heketi_cli_user: "admin"
-        heketi_cli_key: "admin"
+        heketi_dc_name: "<fake-name-of-heketi-deployment-config>"
+        heketi_service_name: "<fake-name-of-heketi-service>"
+        heketi_client_node: "<node-ip-with-heketi-client>"
+        heketi_server_url: "<fake-heketi-server-url>"
+        heketi_cli_user: "<fake-heketi-cli-user>"
+        heketi_cli_key: "<fake-heketi-cli-secret>"
     dynamic_provisioning:
         storage_classes:
             file_storage_class:
                 provisioner: "kubernetes.io/glusterfs"
-                resturl:
-                restuser:
+                resturl: "<fake-url>"
+                restuser: "<fake-user>"
                 secretnamespace: "<fake-namespace-name>"
-                volumenameprefix: "cns-vol"
+                volumenameprefix: "autotests-file"
             block_storage_class:
                 provisioner: "gluster.org/glusterblock"
-                resturl:
-                restuser:
+                resturl: "<fake-url>"
+                restuser: "<fake-user>"
                 restsecretnamespace: "<fake-namespace-name>"
                 hacount: "3"
                 chapauthenabled: "true"
-                volumenameprefix: "cns-vol"
-scale:
-    - type: jenkins
-      instances: 1
-      namespace: "<fake-namespace-name>"
-      pod_parameters:
-        ENABLE_OAUTH: false
-        MEMORY_LIMIT: "<fake-memory-limit-size>Mi"
-        VOLUME_CAPACITY: "<fake-size-of-gluster-storage>Gi"
-        STORAGE_CLASS_NAME: "fake-name-of-storage-class"
-        JENKINS_IMAGE_STREAM_TAG: "jenkins:2"
-      load_parameters:
-        JOBS: 30
-        ITERATIONS: 30
-        EXECUTORS: 5
+                volumenameprefix: "autotests-block"
+    scale:
+        - type: jenkins
+          instances: 1
+          namespace: "<fake-namespace-name>"
+          pod_parameters:
+            ENABLE_OAUTH: false
+            MEMORY_LIMIT: "<fake-memory-limit-size>Mi"
+            VOLUME_CAPACITY: "<fake-size-of-gluster-storage>Gi"
+            STORAGE_CLASS_NAME: "fake-name-of-storage-class"
+            JENKINS_IMAGE_STREAM_TAG: "jenkins:2"
+          load_parameters:
+            JOBS: 30
+            ITERATIONS: 30
+            EXECUTORS: 5

@@ -22,7 +22,7 @@ from cnslibs.common.openshift_ops import (
 
 
 @ddt.ddt
-class TestStorageClassCases(cns_baseclass.CnsBaseClass):
+class TestStorageClassCases(cns_baseclass.BaseClass):
 
     def create_sc_with_parameter(self, vol_type, success=False, parameter={}):
         """creates storage class, pvc and validates event
@@ -34,9 +34,9 @@ class TestStorageClassCases(cns_baseclass.CnsBaseClass):
             parameter (dict): dictionary with storage class parameters
         """
         if vol_type == "glusterfile":
-            sc = self.cns_storage_class.get(
+            sc = self.storage_classes.get(
                 'storage_class1',
-                self.cns_storage_class.get('file_storage_class'))
+                self.storage_classes.get('file_storage_class'))
 
             # Create secret file for usage in storage class
             self.secret_name = oc_create_secret(
@@ -52,9 +52,9 @@ class TestStorageClassCases(cns_baseclass.CnsBaseClass):
                 "volumetype": "replicate:3"
             }
         elif vol_type == "glusterblock":
-            sc = self.cns_storage_class.get(
+            sc = self.storage_classes.get(
                 'storage_class2',
-                self.cns_storage_class.get('block_storage_class'))
+                self.storage_classes.get('block_storage_class'))
 
             # Create secret file for usage in storage class
             self.secret_name = oc_create_secret(

@@ -18,10 +18,12 @@ def _set_heketi_global_flags(heketi_server_url, **kwargs):
     secret_arg = "--secret %s" % secret if secret else ""
     user_arg = "--user %s" % user if user else ""
     if not user_arg:
-        heketi_cli_user = g.config['cns']['heketi_config']['heketi_cli_user']
+        openshift_config = g.config.get("cns", g.config.get("openshift"))
+        heketi_cli_user = openshift_config['heketi_config']['heketi_cli_user']
         if heketi_cli_user:
             user_arg = "--user %s" % heketi_cli_user
-            heketi_cli_key = g.config['cns']['heketi_config']['heketi_cli_key']
+            heketi_cli_key = openshift_config[
+                'heketi_config']['heketi_cli_key']
             if heketi_cli_key is not None:
                 secret_arg = "--secret '%s'" % heketi_cli_key
 
@@ -69,10 +71,12 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
     """
 
     if not kwargs.get('user'):
-        heketi_cli_user = g.config['cns']['heketi_config']['heketi_cli_user']
+        openshift_config = g.config.get("cns", g.config.get("openshift"))
+        heketi_cli_user = openshift_config['heketi_config']['heketi_cli_user']
         if heketi_cli_user:
             kwargs['user'] = heketi_cli_user
-            heketi_cli_key = g.config['cns']['heketi_config']['heketi_cli_key']
+            heketi_cli_key = openshift_config[
+                'heketi_config']['heketi_cli_key']
             if heketi_cli_key is not None:
                 kwargs['secret'] = heketi_cli_key
 

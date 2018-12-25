@@ -2,7 +2,7 @@
 import time
 
 from unittest import skip
-from cnslibs.cns.cns_baseclass import CnsBaseClass
+from cnslibs.cns.cns_baseclass import BaseClass
 from cnslibs.common.openshift_ops import (
     check_service_status,
     get_ocp_gluster_pod_names,
@@ -13,7 +13,7 @@ from cnslibs.common.exceptions import ExecutionError
 from glusto.core import Glusto as g
 
 
-class TestNodeRestart(CnsBaseClass):
+class TestNodeRestart(BaseClass):
 
     def setUp(self):
         super(TestNodeRestart, self).setUp()

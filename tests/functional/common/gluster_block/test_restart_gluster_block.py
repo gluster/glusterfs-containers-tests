@@ -23,9 +23,8 @@ class TestRestartGlusterBlockPod(HeketiBaseClass):
         self.addCleanup(heketi_blockvolume_delete, self.heketi_client_node,
                         self.heketi_server_url, vol_info['id'])
 
-        dc_name = ("glusterblock-%s-provisioner-dc"
-                   % self.cns_project_name)
         # restart gluster-block-provisioner-pod
+        dc_name = "glusterblock-%s-provisioner-dc" % self.storage_project_name
         pod_name = get_pod_name_from_dc(self.ocp_master_node, dc_name)
         oc_delete(self.ocp_master_node, 'pod', pod_name)
         wait_for_resource_absence(self.ocp_master_node, 'pod', pod_name)

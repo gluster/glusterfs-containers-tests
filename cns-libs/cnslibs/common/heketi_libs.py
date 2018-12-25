@@ -1,4 +1,3 @@
-from collections import OrderedDict
 import datetime
 import unittest
 
@@ -25,14 +24,16 @@ class HeketiBaseClass(unittest.TestCase):
 
         super(HeketiBaseClass, cls).setUpClass()
 
-        # Initializes heketi config variables
-        cls.cns_username = g.config['cns']['setup']['cns_username']
-        cls.cns_password = g.config['cns']['setup']['cns_password']
-        cls.cns_project_name = g.config['cns']['setup']['cns_project_name']
+        # Initializes config variables
+        openshift_config = g.config.get("cns", g.config.get("openshift"))
+        cls.storage_project_name = openshift_config.get(
+            'storage_project_name',
+            openshift_config.get('setup', {}).get('cns_project_name'))
+
         cls.ocp_master_nodes = g.config['ocp_servers']['master'].keys()
         cls.ocp_master_node = cls.ocp_master_nodes[0]
 
-        heketi_config = g.config['cns']['heketi_config']
+        heketi_config = openshift_config['heketi_config']
         cls.heketi_dc_name = heketi_config['heketi_dc_name']
         cls.heketi_service_name = heketi_config['heketi_service_name']
         cls.heketi_client_node = heketi_config['heketi_client_node']
@@ -41,21 +42,6 @@ class HeketiBaseClass(unittest.TestCase):
         cls.heketi_cli_key = heketi_config['heketi_cli_key']
         cls.gluster_servers = g.config['gluster_servers'].keys()
         cls.gluster_servers_info = g.config['gluster_servers']
-        cls.topo_info = g.config['cns']['trusted_storage_pool_list']
-
-        # Constructs topology info dictionary
-        cls.topology_info = OrderedDict()
-        for i in range(len(cls.topo_info)):
-            cluster = 'cluster' + str(i + 1)
-            cls.topology_info[cluster] = OrderedDict()
-            for index, node in enumerate(cls.topo_info[i]):
-                node_name = 'gluster_node' + str(index + 1)
-                cls.topology_info[cluster][node_name] = {
-                    'manage': cls.gluster_servers_info[node]['manage'],
-                    'storage': cls.gluster_servers_info[node]['storage'],
-                    'zone': cls.gluster_servers_info[node]['zone'],
-                    'devices': cls.gluster_servers_info[node]['devices'],
-                }
 
         # Checks if heketi server is alive
         if not hello_heketi(cls.heketi_client_node, cls.heketi_server_url):
@@ -63,12 +49,8 @@ class HeketiBaseClass(unittest.TestCase):
                               % cls.heketi_server_url)
 
         # Switch to the storage project
-        if not openshift_ops.oc_login(
-                cls.ocp_master_node, cls.cns_username, cls.cns_password):
-            raise ExecutionError("Failed to do oc login on node %s"
-                                 % cls.ocp_master_node)
         if not openshift_ops.switch_oc_project(
-                cls.ocp_master_node, cls.cns_project_name):
+                cls.ocp_master_node, cls.storage_project_name):
             raise ExecutionError("Failed to switch oc project on node %s"
                                  % cls.ocp_master_node)
 

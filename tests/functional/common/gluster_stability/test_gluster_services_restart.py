@@ -34,7 +34,7 @@ from cnslibs.common.gluster_ops import (
     restart_brick_process,
     wait_to_heal_complete
 )
-from cnslibs.cns.cns_baseclass import CnsBaseClass
+from cnslibs.cns.cns_baseclass import BaseClass
 from cnslibs.common import podcmd
 
 HEKETI_BLOCK_VOLUME_REGEX = "^Id:(.*).Cluster:(.*).Name:%s_(.*)$"
@@ -45,7 +45,7 @@ SERVICE_TCMU = "tcmu-runner"
 
 
 @ddt.ddt
-class GlusterStabilityTestSetup(CnsBaseClass):
+class GlusterStabilityTestSetup(BaseClass):
     """class for gluster stability (restarts different servces) testcases
        TC No's: CNS-1393, CNS-1394, CNS-1395
     """
@@ -62,13 +62,13 @@ class GlusterStabilityTestSetup(CnsBaseClass):
         # which uses time and date of test case
         self.prefix = "autotest-%s" % (self.glustotest_run_id.replace("_", ""))
 
-        _cns_storage_class = self.cns_storage_class.get(
+        _storage_class = self.storage_classes.get(
             'storage_class2',
-            self.cns_storage_class.get('block_storage_class'))
-        self.provisioner = _cns_storage_class["provisioner"]
-        self.restsecretnamespace = _cns_storage_class["restsecretnamespace"]
-        self.restuser = _cns_storage_class["restuser"]
-        self.resturl = _cns_storage_class["resturl"]
+            self.storage_classes.get('block_storage_class'))
+        self.provisioner = _storage_class["provisioner"]
+        self.restsecretnamespace = _storage_class["restsecretnamespace"]
+        self.restuser = _storage_class["restuser"]
+        self.resturl = _storage_class["resturl"]
 
         # using pvc size count as 1 by default
         self.pvcsize = 1

@@ -133,30 +133,6 @@ def get_amount_of_gluster_nodes(ocp_node):
         "Haven't found neither Gluster PODs nor Gluster nodes.")
 
 
-def oc_login(ocp_node, username, password):
-    """Login to ocp master node.
-
-    Args:
-        ocp_node (str): Node in which ocp command will be executed.
-        username (str): username of ocp master node to login.
-        password (str): password of ocp master node to login.
-
-    Returns:
-        bool : True on successful login to ocp master node.
-            False otherwise
-
-    Example:
-        oc_login(ocp_node, "test","test")
-    """
-
-    cmd = "oc login --username=%s --password=%s" % (username, password)
-    ret, _, _ = g.run(ocp_node, cmd)
-    if ret != 0:
-        g.log.error("Failed to login to ocp master node %s" % ocp_node)
-        return False
-    return True
-
-
 def switch_oc_project(ocp_node, project_name):
     """Switch to the given project.
 

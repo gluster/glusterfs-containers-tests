@@ -17,20 +17,15 @@ from cnslibs.common.openshift_ops import (
 
 
 @ddt.ddt
-class TestArbiterVolumeCreateExpandDelete(cns_baseclass.CnsBaseClass):
+class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
 
     def setUp(self):
         super(TestArbiterVolumeCreateExpandDelete, self).setUp()
-
         self.node = self.ocp_master_node[0]
-        self.sc = self.cns_storage_class.get(
-            'storage_class1', self.cns_storage_class.get('file_storage_class'))
 
         # Mark one of the Heketi nodes as arbiter-supported if none of
         # existent nodes or devices already enabled to support it.
-        self.heketi_server_url = self.cns_storage_class.get(
-            'storage_class1',
-            self.cns_storage_class.get('file_storage_class'))['resturl']
+        self.heketi_server_url = self.sc.get('resturl')
         arbiter_tags = ('required', 'supported')
         arbiter_already_supported = False
 

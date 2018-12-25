@@ -1,4 +1,8 @@
-from collections import OrderedDict
+import datetime
+import unittest
+
+from glusto.core import Glusto as g
+
 from cnslibs.common import command
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_ops import (
@@ -18,23 +22,16 @@ from cnslibs.common.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence,
 )
-import datetime
-from glusto.core import Glusto as g
-import unittest
 
 
-class CnsBaseClass(unittest.TestCase):
-    '''
-     This class reads the config for variable values that will be used in
-     CNS tests.
-    '''
+class BaseClass(unittest.TestCase):
+    """Base class for test classes."""
+
     @classmethod
     def setUpClass(cls):
-        '''
-         Initialize all the variables necessary for testing CNS
-        '''
-        super(CnsBaseClass, cls).setUpClass()
-        g.log.info("cnsbaseclass")
+        """Initialize all the variables necessary for test cases."""
+        super(BaseClass, cls).setUpClass()
+
         # Initializes OCP config variables
         cls.ocp_servers_info = g.config['ocp_servers']
         cls.ocp_master_node = g.config['ocp_servers']['master'].keys()
@@ -43,15 +40,15 @@ class CnsBaseClass(unittest.TestCase):
         cls.ocp_client_info = g.config['ocp_servers']['client']
         cls.ocp_nodes = g.config['ocp_servers']['nodes'].keys()
         cls.ocp_nodes_info = g.config['ocp_servers']['nodes']
-        cls.ocp_all_nodes = cls.ocp_nodes + cls.ocp_master_node
 
-        # Initializes CNS config variables
-        cls.cns_username = g.config['cns']['setup']['cns_username']
-        cls.cns_password = g.config['cns']['setup']['cns_password']
-        cls.cns_project_name = g.config['cns']['setup']['cns_project_name']
+        # Initializes storage project config variables
+        openshift_config = g.config.get("cns", g.config.get("openshift"))
+        cls.storage_project_name = openshift_config.get(
+            'storage_project_name',
+            openshift_config.get('setup', {}).get('cns_project_name'))
 
         # Initializes heketi config variables
-        heketi_config = g.config['cns']['heketi_config']
+        heketi_config = openshift_config['heketi_config']
         cls.heketi_dc_name = heketi_config['heketi_dc_name']
         cls.heketi_service_name = heketi_config['heketi_service_name']
         cls.heketi_client_node = heketi_config['heketi_client_node']
@@ -61,26 +58,11 @@ class CnsBaseClass(unittest.TestCase):
 
         cls.gluster_servers = g.config['gluster_servers'].keys()
         cls.gluster_servers_info = g.config['gluster_servers']
-        cls.topo_info = g.config['cns']['trusted_storage_pool_list']
 
-        # Constructs topology info dictionary
-        cls.topology_info = OrderedDict()
-        for i in range(len(cls.topo_info)):
-            cluster = 'cluster' + str(i + 1)
-            cls.topology_info[cluster] = OrderedDict()
-            for index, node in enumerate(cls.topo_info[i]):
-                node_name = 'gluster_node' + str(index + 1)
-                cls.topology_info[cluster][node_name] = {
-                    'manage': cls.gluster_servers_info[node]['manage'],
-                    'storage': cls.gluster_servers_info[node]['storage'],
-                    'zone': cls.gluster_servers_info[node]['zone'],
-                    'devices': cls.gluster_servers_info[node]['devices'],
-                }
-
-        cls.cns_storage_class = (g.config['cns']['dynamic_provisioning']
-                                 ['storage_classes'])
-        cls.sc = cls.cns_storage_class.get(
-            'storage_class1', cls.cns_storage_class.get('file_storage_class'))
+        cls.storage_classes = openshift_config['dynamic_provisioning'][
+            'storage_classes']
+        cls.sc = cls.storage_classes.get(
+            'storage_class1', cls.storage_classes.get('file_storage_class'))
         cmd = "echo -n %s | base64" % cls.heketi_cli_key
         ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
         if ret != 0:
@@ -89,7 +71,7 @@ class CnsBaseClass(unittest.TestCase):
                                      cmd, cls.ocp_master_node[0], out, err))
         cls.secret_data_key = out.strip()
 
-        cmd = 'oc project %s' % cls.cns_project_name
+        cmd = 'oc project %s' % cls.storage_project_name
         ret, out, err = g.run(cls.ocp_client[0], cmd, "root")
         if ret != 0:
             raise ExecutionError("failed to execute cmd %s on %s out: "
@@ -104,18 +86,18 @@ class CnsBaseClass(unittest.TestCase):
         g.log.info(msg)
 
     def setUp(self):
-        super(CnsBaseClass, self).setUp()
+        super(BaseClass, self).setUp()
         msg = "Starting Test : %s : %s" % (self.id(), self.glustotest_run_id)
         g.log.info(msg)
 
     def tearDown(self):
-        super(CnsBaseClass, self).tearDown()
+        super(BaseClass, self).tearDown()
         msg = "Ending Test: %s : %s" % (self.id(), self.glustotest_run_id)
         g.log.info(msg)
 
     @classmethod
     def tearDownClass(cls):
-        super(CnsBaseClass, cls).tearDownClass()
+        super(BaseClass, cls).tearDownClass()
         msg = "Teardownclass: %s : %s" % (cls.__name__, cls.glustotest_run_id)
         g.log.info(msg)
 
@@ -258,31 +240,23 @@ class CnsBaseClass(unittest.TestCase):
         return dc_name, pod_name
 
 
-class CnsGlusterBlockBaseClass(CnsBaseClass):
-    '''
-     This class is for setting up glusterblock on CNS
-    '''
+class GlusterBlockBaseClass(BaseClass):
+    """Base class for gluster-block test cases."""
+
     @classmethod
     def setUpClass(cls):
-        '''
-         Glusterblock setup on CNS
-        '''
-        super(CnsGlusterBlockBaseClass, cls).setUpClass()
-        cls.sc = cls.cns_storage_class.get(
-            'storage_class2',
-            cls.cns_storage_class.get('block_storage_class'))
+        """Initialize all the variables necessary for test cases."""
+        super(GlusterBlockBaseClass, cls).setUpClass()
+        cls.sc = cls.storage_classes.get(
+            'storage_class2', cls.storage_classes.get('block_storage_class'))
 
 
-class PodScalabilityBaseClass(CnsBaseClass):
-    """
-    This class is for setting parameters for scalling pods
-    """
+class PodScalabilityBaseClass(BaseClass):
+    """Base class for special set of test cases - POD scalability tests."""
+
     @classmethod
     def setUpClass(cls):
-        """
-        Initialize all the variables necessary for scalling setup
-        """
-
+        """Initialize all the variables necessary for scalling setup."""
         super(PodScalabilityBaseClass, cls).setUpClass()
-
-        cls.scale_info = g.config['scale']
+        cls.scale_info = g.config.get(
+            "cns", g.config.get("openshift"))['scale']
