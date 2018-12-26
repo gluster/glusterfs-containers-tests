@@ -1,7 +1,5 @@
 from __future__ import division
-import json
 import math
-import unittest
 
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops, rebalance_ops
@@ -160,109 +158,6 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
             self.assertNotEqual(
                 device_delete, False,
                 "Device %s could not be deleted" % device_id)
-
-    @unittest.skip("Blocked by BZ-1629889")
-    @podcmd.GlustoPod()
-    def test_add_device_heketi_cli(self):
-        """
-        Method to test heketi device addition with background
-        gluster validation
-        """
-        device_id_list = []
-        hosts = []
-        gluster_servers = []
-
-        node_id_list = heketi_ops.heketi_node_list(
-            self.heketi_client_node, self.heketi_server_url)
-
-        creation_info = heketi_ops.heketi_volume_create(
-            self.heketi_client_node, self.heketi_server_url, 100, json=True)
-
-        self.assertNotEqual(creation_info, False,
-                            "Volume creation failed")
-
-        self.addCleanup(self.delete_volumes, creation_info["id"])
-
-        ret, out, err = heketi_ops.heketi_volume_create(
-            self.heketi_client_node, self.heketi_server_url, 620, json=True,
-            raw_cli_output=True)
-
-        self.assertEqual(ret, 255, "Volume creation did not fail ret- %s "
-                         "out- %s err= %s" % (ret, out, err))
-        g.log.info("Volume creation failed as expected, err- %s" % err)
-
-        if ret == 0:
-            out_json = json.loads(out)
-            self.addCleanup(self.delete_volumes, out_json["id"])
-
-        for node_id in node_id_list:
-            device_present = False
-            node_info = heketi_ops.heketi_node_info(
-                self.heketi_client_node, self.heketi_server_url,
-                node_id, json=True)
-
-            self.assertNotEqual(
-                node_info, False,
-                "Heketi node info on node %s failed" % node_id)
-
-            node_ip = node_info["hostnames"]["storage"][0]
-
-            for gluster_server in g.config["gluster_servers"].keys():
-                gluster_server_ip = (g.config["gluster_servers"]
-                                     [gluster_server]["storage"])
-                if gluster_server_ip == node_ip:
-                    device_name = (g.config["gluster_servers"][gluster_server]
-                                   ["additional_devices"][0])
-                    break
-            device_addition_info = heketi_ops.heketi_device_add(
-                self.heketi_client_node, self.heketi_server_url,
-                device_name, node_id, json=True)
-
-            self.assertNotEqual(device_addition_info, False,
-                                "Device %s addition failed" % device_name)
-
-            node_info_after_addition = heketi_ops.heketi_node_info(
-                self.heketi_client_node, self.heketi_server_url,
-                node_id, json=True)
-            for device in node_info_after_addition["devices"]:
-                if device["name"] == device_name:
-                    device_present = True
-                    device_id_list.append(device["id"])
-
-            self.assertEqual(device_present, True,
-                             "device %s not present" % device["id"])
-
-        self.addCleanup(self.detach_devices_attached, device_id_list)
-
-        output_dict = heketi_ops.heketi_volume_create(
-            self.heketi_client_node, self.heketi_server_url,
-            620, json=True)
-
-        self.assertNotEqual(output_dict, False, "Volume creation failed")
-        self.addCleanup(self.delete_volumes, output_dict["id"])
-
-        self.assertEqual(output_dict["durability"]["replicate"]["replica"], 3)
-        self.assertEqual(output_dict["size"], 620)
-        mount_node = (output_dict["mount"]["glusterfs"]
-                      ["device"].strip().split(":")[0])
-
-        hosts.append(mount_node)
-        backup_volfile_server_list = (
-            output_dict["mount"]["glusterfs"]["options"]
-            ["backup-volfile-servers"].strip().split(","))
-
-        for backup_volfile_server in backup_volfile_server_list:
-                hosts.append(backup_volfile_server)
-        for gluster_server in g.config["gluster_servers"].keys():
-                gluster_servers.append(g.config["gluster_servers"]
-                                       [gluster_server]["storage"])
-        self.assertEqual(
-            set(hosts), set(gluster_servers),
-            "Hosts do not match gluster servers for %s" % output_dict["id"])
-
-        volume_name = output_dict["name"]
-
-        self.get_brick_and_volume_status(volume_name)
 
     def test_volume_expansion_expanded_volume(self):
         """
