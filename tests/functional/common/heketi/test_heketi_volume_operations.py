@@ -5,7 +5,6 @@ from cnslibs.common.heketi_ops import (heketi_volume_delete,
                                        heketi_volume_create,
                                        heketi_volume_expand,
                                        heketi_volume_info,
-                                       heketi_topology_info,
                                        heketi_device_add,
                                        heketi_device_enable,
                                        heketi_device_disable,
@@ -229,98 +228,3 @@ class TestHeketiVolumeOperations(HeketiBaseClass):
         self.assertNotEqual(
             device_enable, False,
             "Device %s could not be enabled" % device["id"])
-
-    @skip("Blocked by BZ-1629889")
-    def test_device_remove_basic_validation(self):
-        """
-        Test to create volume after a device removal and with new device added.
-        """
-
-        vol_info = heketi_volume_create(self.heketi_client_node,
-                                        self.heketi_server_url,
-                                        self.volume_size, json=True)
-        self.assertTrue(vol_info, ("Failed to create heketi volume of size %s"
-                                   % self.volume_size))
-        self.addCleanup(self.volume_cleanup, vol_info['id'])
-
-        self.assertEqual(vol_info['size'], self.volume_size,
-                         ("Failed to create volume with default options."
-                          "Expected Size: %s, Actual Size: %s"
-                          % (self.volume_size, vol_info['size'])))
-
-        # 1. Device addition
-        gluster_srvrs = self.gluster_servers
-
-        device_name = (g.config["gluster_servers"][gluster_srvrs[0]]
-                       ["additional_devices"][0])
-        manage_hostname = (g.config["gluster_servers"]
-                           [gluster_srvrs[0]]["manage"])
-        # Now, get node id of corresponding hostname
-        topo_info = heketi_topology_info(self.heketi_client_node,
-                                         self.heketi_server_url,
-                                         json=True)
-
-        self.assertNotEqual(
-            topo_info["clusters"][0]["nodes"], [],
-            "Nodes don't exist, empty cluster")
-
-        node_id = None
-        for node in topo_info["clusters"][0]["nodes"]:
-            if manage_hostname == node['hostnames']["manage"][0]:
-                node_id = node["id"]
-                break
-        self.assertNotEqual(
-            node_id, None,
-            "No information about node_id for %s" % manage_hostname)
-        self.add_device(device_name, node_id)
-
-        # get other device id for deletion
-        topo_info = heketi_topology_info(self.heketi_client_node,
-                                         self.heketi_server_url,
-                                         json=True)
-
-        self.assertNotEqual(
-            topo_info["clusters"][0]["nodes"], [],
-            "No information about nodes")
-
-        device_id_flag1 = False
-        device_id_flag2 = False
-
-        for node in topo_info["clusters"][0]["nodes"]:
-            if node["id"] != node_id:
-                continue
-            self.assertNotEqual(
-                node["devices"], [],
-                "Device list empty for node %s" % node_id)
-            for device in node["devices"]:
-                device_id = device["id"]
-                if device_name != device["name"]:
-                    device_id_flag1 = True
-                else:
-                    self.addCleanup(self.detach_devices_attached, device_id)
-                    device_id_flag2 = True
-                if device_id_flag1 and device_id_flag2:
-                    break
-            break
-
-        self.detach_devices_attached(device_id)
-
-        # Check whether deleted device removed from topology info.
-        topo_info = heketi_topology_info(self.heketi_client_node,
-                                         self.heketi_server_url,
-                                         json=True)
-        match = False
-        for device in topo_info["clusters"][0]["nodes"][0]["devices"]:
-            if device_id == device["id"]:
-                match = True
-                break
-        self.assertFalse(match, "Device:%s still present in topology"
-                         % device_id)
-
-        # Volume creation after device update
-        vol_info = heketi_volume_create(self.heketi_client_node,
-                                        self.heketi_server_url,
-                                        self.volume_size, json=True)
-        self.assertTrue(vol_info, ("Failed to create heketi volume of size %s"
-                                   % self.volume_size))
-        self.addCleanup(self.volume_cleanup, vol_info['id'])

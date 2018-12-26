@@ -1,5 +1,6 @@
 import json
 
+import ddt
 from glusto.core import Glusto as g
 
 from cnslibs.common.heketi_libs import HeketiBaseClass
@@ -17,6 +18,7 @@ from cnslibs.common.heketi_ops import (heketi_node_enable,
                                        heketi_topology_info)
 
 
+@ddt.ddt
 class TestHeketiDeviceOperations(HeketiBaseClass):
     """Test Heketi device enable/disable and remove functionality."""
 
@@ -168,8 +170,10 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
             "None of '%s' volume bricks is present on the '%s' device." % (
                 vol_info['id'], online_device_id))
 
-    def test_device_remove_operation(self):
-        """Test case CNS-766. Test device remove functionality."""
+    @ddt.data(True, False)
+    def test_device_remove_operation(self, delete_device):
+        """Test cases CNS-623,766."""
+
         gluster_server_0 = g.config["gluster_servers"].values()[0]
         try:
             device_name = gluster_server_0["additional_devices"][0]
@@ -206,6 +210,7 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
                         device["storage"]["total"] < lowest_device_size):
                     lowest_device_size = device["storage"]["total"]
                     lowest_device_id = device["id"]
+                    lowest_device_name = device["name"]
         if lowest_device_id is None:
             self.skipTest(
                 "Didn't find suitable device for disablement on '%s' node." % (
@@ -260,15 +265,41 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
 
         # Need to disable device before removing
         heketi_device_disable(
-            self.heketi_client_node, self.heketi_server_url, lowest_device_id)
-        self.addCleanup(heketi_device_enable, self.heketi_client_node,
-                        self.heketi_server_url, lowest_device_id)
+            self.heketi_client_node, self.heketi_server_url,
+            lowest_device_id)
+        if not delete_device:
+            self.addCleanup(heketi_device_enable, self.heketi_client_node,
+                            self.heketi_server_url, lowest_device_id)
 
         # Remove device from Heketi
-        heketi_device_remove(
-            self.heketi_client_node, self.heketi_server_url, lowest_device_id)
-        self.addCleanup(heketi_device_disable, self.heketi_client_node,
-                        self.heketi_server_url, lowest_device_id)
+        try:
+            heketi_device_remove(
+                self.heketi_client_node, self.heketi_server_url,
+                lowest_device_id)
+        except Exception:
+            if delete_device:
+                self.addCleanup(heketi_device_enable, self.heketi_client_node,
+                                self.heketi_server_url, lowest_device_id)
+            raise
+        if not delete_device:
+            self.addCleanup(heketi_device_disable, self.heketi_client_node,
+                            self.heketi_server_url, lowest_device_id)
+
+        if delete_device:
+            try:
+                heketi_device_delete(
+                    self.heketi_client_node, self.heketi_server_url,
+                    lowest_device_id)
+            except Exception:
+                self.addCleanup(heketi_device_enable, self.heketi_client_node,
+                                self.heketi_server_url, lowest_device_id)
+                self.addCleanup(heketi_device_disable, self.heketi_client_node,
+                                self.heketi_server_url, lowest_device_id)
+                raise
+            self.addCleanup(
+                heketi_device_add,
+                self.heketi_client_node, self.heketi_server_url,
+                lowest_device_name, node_id)
 
         # Create volume
         vol_info = heketi_volume_create(self.heketi_client_node,
@@ -277,6 +308,9 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
         self.assertTrue(vol_info, (
                 "Failed to create heketi volume of size %d" % vol_size))
         self.addCleanup(self.delete_volumes, vol_info['id'])
+
+        if delete_device:
+            return
 
         # Check that none of volume's bricks is present on the device
         present = self.check_any_of_bricks_present_in_device(
