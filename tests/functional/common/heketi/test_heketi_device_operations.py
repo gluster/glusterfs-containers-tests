@@ -3,6 +3,7 @@ import json
 import ddt
 from glusto.core import Glusto as g
 
+from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common.heketi_ops import (heketi_node_enable,
                                        heketi_node_info,
@@ -319,3 +320,85 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
             present,
             "Some of the '%s' volume bricks is present of the removed "
             "'%s' device." % (vol_info['id'], lowest_device_id))
+
+    def test_heketi_with_device_removal_insuff_space(self):
+        """Test case CNS-624"""
+
+        # Disable 4+ nodes and 3+ devices on the first 3 nodes
+        min_free_space_gb = 5
+        min_free_space = min_free_space_gb * 1024**2
+        heketi_url = self.heketi_server_url
+        heketi_node = self.heketi_client_node
+        nodes = {}
+
+        node_ids = heketi_node_list(heketi_node, heketi_url)
+        self.assertTrue(node_ids)
+        for node_id in node_ids:
+            node_info = heketi_node_info(
+                heketi_node, heketi_url, node_id, json=True)
+            if (node_info["state"].lower() != "online" or
+                    not node_info["devices"]):
+                continue
+            if len(nodes) > 2:
+                heketi_node_disable(heketi_node, heketi_url, node_id)
+                self.addCleanup(
+                    heketi_node_enable, heketi_node, heketi_url, node_id)
+                continue
+            for device in node_info["devices"]:
+                if device["state"].lower() != "online":
+                    continue
+                free_space = device["storage"]["free"]
+                if node_id not in nodes:
+                    nodes[node_id] = []
+                if (free_space < min_free_space or len(nodes[node_id]) > 1):
+                    heketi_device_disable(
+                        heketi_node, heketi_url, device["id"])
+                    self.addCleanup(
+                        heketi_device_enable,
+                        heketi_node, heketi_url, device["id"])
+                    continue
+                nodes[node_id].append({
+                    "device_id": device["id"], "free": free_space})
+
+        # Skip test if nodes requirements are not met
+        if (len(nodes) < 3 or
+                not all(map((lambda _list: len(_list) > 1), nodes.values()))):
+            raise self.skipTest(
+                "Could not find 3 online nodes with 2 online devices "
+                "having free space bigger than %dGb." % min_free_space_gb)
+
+        # Calculate size of a potential distributed vol
+        if nodes[node_ids[0]][0]["free"] > nodes[node_ids[0]][1]["free"]:
+            index = 0
+        else:
+            index = 1
+        vol_size_gb = int(nodes[node_ids[0]][index]["free"] / (1024 ** 2)) + 1
+        device_id = nodes[node_ids[0]][index]["device_id"]
+
+        # Create volume with such size that we consume space more than
+        # size of smaller disks
+        try:
+            heketi_vol = heketi_volume_create(
+                heketi_node, heketi_url, vol_size_gb, json=True)
+        except Exception as e:
+            g.log.warning(
+                "Got following error trying to create '%s'Gb vol: %s" % (
+                    vol_size_gb, e))
+            vol_size_gb -= 1
+            heketi_vol = heketi_volume_create(
+                heketi_node, heketi_url, vol_size_gb, json=True)
+        self.addCleanup(self.delete_volumes, heketi_vol["bricks"][0]["volume"])
+
+        # Try to 'remove' bigger Heketi disk expecting error,
+        # because there is no space on smaller disk to relocate bricks to
+        heketi_device_disable(heketi_node, heketi_url, device_id)
+        self.addCleanup(
+            heketi_device_enable, heketi_node, heketi_url, device_id)
+        try:
+            self.assertRaises(
+                ExecutionError, heketi_device_remove,
+                heketi_node, heketi_url, device_id)
+        except Exception:
+            self.addCleanup(
+                heketi_device_disable, heketi_node, heketi_url, device_id)
+            raise
