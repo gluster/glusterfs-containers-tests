@@ -4,6 +4,7 @@ import math
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 
+from cnslibs.common import exceptions
 from cnslibs.common.heketi_libs import HeketiBaseClass
 from cnslibs.common.heketi_ops import (heketi_node_list,
                                        heketi_node_enable,
@@ -94,10 +95,27 @@ class TestHeketiVolume(HeketiBaseClass):
         # Create distributed vol
         vol_size_gb = self._get_vol_size()
         heketi_url = self.heketi_server_url
-        heketi_vol = heketi_volume_create(
-            self.heketi_client_node, heketi_url, vol_size_gb, json=True)
-        self.assertTrue(
-            heketi_vol, "Failed to create vol of %d size." % vol_size_gb)
+        try:
+            g.log.info(
+                "Trying to create distributed '%s'Gb volume." % vol_size_gb)
+            heketi_vol = heketi_volume_create(
+                self.heketi_client_node, heketi_url, vol_size_gb, json=True)
+        except exceptions.ExecutionError as e:
+            # NOTE: rare situation when we need to decrease size of a volume.
+            #       and we expect this vol to be distributed.
+            g.log.info("Failed to create distributed '%s'Gb volume. "
+                       "Trying to create another one, smaller for 1Gb.")
+            if ('more required' in str(e)
+                    and ('Insufficient suitable allocatable extents for '
+                         'logical volume' in str(e))):
+                vol_size_gb -= 1
+                heketi_vol = heketi_volume_create(
+                    self.heketi_client_node, heketi_url, vol_size_gb,
+                    json=True)
+            else:
+                raise
+        g.log.info("Successfully created distributed volume.")
+
         vol_name = heketi_vol['name']
         vol_id = heketi_vol["bricks"][0]["volume"]
         self.addCleanup(
