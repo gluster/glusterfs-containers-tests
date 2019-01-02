@@ -178,8 +178,12 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
         gluster_server_0 = g.config["gluster_servers"].values()[0]
         try:
             device_name = gluster_server_0["additional_devices"][0]
-        except IndexError:
-            self.skipTest("Additional disk is not specified for node.")
+        except (KeyError, IndexError):
+            self.skipTest(
+                "Additional disk is not specified for node with following "
+                "hostnames and IP addresses: %s, %s." % (
+                    gluster_server_0.get('manage', '?'),
+                    gluster_server_0.get('storage', '?')))
         manage_hostname = gluster_server_0["manage"]
 
         # Get node ID of the Gluster hostname
