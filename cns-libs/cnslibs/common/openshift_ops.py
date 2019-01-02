@@ -1033,12 +1033,16 @@ def verify_pvc_status_is_bound(hostname, pvc_name, timeout=120, wait_step=3):
         if msg:
             raise AssertionError(msg)
     if w.expired:
-        # for debug purpose to see why provisioning failed
-        cmd = "oc describe pvc %s | grep ProvisioningFailed" % pvc_name
-        ret, out, err = g.run(hostname, cmd, "root")
-        g.log.info("cmd %s - out- %s err- %s" % (cmd, out, err))
         msg = ("Exceeded timeout of '%s' seconds for verifying PVC '%s' "
-               "to reach the 'Bound' status." % (timeout, pvc_name))
+               "to reach the 'Bound' state." % (timeout, pvc_name))
+
+        # Gather more info for ease of debugging
+        try:
+            pvc_events = get_events(hostname, obj_name=pvc_name)
+        except Exception:
+            pvc_events = '?'
+        msg += "\nPVC events: %s" % pvc_events
+
         g.log.error(msg)
         raise AssertionError(msg)
 
