@@ -249,14 +249,3 @@ class GlusterBlockBaseClass(BaseClass):
         super(GlusterBlockBaseClass, cls).setUpClass()
         cls.sc = cls.storage_classes.get(
             'storage_class2', cls.storage_classes.get('block_storage_class'))
-
-
-class PodScalabilityBaseClass(BaseClass):
-    """Base class for special set of test cases - POD scalability tests."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Initialize all the variables necessary for scalling setup."""
-        super(PodScalabilityBaseClass, cls).setUpClass()
-        cls.scale_info = g.config.get(
-            "cns", g.config.get("openshift"))['scale']
