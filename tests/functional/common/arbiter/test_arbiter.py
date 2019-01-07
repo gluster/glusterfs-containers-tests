@@ -644,3 +644,77 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
 
         for brick in bricks['data_list']:
             self.assertIn(brick['name'].split(':')[0], data_hosts)
+
+    @ddt.data(
+        (4, '250M', True),
+        (8, '122M', True),
+        (16, '58M', True),
+        (32, '26M', True),
+        (4, '250M', False),
+        (8, '122M', False),
+        (16, '58M', False),
+        (32, '26M', False),
+    )
+    @ddt.unpack
+    def test_expand_arbiter_volume_according_to_avg_file_size(
+            self, avg_file_size, expected_brick_size, vol_expand=True):
+        """Validate expansion of arbiter volume with diff avg file size"""
+        data_hosts = []
+        arbiter_hosts = []
+
+        # set tags arbiter:disabled, arbiter:required
+        for i, node_id in enumerate(self.node_id_list):
+            self._set_arbiter_tag_with_further_revert(
+                self.heketi_client_node, self.heketi_server_url, 'node',
+                node_id, 'disabled' if i < 2 else 'required')
+
+            node_info = heketi_ops.heketi_node_info(
+                self.heketi_client_node, self.heketi_server_url,
+                node_id, json=True)
+            (data_hosts.append(node_info['hostnames']['storage'][0])
+                if i < 2 else
+                arbiter_hosts.append(node_info['hostnames']['storage'][0]))
+            self.assertEqual(
+                node_info['tags']['arbiter'],
+                'disabled' if i < 2 else 'required')
+
+        # Create sc with gluster arbiter info
+        self.create_storage_class(
+            is_arbiter_vol=True, allow_volume_expansion=True,
+            arbiter_avg_file_size=avg_file_size)
+
+        # Create PVC and wait for it to be in 'Bound' state
+        self.create_and_wait_for_pvc()
+
+        vol_expanded = False
+
+        for i in range(2):
+            vol_info = get_gluster_vol_info_by_pvc_name(
+                self.node, self.pvc_name)
+            bricks = (
+                self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
+                    vol_info,
+                    arbiter_bricks=(2 if vol_expanded else 1),
+                    data_bricks=(4 if vol_expanded else 2)
+                )
+            )
+
+            # verify arbiter bricks lies on arbiter hosts
+            for brick in bricks['arbiter_list']:
+                ip, brick_name = brick['name'].split(':')
+                self.assertIn(ip, arbiter_hosts)
+                # verify the size of arbiter brick
+                cmd = "df -h %s --output=size | tail -1" % brick_name
+                out = cmd_run_on_gluster_pod_or_node(self.node, cmd, ip)
+                self.assertEqual(out, expected_brick_size)
+            # verify that data bricks lies on data hosts
+            for brick in bricks['data_list']:
+                self.assertIn(brick['name'].split(':')[0], data_hosts)
+
+            if vol_expanded or not vol_expand:
+                break
+            # Expand PVC and verify the size
+            pvc_size = 2
+            resize_pvc(self.node, self.pvc_name, pvc_size)
+            verify_pvc_size(self.node, self.pvc_name, pvc_size)
+            vol_expanded = True
