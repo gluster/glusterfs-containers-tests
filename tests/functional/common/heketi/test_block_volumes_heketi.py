@@ -9,17 +9,16 @@ from cnslibs.common.heketi_libs import HeketiBaseClass
 
 
 class TestBlockVolumeOps(HeketiBaseClass):
-    """
-        Class to test heketi block volume deletion with and without block
-        volumes existing, heketi block volume list, heketi block volume info
-        and heketi block volume creation with name and block volumes creation
-        after manually creating a Block Hosting volume.
-        Test cases : CNS-[530,535,532,807]
-
+    """Class to test heketi block volume deletion with and without block
+       volumes existing, heketi block volume list, heketi block volume info
+       and heketi block volume creation with name and block volumes creation
+       after manually creating a Block Hosting volume.
     """
 
     def test_create_block_vol_after_host_vol_creation(self):
-        """Test Case CNS-530 """
+        """Validate block-device after manual block hosting volume creation
+           using heketi
+        """
         block_host_create_info = heketi_volume_create(
             self.heketi_client_node, self.heketi_server_url, 5,
             json=True, block=True)
@@ -33,7 +32,7 @@ class TestBlockVolumeOps(HeketiBaseClass):
         self.addCleanup(self.delete_block_volumes, block_vol["id"])
 
     def test_block_host_volume_delete_without_block_volumes(self):
-        """Test Case CNS-535 """
+        """Validate deletion of empty block hosting volume"""
         block_host_create_info = heketi_volume_create(
             self.heketi_client_node, self.heketi_server_url, 1, json=True,
             block=True)
@@ -51,7 +50,8 @@ class TestBlockVolumeOps(HeketiBaseClass):
             "Block host volume delete failed, ID: %s" % block_hosting_vol_id)
 
     def test_block_volume_delete(self):
-        """Test Case CNS-532 """
+        """Validate deletion of gluster-block volume and capacity of used pool
+        """
         block_vol = heketi_blockvolume_create(
             self.heketi_client_node, self.heketi_server_url, 1, json=True)
         self.assertNotEqual(block_vol, False,
@@ -72,7 +72,7 @@ class TestBlockVolumeOps(HeketiBaseClass):
                          " ID is %s" % block_vol["id"])
 
     def test_block_volume_list(self):
-        """Test Case CNS-807 """
+        """Validate heketi blockvolume list command works as expected"""
         created_vol_ids = []
         for count in range(3):
             block_vol = heketi_blockvolume_create(

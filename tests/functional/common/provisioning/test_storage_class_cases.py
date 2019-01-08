@@ -151,7 +151,7 @@ class TestStorageClassCases(cns_baseclass.BaseClass):
         {"volumenameprefix": "dept_qe"},
         )
     def test_sc_glusterfile_incorrect_parameter(self, parameter={}):
-        """Polarion testcase id- CNS-708,709,713,714,715,921"""
+        """Validate glusterfile storage with different incorrect parameters"""
         self.create_sc_with_parameter("glusterfile", parameter=parameter)
 
     @ddt.data(
@@ -161,15 +161,15 @@ class TestStorageClassCases(cns_baseclass.BaseClass):
         {"restuser": "fakeuser"},
         )
     def test_sc_glusterblock_incorrect_parameter(self, parameter={}):
-        """ Polarion testcase id- CNS-727,725,728"""
+        """Validate glusterblock storage with different incorrect parameters"""
         self.create_sc_with_parameter("glusterblock", parameter=parameter)
 
     @skip("Blocked by BZ-1609703")
     @ddt.data(1, 2)
     def test_gluster_block_provisioning_with_valid_ha_count(self, hacount):
-        '''[CNS-544][CNS-1453] gluster-block provisioning with different valid
-           'hacount' values
-        '''
+        """Validate gluster-block provisioning with different valid 'hacount'
+           values
+        """
         # create storage class and pvc with given parameters
         self.create_sc_with_parameter(
             'glusterblock', success=True, parameter={'hacount': str(hacount)}
@@ -186,9 +186,9 @@ class TestStorageClassCases(cns_baseclass.BaseClass):
             self.validate_multipath_info(hacount)
 
     def test_gluster_block_provisioning_with_ha_count_as_glusterpod(self):
-        '''[CNS-1443] gluster-block provisioning with "hacount" value equal to
-           gluster pods count
-        '''
+        """Validate gluster-block provisioning with "hacount" value equal
+           to gluster pods count
+        """
         # get hacount as no of gluster pods the pvc creation
         hacount = get_amount_of_gluster_nodes(self.ocp_master_node[0])
 
@@ -205,9 +205,9 @@ class TestStorageClassCases(cns_baseclass.BaseClass):
 
     @skip("Blocked by BZ-1644685")
     def test_gluster_block_provisioning_with_invalid_ha_count(self):
-        '''[CNS-1444] gluster-block provisioning with any invalid 'hacount'
+        """Validate gluster-block provisioning with any invalid 'hacount'
            value
-        '''
+        """
         # get hacount as no of gluster pods + 1 to fail the pvc creation
         hacount = get_amount_of_gluster_nodes(self.ocp_master_node[0]) + 1
 
@@ -218,9 +218,9 @@ class TestStorageClassCases(cns_baseclass.BaseClass):
 
     @ddt.data('true', 'false', '')
     def test_gluster_block_chapauthenabled_parameter(self, chapauthenabled):
-        '''[CNS-545][CNS-1445][CNS-1446] gluster-block provisioning with
-           different 'chapauthenabled' values
-        '''
+        """Validate gluster-block provisioning with different
+           'chapauthenabled' values
+        """
         parameter = {}
         if chapauthenabled:
             parameter = {"chapauthenabled": chapauthenabled}

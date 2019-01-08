@@ -163,11 +163,11 @@ class TestHeketiMetrics(HeketiBaseClass):
             self.assertEqual(vol_count['value'], len(cluster_info['volumes']))
 
     def test_heketi_metrics_with_topology_info(self):
-        # CNS-1243 - Heketi_metrics_generate
+        """Validate heketi metrics generation"""
         self.verify_heketi_metrics_with_topology_info()
 
     def test_heketi_metrics_heketipod_failure(self):
-        # CNS-1262 - Heketi-metrics_validating_heketi_pod failure
+        """Validate heketi metrics after heketi pod failure"""
         scale_dc_pod_amount_and_wait(
             self.ocp_master_node, self.heketi_dc_name, pod_amount=0)
         self.addCleanup(
@@ -211,7 +211,7 @@ class TestHeketiMetrics(HeketiBaseClass):
         self.verify_heketi_metrics_with_topology_info()
 
     def test_heketi_metrics_validating_vol_count_on_vol_creation(self):
-        # CNS-1244 - Heketi_metrics_validating_VolumeCount_on_creation
+        """Validate heketi metrics VolumeCount after volume creation"""
 
         for i in range(3):
             # Create volume
@@ -235,7 +235,7 @@ class TestHeketiMetrics(HeketiBaseClass):
         self.verify_volume_count()
 
     def test_heketi_metrics_validating_vol_count_on_vol_deletion(self):
-        # CNS-1245 - Heketi_metrics_validating_VolumeCount_on_deletion
+        """Validate heketi metrics VolumeCount after volume deletion"""
 
         vol_list = []
 
@@ -274,7 +274,7 @@ class TestHeketiMetrics(HeketiBaseClass):
             self.verify_volume_count()
 
     def test_heketi_metrics_validating_cluster_count(self):
-        # CNS-1246 - Heketi_metrics_validating_cluster_count
+        """Validate 'cluster count' in heketi metrics"""
         cluster_list = heketi_cluster_list(
             self.heketi_client_node, self.heketi_server_url, json=True)
 
@@ -291,7 +291,7 @@ class TestHeketiMetrics(HeketiBaseClass):
             len(cluster_list['clusters']), metrics['heketi_cluster_count'])
 
     def test_heketi_metrics_validating_existing_node_count(self):
-        # CNS-1247 - Heketi_metrics_validating_existing_node_count
+        """Validate existing 'node count' in heketi metrics"""
         metrics = get_heketi_metrics(
             self.heketi_client_node, self.heketi_server_url)
 

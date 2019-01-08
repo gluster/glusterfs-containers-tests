@@ -113,7 +113,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
         return bricks
 
     def test_arbiter_pvc_create(self):
-        """Test case CNS-944"""
+        """Validate dynamic provision of an arbiter volume"""
 
         # Create sc with gluster arbiter info
         self.create_storage_class(is_arbiter_vol=True)
@@ -127,8 +127,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(vol_info)
 
     def test_arbiter_pvc_mount_on_pod(self):
-        """Test case CNS-945"""
-
+        """Validate new volume creation using app pod"""
         # Create sc with gluster arbiter info
         self.create_storage_class(is_arbiter_vol=True)
 
@@ -194,7 +193,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
         self.cmd_run(write_data_cmd)
 
     def test_create_arbiter_vol_with_more_than_one_brick_set(self):
-        """Test case CNS-942"""
+        """Validate volume creation using heketi for more than six brick set"""
 
         # Set arbiter:disabled tag to the data devices and get their info
         data_nodes = []
@@ -322,7 +321,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
     @ddt.unpack
     def test_verify_arbiter_brick_able_to_contain_expected_amount_of_files(
             self, pvc_size_gb, avg_file_size):
-        """Test cases CNS-1182-1190"""
+        """Validate arbiter brick creation with different avg file size"""
 
         # Create sc with gluster arbiter info
         self.create_storage_class(
@@ -374,7 +373,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
     @ddt.data(True, False)
     def test_aribiter_required_tag_on_node_or_devices_other_disabled(
             self, node_with_tag):
-        """Test cases CNS-989 and CNS-997"""
+        """Validate arbiter vol creation with required node or device tag"""
 
         pvc_amount = 3
 
@@ -445,7 +444,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
                     data_brick.split(':')[0], data_nodes_ip_addresses)
 
     def test_create_delete_pvcs_to_make_gluster_reuse_released_space(self):
-        """Test case CNS-1265"""
+        """Validate reuse of volume space after deletion of PVCs"""
         min_storage_gb = 10
 
         # Set arbiter:disabled tags to the first 2 nodes
@@ -541,7 +540,7 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
             wait_for_resource_absence(self.node, 'pvc', pvc_name)
 
     def test_arbiter_volume_expand_using_pvc(self):
-        """Test case CNS-954"""
+        """Validate arbiter volume expansion by PVC creation"""
         # Create sc with gluster arbiter info
         self.create_storage_class(
             is_arbiter_vol=True, allow_volume_expansion=True)
@@ -566,10 +565,13 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
     @ddt.data(True, False)
     def test_expand_arbiter_volume_setting_tags_on_nodes_or_devices(
             self, node_tags):
-        """Test case CNS-1523, CNS-1524
-            This test case is going to run two tests.
-            If value is True it is going to set tags on nodes and run test
-            If value is False it is going to set tags on devices and run test
+        """Validate exapnsion of arbiter volume with defferent tags
+
+           This test case is going to run two tests:
+                1. If value is True it is going to set tags
+                   on nodes and run test
+                2. If value is False it is going to set tags
+                   on devices and run test
         """
 
         data_nodes = []

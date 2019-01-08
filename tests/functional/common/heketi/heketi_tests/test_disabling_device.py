@@ -10,7 +10,7 @@ from cnslibs.common import podcmd
 class TestDisableHeketiDevice(heketi_libs.HeketiBaseClass):
     @podcmd.GlustoPod()
     def test_create_volumes_enabling_and_disabling_heketi_devices(self):
-        """Test case CNS-763"""
+        """Validate enable/disable of heketi device"""
 
         # Get nodes info
         node_id_list = heketi_ops.heketi_node_list(

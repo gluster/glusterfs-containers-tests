@@ -28,8 +28,7 @@ class TestHeketiVolume(HeketiBaseClass):
 
     @podcmd.GlustoPod()
     def test_volume_create_and_list_volume(self):
-        """Make sure that Heketi vol creation creates just one Gluster vol."""
-
+        """Validate heketi and gluster volume list"""
         g.log.info("List gluster volumes before Heketi volume creation")
         existing_g_vol_list = get_volume_list('auto_get_gluster_endpoint')
         self.assertTrue(existing_g_vol_list, ("Unable to get volumes list"))
@@ -73,10 +72,7 @@ class TestHeketiVolume(HeketiBaseClass):
 
     @podcmd.GlustoPod()
     def test_create_vol_and_retrieve_vol_info(self):
-        """
-        Create a heketi volume and retrieve the volume info
-        and get gluster volume info
-        """
+        """Validate heketi and gluster volume info"""
 
         g.log.info("Create a heketi volume")
         out = heketi_volume_create(self.heketi_client_node,
@@ -101,10 +97,7 @@ class TestHeketiVolume(HeketiBaseClass):
         g.log.info("Successfully got the volume info %s" % name)
 
     def test_to_check_deletion_of_cluster(self):
-        """
-        Deletion of a cluster with volumes
-        and/ or nodes should fail
-        """
+        """Validate deletion of cluster with volumes"""
         # List heketi volumes
         g.log.info("List heketi volumes")
         volumes = heketi_volume_list(self.heketi_client_node,
@@ -152,7 +145,7 @@ class TestHeketiVolume(HeketiBaseClass):
         g.log.info("All heketi cluster successfully listed")
 
     def test_to_check_deletion_of_node(self):
-        """Deletion of a node which contains devices"""
+        """Validate deletion of a node which contains devices"""
 
         # Create Heketi volume to make sure we have devices with usages
         heketi_url = self.heketi_server_url
@@ -202,7 +195,7 @@ class TestHeketiVolume(HeketiBaseClass):
         self.assertEqual(node_info['state'].lower(), 'online')
 
     def test_blockvolume_create_no_free_space(self):
-        """Test case CNS-550"""
+        """Validate error is returned when free capacity is exhausted"""
 
         # Create first small blockvolume
         blockvol1 = heketi_blockvolume_create(

@@ -95,7 +95,7 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
         return online_hosts
 
     def test_device_enable_disable(self):
-        """Test case CNS-764. Test device enable and disable functionality."""
+        """Validate device enable and disable functionality"""
 
         # Disable all but one device on the first online node
         online_hosts = self.get_online_nodes_disable_redundant()
@@ -173,7 +173,7 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
 
     @ddt.data(True, False)
     def test_device_remove_operation(self, delete_device):
-        """Test cases CNS-623,766."""
+        """Validate remove/delete device using heketi-cli"""
 
         gluster_server_0 = g.config["gluster_servers"].values()[0]
         try:
@@ -326,7 +326,7 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
             "'%s' device." % (vol_info['id'], lowest_device_id))
 
     def test_heketi_with_device_removal_insuff_space(self):
-        """Test case CNS-624"""
+        """Validate heketi with device removal insufficient space"""
 
         # Disable 4+ nodes and 3+ devices on the first 3 nodes
         min_free_space_gb = 5

@@ -12,7 +12,8 @@ from cnslibs.common.openshift_ops import (
 class TestRestartGlusterBlockPod(HeketiBaseClass):
 
     def test_restart_gluster_block_provisioner_pod(self):
-        # CNS-542 - Restart gluster-block provisioner pod
+        """Restart gluster-block provisioner pod
+        """
 
         # create heketi block volume
         vol_info = heketi_blockvolume_create(self.heketi_client_node,

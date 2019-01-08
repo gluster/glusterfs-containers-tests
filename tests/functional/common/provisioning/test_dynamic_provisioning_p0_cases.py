@@ -76,14 +76,19 @@ class TestDynamicProvisioningP0(BaseClass):
                 "Failed to execute '%s' command on %s" % (cmd, self.node))
 
     def test_dynamic_provisioning_glusterfile(self):
+        """Validate dynamic provisioning for gluster file"""
         g.log.info("test_dynamic_provisioning_glusterfile")
         self.dynamic_provisioning_glusterfile(False)
 
     def test_dynamic_provisioning_glusterfile_volname_prefix(self):
+        """Validate dynamic provisioning for gluster file with vol name prefix
+        """
         g.log.info("test_dynamic_provisioning_glusterfile volname prefix")
         self.dynamic_provisioning_glusterfile(True)
 
     def test_dynamic_provisioning_glusterfile_heketipod_failure(self):
+        """Validate dynamic provisioning for gluster file when heketi pod down
+        """
         mount_path = "/mnt"
         datafile_path = '%s/fake_file_for_%s' % (mount_path, self.id())
 
@@ -165,6 +170,8 @@ class TestDynamicProvisioningP0(BaseClass):
 
     @skip("Blocked by BZ-1632873")
     def test_dynamic_provisioning_glusterfile_glusterpod_failure(self):
+        """Validate dynamic provisioning for gluster file when gluster pod down
+        """
         mount_path = "/mnt"
         datafile_path = '%s/fake_file_for_%s' % (mount_path, self.id())
 
@@ -220,7 +227,7 @@ class TestDynamicProvisioningP0(BaseClass):
         self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd, self.node))
 
     def test_storage_class_mandatory_params_glusterfile(self):
-        """Test case CNS-442 - storage-class mandatory parameters"""
+        """Validate storage-class creation with mandatory parameters"""
 
         # create secret
         self.secret_name = oc_create_secret(
@@ -269,7 +276,7 @@ class TestDynamicProvisioningP0(BaseClass):
             ret, 0, "Failed to execute command %s on %s" % (cmd, self.node))
 
     def test_dynamic_provisioning_glusterfile_heketidown_pvc_delete(self):
-        """ Delete PVC's when heketi is down CNS-438 """
+        """Validate deletion of PVC's when heketi is down"""
 
         # Create storage class, secret and PVCs
         self.create_storage_class()
@@ -307,7 +314,7 @@ class TestDynamicProvisioningP0(BaseClass):
         self.create_and_wait_for_pvc()
 
     def test_validate_pvc_in_multiple_app_pods(self):
-        """Test case CNS-574"""
+        """Validate the use of a same claim in multiple app pods"""
         replicas = 5
 
         # Create PVC
@@ -336,7 +343,7 @@ class TestDynamicProvisioningP0(BaseClass):
             self.assertIn("temp_%s" % pod_name, ls_out)
 
     def test_pvc_deletion_while_pod_is_running(self):
-        """Test case CNS-584 - Verify PVC deletion while pod is running"""
+        """Validate PVC deletion while pod is running"""
 
         # Create DC with POD and attached PVC to it
         sc_name = self.create_storage_class()
@@ -359,7 +366,7 @@ class TestDynamicProvisioningP0(BaseClass):
             ret, 0, "Failed to execute command %s on %s" % (cmd, self.node))
 
     def test_dynamic_provisioning_glusterfile_reclaim_policy_retain(self):
-        # CNS-1390 - Retain policy - glusterfs - delete pvc
+        """Validate retain policy for glusterfs after deletion of pvc"""
 
         self.create_storage_class(reclaim_policy='Retain')
         self.create_and_wait_for_pvc()
@@ -403,7 +410,7 @@ class TestDynamicProvisioningP0(BaseClass):
         wait_for_resource_absence(self.node, 'pv', pv_name)
 
     def test_usage_of_default_storage_class(self):
-        """Test case CNS-928"""
+        """Validate PVs creation for SC with default custom volname prefix"""
 
         # Unset 'default' option from all the existing Storage Classes
         unset_sc_annotation_cmd = (

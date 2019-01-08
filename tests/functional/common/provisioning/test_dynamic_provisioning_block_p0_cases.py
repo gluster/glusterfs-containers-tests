@@ -57,14 +57,17 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                 "Failed to execute '%s' command on '%s'." % (cmd, self.node))
 
     def test_dynamic_provisioning_glusterblock_hacount_true(self):
-        """ CNS-435 dynamic provisioning glusterblock """
+        """Validate dynamic provisioning for glusterblock
+        """
         self.dynamic_provisioning_glusterblock(set_hacount=True)
 
     def test_dynamic_provisioning_glusterblock_hacount_false(self):
-        """ CNS-716 storage-class mandatory parameters for block """
+        """Validate storage-class mandatory parameters for block
+        """
         self.dynamic_provisioning_glusterblock(set_hacount=False)
 
     def test_dynamic_provisioning_glusterblock_heketipod_failure(self):
+        """Validate PVC with glusterblock creation when heketi pod is down"""
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
 
         # Create DC with attached PVC
@@ -131,6 +134,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
     @skip("Blocked by BZ-1632873")
     def test_dynamic_provisioning_glusterblock_glusterpod_failure(self):
+        """Create glusterblock PVC when gluster pod is down"""
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
 
         # Create DC with attached PVC
@@ -173,7 +177,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd, self.node))
 
     def test_glusterblock_logs_presence_verification(self):
-        # Verify presence of glusterblock provisioner POD and its status
+        """Validate presence of glusterblock provisioner POD and it's status"""
         gb_prov_cmd = ("oc get pods --all-namespaces "
                        "-l glusterfs=block-%s-provisioner-pod "
                        "-o=custom-columns=:.metadata.name,:.status.phase" % (
@@ -215,7 +219,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                 self.assertTrue(out, "Command '%s' output is empty." % cmd)
 
     def test_dynamic_provisioning_glusterblock_heketidown_pvc_delete(self):
-        """ Delete PVC's when heketi is down CNS-439 """
+        """Validate PVC deletion when heketi is down"""
 
         # Create Secret, SC and PVCs
         self.create_storage_class()
@@ -253,7 +257,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         self.create_and_wait_for_pvc()
 
     def test_recreate_app_pod_with_attached_block_pv(self):
-        """Test Case CNS-1392"""
+        """Validate app pod attached block device I/O after restart"""
         datafile_path = '/mnt/temporary_test_file'
 
         # Create DC with POD and attached PVC to it
@@ -281,7 +285,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         self.cmd_run(write_cmd % (new_pod_name, datafile_path))
 
     def test_volname_prefix_glusterblock(self):
-        # CNS-926 - custom_volname_prefix_blockvol
+        """Validate custom volname prefix blockvol"""
 
         self.dynamic_provisioning_glusterblock(
             set_hacount=False, create_vol_name_prefix=True)
@@ -300,7 +304,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             self.sc.get('volumenameprefix', 'autotest')))
 
     def test_dynamic_provisioning_glusterblock_reclaim_policy_retain(self):
-        # CNS-1391 - Retain policy - gluster-block - delete pvc
+        """Validate retain policy for gluster-block after PVC deletion"""
 
         self.create_storage_class(reclaim_policy='Retain')
         self.create_and_wait_for_pvc()

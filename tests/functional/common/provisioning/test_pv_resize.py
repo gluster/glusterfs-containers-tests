@@ -23,7 +23,7 @@ from glusto.core import Glusto as g
 
 @ddt.ddt
 class TestPvResizeClass(BaseClass):
-    """Test cases for PV resize."""
+    """Test cases for PV resize"""
 
     @classmethod
     def setUpClass(cls):
@@ -45,7 +45,7 @@ class TestPvResizeClass(BaseClass):
     @ddt.data(False, True)
     def test_pv_resize_with_prefix_for_name(self,
                                             create_vol_name_prefix=False):
-        """testcases CNS-1037 and CNS-1038 """
+        """Validate PV resize with and without name prefix"""
         dir_path = "/mnt/"
         node = self.ocp_client[0]
 
@@ -190,15 +190,15 @@ class TestPvResizeClass(BaseClass):
                 ret, 0, "Failed to write data on the expanded PVC")
 
     def test_pv_resize_no_free_space(self):
-        """Test case CNS-1040"""
+        """Validate PVC resize fails if there is no free space available"""
         self._pv_resize(exceed_free_space=True)
 
     def test_pv_resize_by_exact_free_space(self):
-        """Test case CNS-1041"""
+        """Validate PVC resize when resized by exact available free space"""
         self._pv_resize(exceed_free_space=False)
 
     def test_pv_resize_try_shrink_pv_size(self):
-        """testcase CNS-1039 """
+        """Validate whether reducing the PV size is allowed"""
         dir_path = "/mnt/"
         node = self.ocp_master_node[0]
 

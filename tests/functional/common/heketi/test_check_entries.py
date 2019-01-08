@@ -27,7 +27,7 @@ class TestHeketiVolume(HeketiBaseClass):
             assertion_method(brick_path, fstab_files_data)
 
     def test_to_check_entry_in_fstab_file(self):
-        """Test case CNS-778"""
+        """Validate /etc/fstab entries after creation/deletion of volume"""
 
         # Create heketi volume
         vol = heketi_volume_create(

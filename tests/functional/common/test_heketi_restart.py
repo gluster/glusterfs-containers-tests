@@ -15,7 +15,7 @@ from cnslibs.common.openshift_ops import (
 class TestRestartHeketi(HeketiBaseClass):
 
     def test_restart_heketi_pod(self):
-        """ CNS-450 Restarting heketi pod """
+        """Validate restarting heketi pod"""
 
         # create heketi volume
         vol_info = heketi_volume_create(self.heketi_client_node,

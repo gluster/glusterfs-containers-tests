@@ -5,7 +5,7 @@ from cnslibs.common import heketi_ops
 class TestHeketiDeviceInfo(heketi_libs.HeketiBaseClass):
 
     def test_heketi_devices_info_verification(self):
-        """Test case CNS-765"""
+        """Validate whether device related information is displayed"""
 
         # Get devices from topology info
         devices_from_topology = {}

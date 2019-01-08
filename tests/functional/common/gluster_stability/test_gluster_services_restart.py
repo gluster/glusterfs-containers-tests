@@ -47,7 +47,6 @@ SERVICE_TCMU = "tcmu-runner"
 @ddt.ddt
 class GlusterStabilityTestSetup(BaseClass):
     """class for gluster stability (restarts different servces) testcases
-       TC No's: CNS-1393, CNS-1394, CNS-1395
     """
 
     def setUp(self):
@@ -281,8 +280,7 @@ class GlusterStabilityTestSetup(BaseClass):
 
     @ddt.data(SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET)
     def test_restart_services_provision_volume_and_run_io(self, service):
-        """[CNS-1393-1395] Restart gluster service then validate volumes
-        """
+        """Restart gluster service then validate volumes"""
         # restarts glusterfs service
         restart_service_on_pod(self.oc_node, self.gluster_pod, service)
 
@@ -308,9 +306,7 @@ class GlusterStabilityTestSetup(BaseClass):
 
     @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
     def test_target_side_failures_brick_failure_on_block_hosting_volume(self):
-        """[CNS-1285] Target side failures - Brick failure on block
-           hosting volume
-        """
+        """Target side failures - Brick failure on block hosting volume"""
         # get block hosting volume from pvc name
         block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(
             self.pvc_name
@@ -337,8 +333,10 @@ class GlusterStabilityTestSetup(BaseClass):
 
     @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
     def test_start_stop_block_volume_service(self):
-        """[CNS-1314] Block hosting volume - stop/start block hosting
-           volume when IO's and provisioning are going on
+        """Validate block hosting volume by start/stop operation
+
+           Perform stop/start operation on block hosting volume when
+           IO's and provisioning are going on
         """
         # get block hosting volume from pvc name
         block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(

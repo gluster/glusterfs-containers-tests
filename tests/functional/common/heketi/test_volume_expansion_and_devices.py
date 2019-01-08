@@ -160,10 +160,7 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
                 "Device %s could not be deleted" % device_id)
 
     def test_volume_expansion_expanded_volume(self):
-        """
-        To test volume expansion with brick and rebalance
-        validation
-        """
+        """Validate volume expansion with brick and check rebalance"""
         creation_info = heketi_ops.heketi_volume_create(
             self.heketi_client_node, self.heketi_server_url, 10, json=True)
 
@@ -302,7 +299,7 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
                         % volume_id)
 
     def test_volume_expansion_no_free_space(self):
-        """Test case CNS-467: volume expansion when there is no free space."""
+        """Validate volume expansion when there is no free space"""
 
         vol_size, expand_size, additional_devices_attached = None, 10, {}
         h_node, h_server_url = self.heketi_client_node, self.heketi_server_url
@@ -439,10 +436,7 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
 
     @podcmd.GlustoPod()
     def test_volume_expansion_rebalance_brick(self):
-        """
-        To test volume expansion with brick and rebalance
-        validation
-        """
+        """Validate volume expansion with brick and check rebalance"""
         creation_info = heketi_ops.heketi_volume_create(
             self.heketi_client_node, self.heketi_server_url, 10, json=True)
 

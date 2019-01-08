@@ -14,10 +14,7 @@ class TestVolumeCreationTestCases(heketi_libs.HeketiBaseClass):
 
     @podcmd.GlustoPod()
     def test_create_heketi_volume(self):
-        """
-        Method to test heketi volume creation and
-        background gluster validation
-        """
+        """Test heketi volume creation and background gluster validation"""
 
         hosts = []
         gluster_servers = []
@@ -86,7 +83,7 @@ class TestVolumeCreationTestCases(heketi_libs.HeketiBaseClass):
                              "Brick %s is not up" % brick_name)
 
     def test_volume_creation_no_free_devices(self):
-        """Test case CNS-804"""
+        """Validate heketi error is returned when no free devices available"""
         node, server_url = self.heketi_client_node, self.heketi_server_url
 
         # Get nodes info

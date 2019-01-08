@@ -143,7 +143,8 @@ class TestHeketiVolume(HeketiBaseClass):
                            "Brick amount is expected to be bigger than 3. "
                            "Actual amount is '%s'." % brick_amount)
 
-        # Run unique actions for CNS-798 test case else return
+        # Run unique actions to Validate whether deleting a dist-rep
+        # volume is handled by heketi else return
         if not validate_cleanup:
             return
 
@@ -193,10 +194,12 @@ class TestHeketiVolume(HeketiBaseClass):
 
     @podcmd.GlustoPod()
     def test_to_create_distribute_replicated_vol(self):
-        """Test case CNS-797"""
+        """Validate 2x3 vol type creation when the volume cannot be
+           carved out of a single device
+        """
         self._create_distributed_replica_vol(validate_cleanup=False)
 
     @podcmd.GlustoPod()
     def test_to_create_and_delete_dist_rep_vol(self):
-        """Test case CNS-798"""
+        """Validate whether deleting a dist-rep volume is handled by heketi"""
         self._create_distributed_replica_vol(validate_cleanup=True)
