@@ -28,40 +28,48 @@ class TestHeketiVolume(HeketiBaseClass):
 
     @podcmd.GlustoPod()
     def test_volume_create_and_list_volume(self):
-        """
-        Create a heketi volume and list the volume
-        compare the volume with gluster volume list
-        """
+        """Make sure that Heketi vol creation creates just one Gluster vol."""
+
+        g.log.info("List gluster volumes before Heketi volume creation")
+        existing_g_vol_list = get_volume_list('auto_get_gluster_endpoint')
+        self.assertTrue(existing_g_vol_list, ("Unable to get volumes list"))
+
+        g.log.info("List heketi volumes before volume creation")
+        existing_h_vol_list = heketi_volume_list(
+            self.heketi_client_node, self.heketi_server_url,
+            json=True)["volumes"]
+        g.log.info("Heketi volumes successfully listed")
+
         g.log.info("Create a heketi volume")
         out = heketi_volume_create(self.heketi_client_node,
                                    self.heketi_server_url,
                                    self.volume_size, json=True)
-        self.assertTrue(out, ("Failed to create heketi "
-                        "volume of size %s" % self.volume_size))
         g.log.info("Heketi volume successfully created" % out)
         volume_id = out["bricks"][0]["volume"]
         self.addCleanup(self.delete_volumes, volume_id)
 
-        g.log.info("List heketi volumes")
-        volumes = heketi_volume_list(self.heketi_client_node,
-                                     self.heketi_server_url,
-                                     json=True)
-        self.assertTrue(volumes, ("Failed to list heketi volumes"))
+        g.log.info("List heketi volumes after volume creation")
+        h_vol_list = heketi_volume_list(
+            self.heketi_client_node, self.heketi_server_url,
+            json=True)["volumes"]
         g.log.info("Heketi volumes successfully listed")
 
-        g.log.info("List gluster volumes")
-        vol_list = get_volume_list('auto_get_gluster_endpoint')
-        self.assertTrue(vol_list, ("Unable to get volumes list"))
+        g.log.info("List gluster volumes after Heketi volume creation")
+        g_vol_list = get_volume_list('auto_get_gluster_endpoint')
+        self.assertTrue(g_vol_list, ("Unable to get volumes list"))
         g.log.info("Successfully got the volumes list")
 
-        # Check the volume count are equal
+        # Perform checks
         self.assertEqual(
-            len(volumes["volumes"]), len(vol_list),
-            "Lengths of gluster '%s' and heketi '%s' volume lists are "
-            "not equal." % (vol_list, volumes)
-        )
-        g.log.info("Heketi volumes list %s and"
-                   " gluster volumes list %s" % (volumes, vol_list))
+            len(existing_g_vol_list) + 1, len(g_vol_list),
+            "Expected creation of only one volume in Gluster creating "
+            "Heketi volume. Here is lists before and after volume creation: "
+            "%s \n%s" % (existing_g_vol_list, g_vol_list))
+        self.assertEqual(
+            len(existing_h_vol_list) + 1, len(h_vol_list),
+            "Expected creation of only one volume in Heketi. Here is lists "
+            "of Heketi volumes before and after volume creation: %s\n%s" % (
+                existing_h_vol_list, h_vol_list))
 
     @podcmd.GlustoPod()
     def test_create_vol_and_retrieve_vol_info(self):
