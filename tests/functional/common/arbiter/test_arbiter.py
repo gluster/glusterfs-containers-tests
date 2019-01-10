@@ -3,8 +3,8 @@ import ddt
 from cnslibs.cns import cns_baseclass
 from cnslibs.common import heketi_ops
 from cnslibs.common.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
     get_gluster_vol_info_by_pvc_name,
-    get_ocp_gluster_pod_names,
     oc_create_pvc,
     oc_create_tiny_pod_with_volume,
     oc_delete,
@@ -346,33 +346,30 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
         # Try to create expected amount of files on arbiter brick mount
         passed_arbiter_bricks = []
         not_found = "Mount Not Found"
-        gluster_pods = get_ocp_gluster_pod_names(self.node)
         for brick in bricks_info['arbiter_list']:
-            for gluster_pod in gluster_pods:
-                # "brick path" looks like following:
-                # ip_addr:/path/to/vg/brick_unique_name/brick
-                # So, we remove "ip_addr" and "/brick" parts to have mount path
-                brick_path = brick["name"].split(":")[-1]
-                cmd = "oc exec %s -- mount | grep %s || echo '%s'" % (
-                    gluster_pod, brick_path[0:-6], not_found)
-                out = self.cmd_run(cmd)
-                if out != not_found:
-                    cmd = (
-                        "oc exec %s -- python -c \"["
-                        "    open('%s/foo_file{0}'.format(i), 'a').close()"
-                        "    for i in range(%s)"
-                        "]\"" % (gluster_pod, brick_path, expected_file_amount)
-                    )
-                    out = self.cmd_run(cmd)
-                    passed_arbiter_bricks.append(brick_path)
-                    break
+            # "brick path" looks like following:
+            # ip_addr:/path/to/vg/brick_unique_name/brick
+            gluster_ip, brick_path = brick["name"].split(":")
+            brick_path = brick_path[0:-6]
+
+            cmd = "mount | grep %s || echo '%s'" % (brick_path, not_found)
+            out = cmd_run_on_gluster_pod_or_node(self.node, cmd, gluster_ip)
+            if out != not_found:
+                cmd = (
+                    "python -c \"["
+                    "    open('%s/foo_file{0}'.format(i), 'a').close()"
+                    "    for i in range(%s)"
+                    "]\"" % (brick_path, expected_file_amount)
+                )
+                cmd_run_on_gluster_pod_or_node(self.node, cmd, gluster_ip)
+                passed_arbiter_bricks.append(brick["name"])
 
         # Make sure all the arbiter bricks were checked
         for brick in bricks_info['arbiter_list']:
             self.assertIn(
-                brick["name"].split(":")[-1], passed_arbiter_bricks,
+                brick["name"], passed_arbiter_bricks,
                 "Arbiter brick '%s' was not verified. Looks like it was "
-                "not found on any of gluster nodes." % brick_path)
+                "not found on any of gluster PODs/nodes." % brick["name"])
 
     @ddt.data(True, False)
     def test_aribiter_required_tag_on_node_or_devices_other_disabled(

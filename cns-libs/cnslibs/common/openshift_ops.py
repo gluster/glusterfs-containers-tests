@@ -30,17 +30,21 @@ SERVICE_RESTART = "systemctl restart %s"
 SERVICE_STATUS_REGEX = r"Active: active \((.*)\) since .*;.*"
 
 
-def oc_get_pods(ocp_node):
+def oc_get_pods(ocp_node, selector=None):
     """Gets the pods info with 'wide' option in the current project.
 
     Args:
         ocp_node (str): Node in which ocp command will be executed.
+        selector (str): optional option. Selector for OCP pods.
+            example: "glusterfs-node=pod" for filtering out only Gluster PODs.
 
     Returns:
         dict : dict of pods info in the current project.
     """
 
     cmd = "oc get -o wide --no-headers=true pods"
+    if selector:
+        cmd += " --selector %s" % selector
     ret, out, err = g.run(ocp_node, cmd)
     if ret != 0:
         g.log.error("Failed to get ocp pods on node %s" % ocp_node)
@@ -772,23 +776,51 @@ def get_gluster_pod_names_by_pvc_name(ocp_node, pvc_name):
     return data
 
 
-def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd):
-    """Run shell command on either Gluster POD or Gluster node.
+def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node=None):
+    """Run shell command on either Gluster PODs or Gluster nodes.
 
     Args:
         ocp_client_node (str): Node to execute OCP commands on.
         cmd (str): shell command to run.
+        gluster_node (str): optional. Allows to chose specific gluster node,
+            keeping abstraction from deployment type. Can be either IP address
+            or node name from "oc get nodes" command.
     Returns:
         Output of a shell command as string object.
     """
     # Containerized Glusterfs
-    gluster_pods = get_ocp_gluster_pod_names(ocp_client_node)
+    gluster_pods = oc_get_pods(ocp_client_node, selector="glusterfs-node=pod")
     if gluster_pods:
-        pod_cmd = "oc exec %s -- %s" % (gluster_pods[0], cmd)
-        return command.cmd_run(pod_cmd, hostname=ocp_client_node)
+        if gluster_node:
+            for pod_name, pod_data in gluster_pods.items():
+                if gluster_node in (pod_data["ip"], pod_data["node"]):
+                    gluster_pod_names = [pod_name]
+                    break
+            else:
+                raise exceptions.ExecutionError(
+                    "Could not find Gluster PODs with node filter as "
+                    "'%s'." % gluster_node)
+        else:
+            gluster_pod_names = gluster_pods.keys()
+
+        err_msg = ""
+        for gluster_pod_name in gluster_pod_names:
+            try:
+                pod_cmd = "oc exec %s -- %s" % (gluster_pod_name, cmd)
+                return command.cmd_run(pod_cmd, hostname=ocp_client_node)
+            except Exception as e:
+                err = ("Failed to run '%s' command on '%s' Gluster POD. "
+                       "Error: %s\n" % (cmd, gluster_pod_name, e))
+                err_msg += err
+                g.log.error(err)
+        raise exceptions.ExecutionError(err_msg)
 
     # Standalone Glusterfs
-    for g_host in g.config.get("gluster_servers", {}).keys():
+    if gluster_node:
+        g_hosts = [gluster_node]
+    else:
+        g_hosts = g.config.get("gluster_servers", {}).keys()
+    for g_host in g_hosts:
         try:
             return command.cmd_run(cmd, hostname=g_host)
         except Exception as e:
@@ -796,7 +828,7 @@ def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd):
                 "Failed to run '%s' command on '%s' Gluster node. "
                 "Error: %s" % (cmd, g_host,  e))
 
-    raise exceptions.ConfigError(
+    raise exceptions.ExecutionError(
         "Haven't found neither Gluster PODs nor Gluster nodes.")
 
 
