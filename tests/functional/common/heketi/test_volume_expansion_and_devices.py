@@ -320,6 +320,7 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
 
         # Prepare first 3 nodes
         smallest_size = None
+        err_msg = ''
         for node_id in heketi_node_id_list[0:3]:
             node_info = heketi_ops.heketi_node_info(
                 h_node, h_server_url, node_id, json=True)
@@ -341,6 +342,7 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
                     h_node, h_server_url, device["id"])
 
             # Gather info about additional devices
+            additional_device_name = None
             for gluster_server in self.gluster_servers:
                 gluster_server_data = self.gluster_servers_info[gluster_server]
                 g_manage = gluster_server_data["manage"]
@@ -348,12 +350,23 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
                 if not (g_manage in node_info["hostnames"]["manage"] or
                         g_storage in node_info["hostnames"]["storage"]):
                     continue
+                additional_device_name = ((
+                    gluster_server_data.get("additional_devices") or [''])[0])
+                break
 
-                heketi_ops.heketi_device_add(
-                    h_node, h_server_url,
-                    gluster_server_data["additional_devices"][0], node_id)
-                additional_devices_attached.update(
-                    {node_id: gluster_server_data["additional_devices"][0]})
+            if not additional_device_name:
+                err_msg += ("No 'additional_devices' are configured for "
+                            "'%s' node, which has following hostnames and "
+                            "IP addresses: %s.\n" % (
+                                node_id,
+                                ', '.join(node_info["hostnames"]["manage"] +
+                                          node_info["hostnames"]["storage"])))
+                continue
+
+            heketi_ops.heketi_device_add(
+                h_node, h_server_url, additional_device_name, node_id)
+            additional_devices_attached.update(
+                {node_id: additional_device_name})
 
         # Schedule cleanup of the added devices
         for node_id in additional_devices_attached.keys():
@@ -367,6 +380,9 @@ class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
             else:
                 self.fail("Could not find ID for added device on "
                           "'%s' node." % node_id)
+
+        if err_msg:
+            self.skipTest(err_msg)
 
         # Temporary disable new devices
         self.disable_devices(additional_devices_attached)
