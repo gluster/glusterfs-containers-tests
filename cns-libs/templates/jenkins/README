@@ -1,6 +1,0 @@
-==============
-REFERENCES
-==============
-
-Jenkins template and load script files are refered from the below github code:
-    https://github.com/openshift/svt/tree/master/storage/jenkins
