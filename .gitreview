@@ -1,2 +1,4 @@
 [gerrit]
 defaultremote = origin
+host = review.gluster.org
+project = glusterfs-containers-tests.git
