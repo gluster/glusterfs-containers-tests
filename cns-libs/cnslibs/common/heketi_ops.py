@@ -3,6 +3,7 @@ import json
 from glusto.core import Glusto as g
 
 from cnslibs.common import exceptions
+from cnslibs.common import heketi_version
 from cnslibs.common.utils import parse_prometheus_data
 
 
@@ -1455,3 +1456,40 @@ def get_heketi_metrics(heketi_client_node, heketi_server_url,
     if prometheus_format:
         return out.strip()
     return parse_prometheus_data(out)
+
+
+def heketi_examine_gluster(heketi_client_node, heketi_server_url):
+    """Execute heketi command to examine output from gluster servers.
+
+    Args:
+        - heketi_client_node (str): Node where we want to run our commands.
+        - heketi_server_url (str): This is a heketi server url.
+
+    Raises:
+        NotImplementedError: if heketi version is not expected
+        exceptions.ExecutionError: if command fails.
+
+    Returns:
+        dictionary: if successful
+    """
+
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '8.0.0-7':
+        msg = ("heketi-client package %s does not support server state examine"
+               " gluster" % version.v_str)
+        g.log.error(msg)
+        raise NotImplementedError(msg)
+
+    heketi_server_url, json_arg, secret, user = _set_heketi_global_flags(
+        heketi_server_url)
+    # output is always json-like and we do not need to provide "--json" CLI arg
+    cmd = ("heketi-cli server state examine gluster -s %s %s %s"
+           % (heketi_server_url, user, secret))
+    ret, out, err = g.run(heketi_client_node, cmd)
+
+    if ret != 0:
+        msg = "failed to examine gluster with following error: %s" % err
+        g.log.error(msg)
+        raise exceptions.ExecutionError(msg)
+
+    return json.loads(out)
