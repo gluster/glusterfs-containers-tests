@@ -1,16 +1,14 @@
+from datetime import datetime
+import re
+import time
 from unittest import skip
 
 import ddt
-import re
-import time
-
-from datetime import datetime
 from glusto.core import Glusto as g
+
+from cnslibs.cns.cns_baseclass import BaseClass
 from cnslibs.common.heketi_ops import heketi_blockvolume_list
 from cnslibs.common.openshift_ops import (
-    check_service_status,
-    oc_get_custom_resource,
-    get_ocp_gluster_pod_names,
     get_pod_name_from_dc,
     match_pv_and_heketi_block_volumes,
     match_pvc_and_pv,
@@ -19,26 +17,27 @@ from cnslibs.common.openshift_ops import (
     oc_create_sc,
     oc_create_secret,
     oc_delete,
+    oc_get_custom_resource,
     oc_get_yaml,
     oc_rsh,
-    restart_service_on_pod,
+    restart_service_on_gluster_pod_or_node,
     scale_dc_pod_amount_and_wait,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
-    wait_for_resource_absence
+    wait_for_resource_absence,
+    wait_for_service_status_on_gluster_pod_or_node,
 )
 from cnslibs.common.gluster_ops import (
     get_block_hosting_volume_name,
+    get_gluster_vol_hosting_nodes,
     match_heketi_and_gluster_block_volumes_by_prefix,
-    restart_block_hosting_volume,
-    restart_brick_process,
-    wait_to_heal_complete
+    restart_file_volume,
+    restart_gluster_vol_brick_processes,
+    wait_to_heal_complete,
 )
-from cnslibs.cns.cns_baseclass import BaseClass
-from cnslibs.common import podcmd
+
 
 HEKETI_BLOCK_VOLUME_REGEX = "^Id:(.*).Cluster:(.*).Name:%s_(.*)$"
-
 SERVICE_TARGET = "gluster-block-target"
 SERVICE_BLOCKD = "gluster-blockd"
 SERVICE_TCMU = "tcmu-runner"
@@ -54,8 +53,6 @@ class GlusterStabilityTestSetup(BaseClass):
            in cleanup method
         """
         self.oc_node = self.ocp_master_node[0]
-        self.gluster_pod = get_ocp_gluster_pod_names(self.oc_node)[0]
-        self.gluster_pod_obj = podcmd.Pod(self.oc_node, self.gluster_pod)
 
         # prefix used to create resources, generating using glusto_test_id
         # which uses time and date of test case
@@ -169,9 +166,7 @@ class GlusterStabilityTestSetup(BaseClass):
 
         # get block hosting volume from pvc name
         block_hosting_vol = get_block_hosting_volume_name(
-            self.heketi_client_node, self.heketi_server_url,
-            block_volume, self.gluster_pod, self.oc_node
-        )
+            self.heketi_client_node, self.heketi_server_url, block_volume)
 
         return block_hosting_vol
 
@@ -233,9 +228,7 @@ class GlusterStabilityTestSetup(BaseClass):
 
         # validate block volumes listed by heketi and gluster
         match_heketi_and_gluster_block_volumes_by_prefix(
-            self.gluster_pod_obj, heketi_block_volume_names,
-            "%s_" % self.prefix
-        )
+            heketi_block_volume_names, "%s_" % self.prefix)
 
     def get_io_time(self):
         """Gets last io time of io pod by listing log file directory
@@ -268,7 +261,7 @@ class GlusterStabilityTestSetup(BaseClass):
         """
         start_io_time = self.get_io_time()
 
-        restart_block_hosting_volume(self.gluster_pod_obj, block_hosting_vol)
+        restart_file_volume(block_hosting_vol)
 
         # Explicit wait to start ios on pvc after volume start
         time.sleep(5)
@@ -276,29 +269,31 @@ class GlusterStabilityTestSetup(BaseClass):
 
         self.assertGreater(resume_io_time, start_io_time, "IO has not stopped")
 
-        wait_to_heal_complete(self.gluster_pod_obj)
+        wait_to_heal_complete()
 
     @ddt.data(SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET)
     def test_restart_services_provision_volume_and_run_io(self, service):
         """Restart gluster service then validate volumes"""
+        block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(
+            self.pvc_name)
+        g_nodes = get_gluster_vol_hosting_nodes(block_hosting_vol)
+        self.assertGreater(len(g_nodes), 2)
+
         # restarts glusterfs service
-        restart_service_on_pod(self.oc_node, self.gluster_pod, service)
+        restart_service_on_gluster_pod_or_node(
+            self.oc_node, service, g_nodes[0])
 
         # wait for deployed user pod to be in Running state after restarting
         # service
         wait_for_pod_be_ready(
-            self.oc_node, self.pod_name, timeout=60, wait_step=5
-        )
+            self.oc_node, self.pod_name, timeout=60, wait_step=5)
 
         # checks if all glusterfs services are in running state
-        for service in (SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET):
-            status = "exited" if service == SERVICE_TARGET else "running"
-            self.assertTrue(
-                check_service_status(
-                    self.oc_node, self.gluster_pod, service, status
-                ),
-                "service %s is not in %s state" % (service, status)
-            )
+        for g_node in g_nodes:
+            for service in (SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET):
+                status = "exited" if service == SERVICE_TARGET else "running"
+                self.assertTrue(wait_for_service_status_on_gluster_pod_or_node(
+                    self.oc_node, service, status, g_node))
 
         # validates pvc, pv, heketi block and gluster block count after
         # service restarts
@@ -309,23 +304,20 @@ class GlusterStabilityTestSetup(BaseClass):
         """Target side failures - Brick failure on block hosting volume"""
         # get block hosting volume from pvc name
         block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(
-            self.pvc_name
-        )
+            self.pvc_name)
 
-        # restarts brick 2 process of block hosting volume
-        restart_brick_process(
-            self.oc_node, self.gluster_pod_obj, block_hosting_vol
-        )
+        # restarts 2 brick processes of block hosting volume
+        g_nodes = get_gluster_vol_hosting_nodes(block_hosting_vol)
+        self.assertGreater(len(g_nodes), 2)
+        restart_gluster_vol_brick_processes(
+            self.oc_node, block_hosting_vol, g_nodes[:2])
 
         # checks if all glusterfs services are in running state
-        for service in (SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET):
-            status = "exited" if service == SERVICE_TARGET else "running"
-            self.assertTrue(
-                check_service_status(
-                    self.oc_node, self.gluster_pod, service, status
-                ),
-                "service %s is not in %s state" % (service, status)
-            )
+        for g_node in g_nodes:
+            for service in (SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET):
+                status = "exited" if service == SERVICE_TARGET else "running"
+                self.assertTrue(wait_for_service_status_on_gluster_pod_or_node(
+                    self.oc_node, service, status, g_node))
 
         # validates pvc, pv, heketi block and gluster block count after
         # service restarts

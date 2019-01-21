@@ -1,9 +1,9 @@
-import six
 import time
 import json
 import re
 
 from glusto.core import Glusto as g
+from glustolibs.gluster.block_ops import block_list
 from glustolibs.gluster.heal_libs import is_heal_complete
 from glustolibs.gluster.volume_ops import (
     get_volume_status,
@@ -12,63 +12,27 @@ from glustolibs.gluster.volume_ops import (
     volume_start,
     volume_stop
 )
-from glustolibs.gluster.block_ops import block_list
-from cnslibs.common.openshift_ops import (
-    oc_get_pods,
-    oc_rsh,
-    wait_for_process_to_kill_on_pod
-)
+
+from cnslibs.common import exceptions
 from cnslibs.common.heketi_ops import heketi_blockvolume_info
-from cnslibs.common import exceptions, podcmd
+from cnslibs.common.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
+)
+from cnslibs.common import podcmd
 from cnslibs.common import waiter
 
 
-def _get_gluster_pod(gluster_pod, hostname=None):
-    """create glusto.podcmd object if gluster_pod is string and
-       hostname is given else returns gluster_pod object given
-
-    Args:
-        gluster_pod (podcmd | str): gluster pod class object has gluster
-                                    pod and ocp master node or gluster
-                                    pod name
-        hostname (str): master node on which gluster pod exists
-    """
-    if isinstance(gluster_pod, podcmd.Pod):
-        return gluster_pod
-    elif isinstance(gluster_pod, six.string_types):
-        if hostname:
-            return podcmd.Pod(hostname, gluster_pod)
-        else:
-            raise exceptions.ExecutionError(
-                "gluster pod is string '%s' but hostname '%s' not valid" % (
-                    gluster_pod, hostname)
-            )
-    else:
-        raise exceptions.ExecutionError(
-            "invalid gluster pod parameter '%s', '%s'" % (
-                gluster_pod, type(gluster_pod))
-        )
-
-
 @podcmd.GlustoPod()
-def wait_to_heal_complete(
-        gluster_pod, hostname=None, timeout=300, wait_step=5):
-    """Monitors heal for volumes on gluster
-        gluster_pod (podcmd | str): gluster pod class object has gluster
-                                    pod and ocp master node or gluster
-                                    pod name
-        hostname (str): master node on which gluster pod exists
-    """
-    gluster_pod = _get_gluster_pod(gluster_pod, hostname)
-
-    gluster_vol_list = get_volume_list(gluster_pod)
+def wait_to_heal_complete(timeout=300, wait_step=5):
+    """Monitors heal for volumes on gluster"""
+    gluster_vol_list = get_volume_list("auto_get_gluster_endpoint")
     if not gluster_vol_list:
         raise AssertionError("failed to get gluster volume list")
 
     _waiter = waiter.Waiter(timeout=timeout, interval=wait_step)
     for gluster_vol in gluster_vol_list:
         for w in _waiter:
-            if is_heal_complete(gluster_pod, gluster_vol):
+            if is_heal_complete("auto_get_gluster_endpoint", gluster_vol):
                 break
 
     if w.expired:
@@ -79,161 +43,170 @@ def wait_to_heal_complete(
 
 
 @podcmd.GlustoPod()
-def get_brick_pids(gluster_pod, block_hosting_vol, hostname=None):
-    """gets brick pids from gluster pods
+def get_gluster_vol_status(file_vol):
+    """Get Gluster vol hosting nodes.
 
     Args:
-        hostname (str): hostname on which gluster pod exists
-        gluster_pod (podcmd | str): gluster pod class object has gluster
-                                    pod and ocp master node or gluster
-                                    pod name
-        block_hosting_vol (str): Block hosting volume id
+        file_vol (str): file volume name.
     """
-    gluster_pod = _get_gluster_pod(gluster_pod, hostname)
-
-    gluster_volume_status = get_volume_status(gluster_pod, block_hosting_vol)
+    # Get Gluster vol info
+    gluster_volume_status = get_volume_status(
+        "auto_get_gluster_endpoint", file_vol)
     if not gluster_volume_status:
-        raise AssertionError("failed to get volume status for gluster "
-                             "volume '%s' on pod '%s'" % (
-                                gluster_pod, block_hosting_vol))
-
-    gluster_volume_status = gluster_volume_status.get(block_hosting_vol)
-    assert gluster_volume_status, ("gluster volume %s not present" % (
-                                        block_hosting_vol))
-
-    pids = {}
-    for parent_key, parent_val in gluster_volume_status.items():
-        for child_key, child_val in parent_val.items():
-            if not child_key.startswith("/var"):
-                continue
-
-            pid = child_val["pid"]
-            # When birck is down, pid of the brick is returned as -1.
-            # Which is unexepeted situation, hence raising error.
-            if pid == "-1":
-                raise AssertionError("Something went wrong brick pid is -1")
-
-            pids[parent_key] = pid
-
-    return pids
+        raise AssertionError("Failed to get volume status for gluster "
+                             "volume '%s'" % file_vol)
+    if file_vol in gluster_volume_status:
+        gluster_volume_status = gluster_volume_status.get(file_vol)
+    return gluster_volume_status
 
 
 @podcmd.GlustoPod()
-def restart_brick_process(hostname, gluster_pod, block_hosting_vol):
-    """restarts brick process of block hosting volumes
+def get_gluster_vol_hosting_nodes(file_vol):
+    """Get Gluster vol hosting nodes.
 
     Args:
-        hostname (str): hostname on which gluster pod exists
-        gluster_pod (podcmd | str): gluster pod class object has gluster
-                                    pod and ocp master node or gluster
-                                    pod name
-        block_hosting_vol (str): block hosting volume name
+        file_vol (str): file volume name.
     """
-    pids = get_brick_pids(gluster_pod, block_hosting_vol, hostname)
+    vol_status = get_gluster_vol_status(file_vol)
+    g_nodes = []
+    for g_node, g_node_data in vol_status.items():
+        for process_name, process_data in g_node_data.items():
+            if not process_name.startswith("/var"):
+                continue
+            g_nodes.append(g_node)
+    return g_nodes
 
-    # using count variable to limit the max pod process kill to 2
-    count = 0
-    killed_process = {}
-    pid_keys = pids.keys()
-    oc_pods = oc_get_pods(hostname)
-    for pod in oc_pods.keys():
-        if not (oc_pods[pod]["ip"] in pid_keys and count <= 1):
-            continue
 
-        ret, out, err = oc_rsh(
-            hostname, pod, "kill -9 %s" % pids[oc_pods[pod]["ip"]]
-        )
-        if ret != 0:
-            err_msg = "failed to kill process id %s error: %s" % (
-                pids[oc_pods[pod]["ip"]], err)
-            g.log.error(err_msg)
-            raise AssertionError(err_msg)
+@podcmd.GlustoPod()
+def restart_gluster_vol_brick_processes(ocp_client_node, file_vol,
+                                        gluster_nodes):
+    """Restarts brick process of a file volume.
 
-        killed_process[pod] = pids[oc_pods[pod]["ip"]]
-        count += 1
+    Args:
+        ocp_client_node (str): Node to execute OCP commands on.
+        file_vol (str): file volume name.
+        gluster_nodes (str/list): One or several IPv4 addresses of Gluster
+            nodes, where 'file_vol' brick processes must be recreated.
+    """
+    if not isinstance(gluster_nodes, (list, set, tuple)):
+        gluster_nodes = [gluster_nodes]
 
-    for pod, pid in killed_process.items():
-        wait_for_process_to_kill_on_pod(pod, pid, hostname)
+    # Get Gluster vol brick PIDs
+    gluster_volume_status = get_gluster_vol_status(file_vol)
+    pids = ()
+    for gluster_node in gluster_nodes:
+        pid = None
+        for g_node, g_node_data in gluster_volume_status.items():
+            if g_node != gluster_node:
+                continue
+            for process_name, process_data in g_node_data.items():
+                if not process_name.startswith("/var"):
+                    continue
+                pid = process_data["pid"]
+                # When birck is down, pid of the brick is returned as -1.
+                # Which is unexepeted situation. So, add appropriate assertion.
+                assert pid != "-1", (
+                    "Got unexpected PID (-1) for '%s' gluster vol on '%s' "
+                    "node." % file_vol, gluster_node)
+        assert pid, ("Could not find 'pid' in Gluster vol data for '%s' "
+                     "Gluster node. Data: %s" % (
+                         gluster_node, gluster_volume_status))
+        pids.append((gluster_node, pid))
 
-    ret, out, err = volume_start(gluster_pod, block_hosting_vol, force=True)
+    # Restart Gluster vol brick processes using found PIDs
+    for gluster_node, pid in pids:
+        cmd = "kill -9 %s" % pid
+        cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node)
+
+    # Wait for Gluster vol brick processes to be recreated
+    for gluster_node, pid in pids:
+        killed_pid_cmd = "ps -eaf | grep %s | grep -v grep | awk '{print $2}'"
+        _waiter = waiter.Waiter(timeout=60, interval=2)
+        for w in _waiter:
+            result = cmd_run_on_gluster_pod_or_node(
+                ocp_client_node, killed_pid_cmd, gluster_node)
+            if result.strip() == pid:
+                continue
+            g.log.info("Brick process '%s' was killed successfully on '%s'" % (
+                pid, gluster_node))
+            break
+        if w.expired:
+            error_msg = ("Process ID '%s' still exists on '%s' after waiting "
+                         "for it 60 seconds to get killed." % (
+                            pid, gluster_node))
+            g.log.error(error_msg)
+            raise exceptions.ExecutionError(error_msg)
+
+    # Start volume after gluster vol brick processes recreation
+    ret, out, err = volume_start(
+        "auto_get_gluster_endpoint", file_vol, force=True)
     if ret != 0:
-        err_msg = "failed to start gluster volume %s on pod %s error: %s" % (
-            block_hosting_vol, gluster_pod, err)
+        err_msg = "Failed to start gluster volume %s on %s. error: %s" % (
+            file_vol, gluster_node, err)
         g.log.error(err_msg)
         raise AssertionError(err_msg)
 
 
 @podcmd.GlustoPod()
-def restart_block_hosting_volume(
-        gluster_pod, block_hosting_vol, sleep_time=120, hostname=None):
-    """restars block hosting volume service
+def restart_file_volume(file_vol, sleep_time=120):
+    """Restars file volume service.
 
     Args:
-        hostname (str): hostname on which gluster pod exists
-        gluster_pod (podcmd | str): gluster pod class object has gluster
-                                    pod and ocp master node or gluster
-                                    pod name
-        block_hosting_vol (str): name of block hosting volume
+        file_vol (str): name of a file volume
     """
-    gluster_pod = _get_gluster_pod(gluster_pod, hostname)
-
-    gluster_volume_status = get_volume_status(gluster_pod, block_hosting_vol)
+    gluster_volume_status = get_volume_status(
+        "auto_get_gluster_endpoint", file_vol)
     if not gluster_volume_status:
         raise AssertionError("failed to get gluster volume status")
 
     g.log.info("Gluster volume %s status\n%s : " % (
-        block_hosting_vol, gluster_volume_status)
+        file_vol, gluster_volume_status)
     )
 
-    ret, out, err = volume_stop(gluster_pod, block_hosting_vol)
+    ret, out, err = volume_stop("auto_get_gluster_endpoint", file_vol)
     if ret != 0:
-        err_msg = "failed to stop gluster volume %s on pod %s error: %s" % (
-            block_hosting_vol, gluster_pod, err)
+        err_msg = "Failed to stop gluster volume %s. error: %s" % (
+            file_vol, err)
         g.log.error(err_msg)
         raise AssertionError(err_msg)
 
     # Explicit wait to stop ios and pvc creation for 2 mins
     time.sleep(sleep_time)
-    ret, out, err = volume_start(gluster_pod, block_hosting_vol, force=True)
+
+    ret, out, err = volume_start(
+        "auto_get_gluster_endpoint", file_vol, force=True)
     if ret != 0:
-        err_msg = "failed to start gluster volume %s on pod %s error: %s" % (
-            block_hosting_vol, gluster_pod, err)
+        err_msg = "failed to start gluster volume %s error: %s" % (
+            file_vol, err)
         g.log.error(err_msg)
         raise AssertionError(err_msg)
 
-    ret, out, err = volume_status(gluster_pod, block_hosting_vol)
+    ret, out, err = volume_status("auto_get_gluster_endpoint", file_vol)
     if ret != 0:
-        err_msg = ("failed to get status for gluster volume %s on pod %s "
-                   "error: %s" % (block_hosting_vol, gluster_pod, err))
+        err_msg = ("Failed to get status for gluster volume %s error: %s" % (
+            file_vol, err))
         g.log.error(err_msg)
         raise AssertionError(err_msg)
 
 
 @podcmd.GlustoPod()
 def match_heketi_and_gluster_block_volumes_by_prefix(
-        gluster_pod, heketi_block_volumes, block_vol_prefix, hostname=None):
+        heketi_block_volumes, block_vol_prefix):
     """Match block volumes from heketi and gluster. This function can't
        be used for block volumes with custom prefixes
 
     Args:
-        gluster_pod (podcmd | str): gluster pod class object has gluster
-                                    pod and ocp master node or gluster
-                                    pod name
         heketi_block_volumes (list): list of heketi block volumes with
                                      which gluster block volumes need to
                                      be matched
         block_vol_prefix (str): block volume prefix by which the block
                                 volumes needs to be filtered
-        hostname (str): ocp master node on which oc command gets executed
-
     """
-    gluster_pod = _get_gluster_pod(gluster_pod, hostname)
-
-    gluster_vol_list = get_volume_list(gluster_pod)
+    gluster_vol_list = get_volume_list("auto_get_gluster_endpoint")
 
     gluster_vol_block_list = []
     for gluster_vol in gluster_vol_list[1:]:
-        ret, out, err = block_list(gluster_pod, gluster_vol)
+        ret, out, err = block_list("auto_get_gluster_endpoint", gluster_vol)
         try:
             if ret != 0 and json.loads(out)["RESULT"] == "FAIL":
                 msg = "failed to get block volume list with error: %s" % err
@@ -260,7 +233,7 @@ def match_heketi_and_gluster_block_volumes_by_prefix(
 
 @podcmd.GlustoPod()
 def get_block_hosting_volume_name(heketi_client_node, heketi_server_url,
-                                  block_volume, gluster_pod, hostname=None):
+                                  block_volume):
     """Returns block hosting volume name of given block volume
 
     Args:
@@ -268,16 +241,9 @@ def get_block_hosting_volume_name(heketi_client_node, heketi_server_url,
         heketi_server_url (str): Heketi server url
         block_volume (str): Block volume of which block hosting volume
                             returned
-        gluster_pod (podcmd | str): Gluster pod class object has gluster
-                                    pod and ocp master node or gluster
-                                    pod name
-        hostname (str): OCP master node on which ocp commands get executed
-
     Returns:
         str : Name of the block hosting volume for given block volume
     """
-    gluster_pod = _get_gluster_pod(gluster_pod, hostname)
-
     block_vol_info = heketi_blockvolume_info(
         heketi_client_node, heketi_server_url, block_volume
     )
@@ -290,7 +256,7 @@ def get_block_hosting_volume_name(heketi_client_node, heketi_server_url,
         if not block_hosting_vol_match:
             continue
 
-        gluster_vol_list = get_volume_list(gluster_pod)
+        gluster_vol_list = get_volume_list("auto_get_gluster_endpoint")
         for vol in gluster_vol_list:
             if block_hosting_vol_match.group(1).strip() in vol:
                 return vol

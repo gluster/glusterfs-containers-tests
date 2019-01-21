@@ -1370,15 +1370,14 @@ def match_pv_and_heketi_block_volumes(
         raise AssertionError(err_msg)
 
 
-def check_service_status(
-        hostname, podname, service, status, timeout=180, wait_step=3):
-    """Checks provided service to be in "Running" status for given
-       timeout on given podname
+def check_service_status_on_pod(
+        ocp_client, podname, service, status, timeout=180, wait_step=3):
+    """Check a service state on a pod.
 
     Args:
-        hostname (str): hostname on which we want to check service
-        podname (str): pod name on which service needs to be restarted
-        service (str): service which needs to be restarted
+        ocp_client (str): node with 'oc' client
+        podname (str): pod name on which service needs to be checked
+        service (str): service which needs to be checked
         status (str): status to be checked
         timeout (int): seconds to wait before service starts having
                        specified 'status'
@@ -1389,7 +1388,7 @@ def check_service_status(
                "having '%s' status" % (timeout, service, status))
 
     for w in waiter.Waiter(timeout, wait_step):
-        ret, out, err = oc_rsh(hostname, podname, SERVICE_STATUS % service)
+        ret, out, err = oc_rsh(ocp_client, podname, SERVICE_STATUS % service)
         if ret != 0:
             err_msg = ("failed to get service %s's status on pod %s" %
                        (service, podname))
@@ -1406,50 +1405,46 @@ def check_service_status(
         raise exceptions.ExecutionError(err_msg)
 
 
-def restart_service_on_pod(hostname, podname, service):
-    """Restarts service on podname given
+def wait_for_service_status_on_gluster_pod_or_node(
+        ocp_client, service, status, gluster_node, timeout=180, wait_step=3):
+    """Wait for a service specific status on a Gluster POD or node.
 
     Args:
-        hostname (str): hostname on which we want to restart service
-        podname (str): pod name on which service needs to be restarted
-        service (str): service which needs to be restarted
-    Raises:
-        AssertionError in case failed to restarts service
+        ocp_client (str): hostname on which we want to check service
+        service (str): target service to be checked
+        status (str): service status which we wait for
+        gluster_node (str): Gluster node IPv4 which stores either Gluster POD
+            or Gluster services directly.
+        timeout (int): seconds to wait before service starts having
+                       specified 'status'
+        wait_step (int): interval in seconds to wait before checking
+                         service again.
     """
-    ret, out, err = oc_rsh(hostname, podname, SERVICE_RESTART % service)
-    if ret != 0:
-        err_msg = ("failed to restart service %s on pod %s" %
-                   (service, podname))
-        g.log.error(err_msg)
-        raise AssertionError(err_msg)
+    err_msg = ("Exceeded timeout of %s sec for verifying %s service to start "
+               "having '%s' status" % (timeout, service, status))
 
-
-def wait_for_process_to_kill_on_pod(
-       pod, pid, hostname, timeout=60, interval=3):
-    """check for process presence if process is present for more than
-       timeout sec raise exception
-
-    Args:
-        pid (int | str): process id to be killed on pod
-        pod (str): pod name on which process id to be killed
-        hostname (str): hostname on which pod is present
-    """
-    killed_pid_cmd = "ps -eaf | grep %s | grep -v grep | awk '{print $2}'"
-    _waiter = waiter.Waiter(timeout=60, interval=3)
-    for w in _waiter:
-        ret, out, err = oc_rsh(hostname, pod, killed_pid_cmd % pid)
-        if ret != 0:
-            err_msg = ("failed to get killed process id '%s' details "
-                       "from pod '%s' err: %s" % (pid, pod, err))
-            g.log.error(err_msg)
-            raise AssertionError(err_msg)
-
-        if not out.strip() == pid:
-            g.log.info("brick process '%s' killed on pod '%s'" % (pid, pod))
-            break
-
+    for w in waiter.Waiter(timeout, wait_step):
+        out = cmd_run_on_gluster_pod_or_node(
+            ocp_client, SERVICE_STATUS % service, gluster_node)
+        for line in out.splitlines():
+            status_match = re.search(SERVICE_STATUS_REGEX, line)
+            if status_match and status_match.group(1) == status:
+                return True
     if w.expired:
-        error_msg = ("process id '%s' still exists on pod '%s' after waiting "
-                     "for it '%s' seconds to get kill" % (pid, pod, timeout))
-        g.log.error(error_msg)
-        raise exceptions.ExecutionError(error_msg)
+        g.log.error(err_msg)
+        raise exceptions.ExecutionError(err_msg)
+
+
+def restart_service_on_gluster_pod_or_node(ocp_client, service, gluster_node):
+    """Restart service on Gluster either POD or node.
+
+    Args:
+        ocp_client (str): host on which we want to run 'oc' commands.
+        service (str): service which needs to be restarted
+        gluster_node (str): Gluster node IPv4 which stores either Gluster POD
+            or Gluster services directly.
+    Raises:
+        AssertionError in case restart of a service fails.
+    """
+    cmd_run_on_gluster_pod_or_node(
+        ocp_client, SERVICE_RESTART % service, gluster_node)

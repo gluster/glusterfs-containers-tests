@@ -4,7 +4,7 @@ import time
 from unittest import skip
 from cnslibs.cns.cns_baseclass import BaseClass
 from cnslibs.common.openshift_ops import (
-    check_service_status,
+    check_service_status_on_pod,
     get_ocp_gluster_pod_names,
     oc_rsh,
     wait_for_pod_be_ready)
@@ -20,6 +20,8 @@ class TestNodeRestart(BaseClass):
         self.oc_node = self.ocp_master_node[0]
 
         self.gluster_pod_list = get_ocp_gluster_pod_names(self.oc_node)
+        if not self.gluster_pod_list:
+            self.skipTest("Standalone Gluster is not supported by this test.")
         self.gluster_pod_name = self.gluster_pod_list[0]
 
         self.sc_name = self.create_storage_class()
@@ -130,7 +132,7 @@ class TestNodeRestart(BaseClass):
             for service in service_names:
                 g.log.info("gluster_pod - '%s' : gluster_service '%s'" % (
                     gluster_pod, service))
-                check_service_status(
+                check_service_status_on_pod(
                     self.oc_node, gluster_pod, service, "running"
                 )
 
