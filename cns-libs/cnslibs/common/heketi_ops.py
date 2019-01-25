@@ -407,7 +407,7 @@ def hello_heketi(heketi_client_node, heketi_server_url, **kwargs):
     heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
         heketi_server_url, **kwargs)
 
-    cmd = "curl %s/hello" % heketi_server_url
+    cmd = "curl --max-time 10 %s/hello" % heketi_server_url
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -1446,7 +1446,7 @@ def get_heketi_metrics(heketi_client_node, heketi_server_url,
         Metrics output: if successful
     """
 
-    cmd = "curl %s/metrics" % heketi_server_url
+    cmd = "curl --max-time 10 %s/metrics" % heketi_server_url
     ret, out, err = g.run(heketi_client_node, cmd)
     if ret != 0:
         msg = "failed to get Heketi metrics with following error: %s" % err
