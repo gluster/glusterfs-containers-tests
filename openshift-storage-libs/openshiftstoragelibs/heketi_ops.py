@@ -1416,3 +1416,33 @@ def get_block_hosting_volume_list(
         BHV[volume[0]] = {'Cluster': volume[1], 'Name': volume[2]}
 
     return BHV
+
+
+def get_total_free_space(heketi_client_node, heketi_server_url):
+    """
+    Calculates free space across devices which are online
+    and skips the ones which are offline.
+    Args:
+        - heketi_client_node (str): Node where we want to run our commands.
+        - heketi_server_url (str): This is a heketi server url.
+
+    Returns:
+        int: if successful
+
+    """
+    device_free_spaces = []
+    heketi_node_id_list = heketi_node_list(
+        heketi_client_node, heketi_server_url)
+    for node_id in heketi_node_id_list:
+        total_device_free_space = 0
+        node_info_dict = heketi_node_info(
+            heketi_client_node, heketi_server_url,
+            node_id, json=True)
+        if (node_info_dict["state"].strip().lower() != "online"):
+            continue
+        for device in node_info_dict["devices"]:
+            if (device["state"].strip().lower() != "online"):
+                continue
+            total_device_free_space += (device["storage"]["free"])
+        device_free_spaces.append(total_device_free_space / 1024 ** 2)
+    return int(sum(device_free_spaces)), len(device_free_spaces)
