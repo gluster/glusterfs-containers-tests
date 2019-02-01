@@ -55,3 +55,6 @@ openshift:
                 hacount: "3"
                 chapauthenabled: "true"
                 volumenameprefix: "autotests-block"
+
+common:
+    stop_on_first_failure: False

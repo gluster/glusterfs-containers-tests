@@ -1,8 +1,8 @@
 import datetime
-import unittest
 
 from glusto.core import Glusto as g
 
+from cnslibs.common import baseclass
 from cnslibs.common import command
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_ops import (
@@ -24,7 +24,7 @@ from cnslibs.common.openshift_ops import (
 )
 
 
-class BaseClass(unittest.TestCase):
+class BaseClass(baseclass.BaseClass):
     """Base class for test classes."""
 
     @classmethod

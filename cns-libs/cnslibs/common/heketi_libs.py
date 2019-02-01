@@ -1,8 +1,8 @@
 import datetime
-import unittest
 
 from glusto.core import Glusto as g
 
+from cnslibs.common import baseclass
 from cnslibs.common.exceptions import ExecutionError, ConfigError
 from cnslibs.common.heketi_ops import (hello_heketi,
                                        heketi_volume_delete,
@@ -10,7 +10,7 @@ from cnslibs.common.heketi_ops import (hello_heketi,
 from cnslibs.common import openshift_ops
 
 
-class HeketiBaseClass(unittest.TestCase):
+class HeketiBaseClass(baseclass.BaseClass):
     """
     This class initializes heketi config variables, constructs topology info
     dictionary and check if heketi server is alive.
