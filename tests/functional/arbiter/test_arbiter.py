@@ -1,6 +1,11 @@
+import re
+
 import ddt
+from glusto.core import Glusto as g
+from glustolibs.gluster.volume_ops import get_volume_info
 
 from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import heketi_version
 from openshiftstoragelibs.openshift_ops import (
@@ -16,6 +21,10 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_resource_absence,
 )
 from openshiftstoragelibs.openshift_version import get_openshift_version
+from openshiftstoragelibs import podcmd
+from openshiftstoragelibs.utils import get_random_str
+
+BRICK_REGEX = r"^(.*):\/var\/lib\/heketi\/mounts\/(.*)\/brick$"
 
 
 @ddt.ddt
@@ -730,3 +739,63 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
             resize_pvc(self.node, self.pvc_name, pvc_size)
             verify_pvc_size(self.node, self.pvc_name, pvc_size)
             vol_expanded = True
+
+    @podcmd.GlustoPod()
+    def test_arbiter_volume_delete_using_pvc(self):
+        """Test Arbiter volume delete using pvc when volume is not mounted
+           on app pod
+        """
+        prefix = "autotest-%s" % get_random_str()
+
+        # Create sc with gluster arbiter info
+        sc_name = self.create_storage_class(
+            vol_name_prefix=prefix, is_arbiter_vol=True)
+
+        # Create PVC and wait for it to be in 'Bound' state
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix=prefix, sc_name=sc_name)
+
+        # Get vol info
+        gluster_vol_info = get_gluster_vol_info_by_pvc_name(
+            self.node, pvc_name)
+
+        # Verify arbiter volume properties
+        self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
+            gluster_vol_info)
+
+        # Get volume ID
+        gluster_vol_id = gluster_vol_info["gluster_vol_id"]
+
+        # Delete the pvc
+        oc_delete(self.node, 'pvc', pvc_name)
+        wait_for_resource_absence(self.node, 'pvc', pvc_name)
+
+        # Check the heketi volume list if pvc is deleted
+        g.log.info("List heketi volumes")
+        heketi_volumes = heketi_ops.heketi_volume_list(
+            self.heketi_client_node, self.heketi_server_url)
+
+        err_msg = "Failed to delete heketi volume by prefix %s" % prefix
+        self.assertNotIn(prefix, heketi_volumes, err_msg)
+
+        # Check presence for the gluster volume
+        get_gluster_vol_info = get_volume_info(
+            "auto_get_gluster_endpoint", gluster_vol_id)
+        err_msg = "Failed to delete gluster volume %s" % gluster_vol_id
+        self.assertFalse(get_gluster_vol_info, err_msg)
+
+        # Check presence of bricks and lvs
+        for brick in gluster_vol_info['bricks']['brick']:
+            gluster_node_ip, brick_name = brick["name"].split(":")
+
+            with self.assertRaises(ExecutionError):
+                cmd = "df %s" % brick_name
+                cmd_run_on_gluster_pod_or_node(
+                    self.node, cmd, gluster_node_ip)
+
+            with self.assertRaises(ExecutionError):
+                lv_match = re.search(BRICK_REGEX, brick["name"])
+                if lv_match:
+                    cmd = "lvs %s" % lv_match.group(2).strip()
+                    cmd_run_on_gluster_pod_or_node(
+                        self.node, cmd, gluster_node_ip)
