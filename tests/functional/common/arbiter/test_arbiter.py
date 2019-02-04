@@ -2,6 +2,7 @@ import ddt
 
 from cnslibs.cns import cns_baseclass
 from cnslibs.common import heketi_ops
+from cnslibs.common import heketi_version
 from cnslibs.common.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_gluster_vol_info_by_pvc_name,
@@ -22,6 +23,10 @@ class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
     def setUp(self):
         super(TestArbiterVolumeCreateExpandDelete, self).setUp()
         self.node = self.ocp_master_node[0]
+        version = heketi_version.get_heketi_version(self.heketi_client_node)
+        if version < '6.0.0-11':
+            self.skipTest("heketi-client package %s does not support arbiter "
+                          "functionality" % version.v_str)
 
         # Mark one of the Heketi nodes as arbiter-supported if none of
         # existent nodes or devices already enabled to support it.

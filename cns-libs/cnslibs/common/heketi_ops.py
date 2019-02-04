@@ -1345,6 +1345,13 @@ def set_arbiter_tag(heketi_client_node, heketi_server_url, source,
         exceptions.ExecutionError : when command fails.
     """
 
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '6.0.0-11':
+        msg = ("heketi-client package %s does not support arbiter "
+               "functionality" % version.v_str)
+        g.log.error(msg)
+        raise NotImplementedError(msg)
+
     if arbiter_tag_value in ('required', 'disabled', 'supported'):
         arbiter_tag_value = "arbiter:%s" % arbiter_tag_value
         return set_tags(heketi_client_node, heketi_server_url,
@@ -1425,6 +1432,13 @@ def rm_arbiter_tag(heketi_client_node, heketi_server_url, source, source_id,
         exceptions.ExecutionError : when command fails.
     """
 
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '6.0.0-11':
+        msg = ("heketi-client package %s does not support arbiter "
+               "functionality" % version.v_str)
+        g.log.error(msg)
+        raise NotImplementedError(msg)
+
     return rm_tags(heketi_client_node, heketi_server_url,
                    source, source_id, 'arbiter', **kwargs)
 
@@ -1446,6 +1460,13 @@ def get_heketi_metrics(heketi_client_node, heketi_server_url,
     Returns:
         Metrics output: if successful
     """
+
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '6.0.0-14':
+        msg = ("heketi-client package %s does not support heketi "
+               "metrics functionality" % version.v_str)
+        g.log.error(msg)
+        raise NotImplementedError(msg)
 
     cmd = "curl --max-time 10 %s/metrics" % heketi_server_url
     ret, out, err = g.run(heketi_client_node, cmd)

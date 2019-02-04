@@ -9,6 +9,7 @@ from cnslibs.common.heketi_ops import (
     heketi_volume_delete,
     heketi_volume_list
     )
+from cnslibs.common import heketi_version
 from cnslibs.common.openshift_ops import (
     get_pod_name_from_dc,
     scale_dc_pod_amount_and_wait,
@@ -17,6 +18,13 @@ from cnslibs.common.openshift_ops import (
 
 
 class TestHeketiMetrics(HeketiBaseClass):
+
+    def setUp(self):
+        self.node = self.ocp_master_node[0]
+        version = heketi_version.get_heketi_version(self.heketi_client_node)
+        if version < '6.0.0-14':
+            self.skipTest("heketi-client package %s does not support heketi "
+                          "metrics functionality" % version.v_str)
 
     def verify_heketi_metrics_with_topology_info(self):
         topology = heketi_topology_info(
