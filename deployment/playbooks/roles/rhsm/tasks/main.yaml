@@ -1,0 +1,49 @@
+---
+- block:
+    - name: Allow rhsm a longer timeout to help out with subscription-manager
+      lineinfile:
+        dest: /etc/rhsm/rhsm.conf
+        line: 'server_timeout=600'
+        insertafter: '^proxy_password ='
+
+    - name: Is the system already registered?
+      command: "subscription-manager version"
+      register: subscribed
+
+    - name: Unregister system if registered
+      import_role:
+        name: rhsm-unregister
+      when:
+        - "'not registered' not in subscribed.stdout"
+
+    - name: Register system using Red Hat Subscription Manager
+      redhat_subscription:
+        state: present
+        username: "{{ rhsm_user | default(omit) }}"
+        password: "{{ rhsm_password | default(omit) }}"
+        pool: "{{ rhsm_pool | default(omit) }}"
+        server_hostname: "{{ rhsm_satellite | default(omit) }}"
+      when:
+        - "'not registered' in subscribed.stdout"
+        - rhsm_user is defined
+        - rhsm_user|trim != ''
+      register: rhn
+      until: rhn|success
+      retries: 5
+
+    - name: Obtain currently enabled repos
+      shell: 'subscription-manager repos --list-enabled | sed -ne "s/^Repo ID:[^a-zA-Z0-9]*\(.*\)/\1/p"'
+      register: enabled_repos
+
+    - name: Disable repositories that should not be enabled
+      shell: "subscription-manager repos --disable={{ item }}"
+      with_items:
+        - "{{ enabled_repos.stdout_lines | difference(openshift_required_repos) }}"
+      when: provider is not defined
+
+    - name: Enable specified repositories not already enabled
+      command: "subscription-manager repos --enable={{ item }}"
+      with_items:
+        - "{{ openshift_required_repos | difference(enabled_repos.stdout_lines) }}"
+
+  when: ansible_distribution == "RedHat"

@@ -1,0 +1,87 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  become: no
+  vars_files:
+  - vars/main.yaml
+  roles:
+  - create-vm-add-prod-ose
+  - setup-custom-domain-names-for-ansible-runner
+
+- hosts: new_nodes
+  gather_facts: yes
+  become: no
+  vars_files:
+  - vars/main.yaml
+  roles:
+  - setup-custom-domain-names
+  - instance-groups
+  - package-repos
+  - vmware-guest-setup
+  - cloud-provider-setup
+  - docker-storage-setup
+  - openshift-volume-quota
+
+# 'openshift_node_groups' var started being required since OCP3.10
+- hosts: allnodes
+  gather_facts: no
+  become: no
+  tasks:
+  - set_fact:
+      openshift_node_groups:
+      - name: node-config-master
+        labels:
+        - 'node-role.kubernetes.io/master=true'
+        - 'role=master'
+        edits: []
+      - name: node-config-compute
+        labels:
+        - 'node-role.kubernetes.io/compute=true'
+        - 'node-role.kubernetes.io/infra=true'
+        - 'role=compute'
+        edits: []
+      - name: node-config-storage
+        labels:
+        - 'node-role.kubernetes.io/storage=true'
+        - 'role=storage'
+        edits: []
+
+- include: add-node-prerequisite.yaml
+  when: openshift_vers in ['v3_6', 'v3_7']
+
+- include: "{{ (openshift_vers in ['v3_6', 'v3_7']) | ternary(
+      'noop.yaml',
+      lookup('env', 'VIRTUAL_ENV') +
+          '/usr/share/ansible/openshift-ansible/playbooks/prerequisites.yml'
+  ) }} hosts=new_nodes"
+  when: openshift_vers not in ['v3_6', 'v3_7']
+
+- include: "{{ (openshift_vers in ['v3_6', 'v3_7']) | ternary(
+      'noop.yaml',
+      lookup('env', 'VIRTUAL_ENV') +
+          '/usr/share/ansible/openshift-ansible/playbooks/init/main.yml'
+  ) }} hosts=new_nodes"
+  when: openshift_vers not in ['v3_6', 'v3_7']
+
+- name: Map domain names and IP addresses of old and new nodes to each other
+  hosts: master, compute, cns, crs, !new_nodes
+  vars_files:
+    - vars/main.yaml
+  roles:
+    - setup-custom-domain-names
+
+- include: node-setup.yaml
+
+- hosts: allnodes
+  gather_facts: no
+  become: no
+  tasks:
+  - name: Make sure dnsmasq is running, enabled and restarted
+    service: name=dnsmasq state=restarted enabled=yes
+
+- hosts: localhost
+  gather_facts: no
+  become: no
+  roles:
+  - yum-update-and-reboot

@@ -1,0 +1,83 @@
+---
+# NOTE(vponomar): here we use 2 different sources of IP addresses:
+# 1) hostvars[item].guest.net exists for old nodes, that haven't been created
+#    with this playbook run. Such nodes have detailed info in hostvars.
+# 2) hostvars[item].ansible_ssh_host is always correct IP address for newly
+#    created nodes. For such nodes we pick it when variant 1 does not work.
+- name: Save matched hosts to temporary var
+  set_fact:
+    current_cluster_hosts: "{{
+      current_cluster_hosts | default([]) | union([{
+          'name_short': hostvars[item].inventory_hostname_short,
+          'name': hostvars[item].inventory_hostname,
+          'net': (hostvars[item].guest | default({})).net | default(
+              [{'network': vm_network,
+                'ipaddress': [hostvars[item].ansible_ssh_host]}])
+      }]) }}"
+  with_items: "{{ groups.all | select('match', ocp_hostname_prefix) | list }}"
+
+- name: Gather current cluster IP addresses
+  set_fact:
+    current_cluster_ips: "{{
+      current_cluster_ips | default({}) | combine({
+          (item.1.ipaddress | ipv4 | first): [item.0.name_short, item.0.name]
+      }) }}"
+  with_subelements: ["{{ current_cluster_hosts }}", net]
+  when: "item.1.network == vm_network"
+
+- name: Get current user home dir
+  shell: 'eval echo "~$USER"'
+  register: home_dir
+- name: Set hosts files paths
+  set_fact:
+    home_hosts_file: "{{ home_dir.stdout_lines[0] + '/.ssh/config' }}"
+    system_hosts_file: "/etc/hosts"
+- name: Check 'write' permissions for system hosts file
+  stat:
+    path: "{{ system_hosts_file }}"
+  register: stat_system_hosts
+
+- name: Update system hosts file if writeable
+  block:
+  - name: Delete old left-overs if exist
+    lineinfile:
+      dest: "{{ system_hosts_file }}"
+      regexp: '{{ item.name_short }}'
+      state: absent
+      create: true
+    with_items: "{{ current_cluster_hosts }}"
+  - name: Add domain name mapping of new cluster nodes to the system hosts file
+    lineinfile:
+      dest: "{{ system_hosts_file }}"
+      line: '{{ item.key }} {{ item.value.0 }} {{ item.value.1 }}'
+      create: true
+    with_dict: "{{ current_cluster_ips }}"
+  when: "stat_system_hosts.stat.writeable"
+
+- name: Update user's SSH hosts file
+  block:
+  - name: Delete old left-overs if exist
+    lineinfile:
+      path: "{{ home_hosts_file }}"
+      state: absent
+      regexp: "{{ item.key }}"
+      create: true
+      mode: '644'
+    with_dict: "{{ current_cluster_ips }}"
+  - name: Write line with option group
+    lineinfile:
+      dest: "{{ home_hosts_file }}"
+      state: present
+      line: "Host {{ item.value.0 }} {{ item.value.1 }}"
+      create: true
+      mode: '644'
+    with_dict: "{{ current_cluster_ips }}"
+  - name: Write line with hostname option
+    lineinfile:
+      dest: "{{ home_hosts_file }}"
+      state: present
+      line: "     HostName {{ item.key }}"
+      insertafter: "Host {{ item.value.0 }} {{ item.value.1 }}"
+      create: true
+      mode: '644'
+    with_dict: "{{ current_cluster_ips }}"

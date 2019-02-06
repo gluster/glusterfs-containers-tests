@@ -1,0 +1,68 @@
+---
+- hosts: crs
+  gather_facts: yes
+  become: no
+  vars_files:
+  - vars/main.yaml
+  roles:
+  - setup-custom-domain-names
+  - instance-groups
+  - package-repos
+  - vmware-guest-setup
+  - crs-prerequisite
+  - gluster-ports
+
+# 'openshift_node_groups' var started being required since OCP3.10
+- hosts: allnodes
+  gather_facts: no
+  become: no
+  tasks:
+  - set_fact:
+      openshift_node_groups:
+      - name: node-config-master
+        labels:
+        - 'node-role.kubernetes.io/master=true'
+        - 'role=master'
+        edits: []
+      - name: node-config-compute
+        labels:
+        - 'node-role.kubernetes.io/compute=true'
+        - 'node-role.kubernetes.io/infra=true'
+        - 'role=compute'
+        edits: []
+      - name: node-config-storage
+        labels:
+        - 'node-role.kubernetes.io/storage=true'
+        - 'role=storage'
+        edits: []
+
+- hosts: crs
+  gather_facts: no
+  become: no
+  vars_files:
+  - vars/main.yaml
+  tasks:
+  - name: Install required kernel modules on CRS nodes
+    import_role:
+      name: openshift_storage_glusterfs
+      tasks_from: kernel_modules.yml
+
+- name: Map domain names and IP addresses of old and new nodes to each other
+  hosts: master, compute, cns
+  vars_files:
+    - vars/main.yaml
+  roles:
+    - setup-custom-domain-names
+
+- hosts: allnodes
+  gather_facts: no
+  become: no
+  tasks:
+  - name: be sure dnsmasq is running and enabled
+    service: name=dnsmasq state=restarted enabled=yes
+
+- hosts: localhost
+  gather_facts: no
+  become: no
+  roles:
+  - yum-update-and-reboot

@@ -1,0 +1,157 @@
+---
+- name: Get to know whether we need to add following nodes to "new_nodes" group or not
+  set_fact:
+    is_add_nodes: "{{ is_add_nodes | default(false) }}"
+
+- name: Define memory and disk parameters per node type
+  set_fact:
+    host_data:
+      master:
+        memory: 16384
+        disk:
+        - {'size_gb': 60, 'type': 'thin', 'datastore': "{{ vcenter_datastore }}"}
+        - {'size_gb': 40, 'type': 'thin', 'datastore': "{{ vcenter_datastore }}"}
+        - {'size_gb': 40, 'type': 'thin', 'datastore': "{{ vcenter_datastore }}"}
+        - {'size_gb': 40, 'type': 'thin', 'datastore': "{{ vcenter_datastore }}"}
+      compute:
+        memory: "{{ ('cns' in container_storage) | ternary(32768, 8192) }}"
+        disk:
+        - {'size_gb': 60, 'type': 'thin', 'datastore': "{{ vcenter_datastore }}"}
+        - {'size_gb': 40, 'type': 'thin', 'datastore': "{{ vcenter_datastore }}"}
+        - {'size_gb': 40, 'type': 'thin', 'datastore': "{{ vcenter_datastore }}"}
+
+- name: Create production VMs on vCenter
+  vmware_guest:
+    hostname: "{{ vcenter_host }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: False
+    name: "{{ item.value.guestname }}"
+    cluster: "{{ vcenter_cluster}}"
+    datacenter: "{{ vcenter_datacenter }}"
+    resource_pool: "{{ vcenter_resource_pool }}"
+    template: "{{vcenter_template_name}}"
+    state: poweredon
+    wait_for_ip_address: true
+    folder: "/{{ vcenter_folder }}"
+    annotation: "{{ item.value.tag }}"
+    disk: "{{ host_data[item.value.guesttype].disk }}"
+    hardware:
+      memory_mb: "{{ host_data[item.value.guesttype].memory }}"
+    networks: "[{'name': '{{ vm_network }}', 'type': 'dhcp' }]"
+    customization:
+      domain: "{{dns_zone}}"
+      dns_suffix: "{{ dns_zone }}"
+      hostname: "{{ item.value.guestname }}"
+  with_dict: "{{ host_inventory }}"
+  when: "item.value.guesttype in ['compute', 'master']"
+  async: "{{ 6 * 600 }}"
+  poll: 0
+  register: async_vms_creation
+
+- name: Check async status of VMs creation
+  async_status:
+    jid: "{{ async_result_item.ansible_job_id }}"
+  with_items: "{{ async_vms_creation.results }}"
+  loop_control:
+    loop_var: "async_result_item"
+  register: async_poll_results
+  until: async_poll_results.finished
+  retries: "{{ 6 * 100 }}"
+
+- name: Read info of newly created VMs
+  vmware_guest_tools_wait:
+    hostname: "{{ vcenter_host }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    folder: "/{{ vcenter_folder }}"
+    validate_certs: False
+    uuid: "{{ item.instance.hw_product_uuid }}"
+  with_items: "{{ async_poll_results.results }}"
+  register: facts
+
+- name: Map node names and their IP addresses
+  set_fact:
+    ip4addrs: "{{ ip4addrs | default({}) | combine(
+                      {item.instance.hw_name: (
+                           item.instance.hw_eth0.ipaddresses | ipv4 | first)},
+                      recursive=True) }}"
+    hostnames_for_reboot: "{{
+        (hostnames_for_reboot | default([])) +
+        [(item.instance.hw_eth0.ipaddresses | ipv4 | first)] }}"
+  with_items: "{{ facts.results }}"
+
+- name: Add production VMs to inventory
+  add_host:
+    hostname: "{{ item.value.guestname }}"
+    ansible_fqdn: "{{ item.value.guestname }}.{{ dns_zone }}"
+    ansible_ssh_host: "{{ ip4addrs[item.value.guestname] }}"
+    groups: "{{ item.value.tag }}, production_group{{ is_add_nodes | ternary(', new_nodes', '')}}"
+    openshift_node_group_name: "{{ 
+        (item.value.guesttype == 'master') | ternary('node-config-master',
+                                                     'node-config-compute') }}"
+  with_dict: "{{ host_inventory }}"
+  when: "item.value.guesttype in ['compute', 'master']"
+
+# Following updates config file
+# which is required for automated tests from 'glusterfs-containers-tests' repo
+
+- name: Gather data about existing master nodes for tests config file
+  set_fact:
+    ocp_master_and_client_nodes: "{{
+        ocp_master_and_client_nodes | default({}) | combine({
+            (
+                ((
+                    (hostvars[item].guest | default({'net': [{
+                        'network': vm_network,
+                        'ipaddress': [
+                            ip4addrs[hostvars[item].inventory_hostname_short]
+                        ]
+                    }]})).net | selectattr('network', 'equalto', vm_network)
+                ) | list)[0].ipaddress | ipv4 | first
+            ): {
+                'hostname': hostvars[item].inventory_hostname_short,
+            }
+        })
+    }}"
+  with_items: "{{ groups[cluster_id + '-master'] }}"
+  when: cns_automation_config_file_path | length > 0
+
+- name: Gather data about existing compute nodes for tests config file
+  set_fact:
+    ocp_compute_nodes: "{{
+        ocp_compute_nodes | default({}) | combine({
+            (
+                ((
+                    (hostvars[item].guest | default({'net': [{
+                        'network': vm_network,
+                        'ipaddress': [
+                            ip4addrs[hostvars[item].inventory_hostname_short]
+                        ]
+                    }]})).net | selectattr('network', 'equalto', vm_network)
+                ) | list)[0].ipaddress | ipv4 | first
+            ): {
+                'hostname': hostvars[item].inventory_hostname_short,
+            }
+        })
+    }}"
+  with_items: "{{ groups[cluster_id + '-compute'] | default([]) }} "
+  when: cns_automation_config_file_path | length > 0
+
+- name: Update 'glusterfs-containers-tests' config file
+  yedit:
+    src: "{{ cns_automation_config_file_path }}"
+    state: present
+    edits:
+    - key: ocp_servers
+      value:
+        master: "{{ ocp_master_and_client_nodes }}"
+        client: "{{ ocp_master_and_client_nodes }}"
+        nodes: "{{ ocp_compute_nodes }}"
+    - key: openshift.heketi_config.heketi_client_node
+      value: "{{ ocp_master_and_client_nodes.keys()[0] }}"
+    - key: openshift.heketi_config.heketi_server_url
+      value: "http://{{ ocp_master_and_client_nodes.keys()[0] }}:8080"
+  when:
+  - ocp_master_and_client_nodes is defined
+  - ocp_compute_nodes is defined

@@ -1,0 +1,47 @@
+---
+- include: "scaleup.yaml"
+  vars:
+    debug_level: 2
+    openshift_debug_level: "{{ debug_level }}"
+    openshift_node_debug_level: "{{ node_debug_level | default(debug_level, true) }}"
+    osm_controller_args:
+    osm_api_server_args:
+    openshift_master_debug_level: "{{ master_debug_level | default(debug_level, true) }}"
+    openshift_master_access_token_max_seconds: 2419200
+    openshift_master_api_port: "{{ console_port }}"
+    openshift_master_console_port: "{{ console_port }}"
+    osm_cluster_network_cidr: 172.16.0.0/16
+    openshift_registry_selector: "role=compute"
+    openshift_router_selector: "role=compute"
+    openshift_node_local_quota_per_fsgroup: 512Mi
+    openshift_master_cluster_method: native
+    openshift_cloudprovider_kind: vsphere
+    openshift_cloudprovider_vsphere_host: "{{ vcenter_host }}"
+    openshift_cloudprovider_vsphere_username: "{{ vcenter_username }}"
+    openshift_cloudprovider_vsphere_password: "{{ vcenter_password }}"
+    openshift_cloudprovider_vsphere_datacenter: "{{ vcenter_datacenter }}"
+    openshift_cloudprovider_vsphere_datastore: "{{ vcenter_datastore }}"
+    openshift_cloudprovider_vsphere_folder: "{{ vcenter_folder }}"
+    os_sdn_network_plugin_name: "{{ openshift_sdn }}"
+    deployment_type: "{{ deployment_type }}"
+    load_balancer_hostname: "{{ lb_host }}"
+    openshift_master_cluster_hostname: "{{ load_balancer_hostname }}"
+    openshift_master_cluster_public_hostname: "{{ load_balancer_hostname }}"
+    # 'openshift_node_groups' is required for OCP3.10
+    openshift_node_groups:
+    - name: node-config-master
+      labels:
+      - 'node-role.kubernetes.io/master=true'
+      - 'role=master'
+      edits: []
+    - name: node-config-compute
+      labels:
+      - 'node-role.kubernetes.io/compute=true'
+      - 'node-role.kubernetes.io/infra=true'
+      - 'role=compute'
+      edits: []
+    - name: node-config-storage
+      labels:
+      - 'node-role.kubernetes.io/storage=true'
+      - 'role=storage'
+      edits: []

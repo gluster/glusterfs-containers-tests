@@ -1,0 +1,163 @@
+---
+- include: "{{ (openshift_vers in ['v3_6', 'v3_7']) | ternary(
+      'noop.yaml',
+      lookup('env', 'VIRTUAL_ENV') +
+          '/usr/share/ansible/openshift-ansible/playbooks/init/main.yml'
+  ) }} hosts=single_master"
+  when: openshift_vers not in ['v3_6', 'v3_7']
+
+- hosts: single_master
+  tasks:
+  - name: Label common compute nodes be suitable for Heketi POD
+    oc_label:
+      name: '{{ item }}'
+      kind: 'node'
+      state: 'add'
+      labels:
+      - key: 'glusterfs'
+        value: 'heketi-host'
+      - key: 'heketi'
+        value: 'heketi-host'
+    with_items: "{{ groups[cluster_id + '-compute'] }}"
+    ignore_errors: true
+
+# Prepare SSH key pair before CRS installation
+- hosts: localhost
+  ignore_errors: no
+  tasks:
+  - name: Define path for the SSH key
+    set_fact:
+      crs_ssh_keypath: "/root/.ssh/crs_nodes_{{
+          cluster_id + '_' + (999999999999999 | random | string ) }}"
+  - name: Generate SSH key pair for Heketi and CRS interactions
+    shell: "yes y| ssh-keygen -b 2048 -t rsa -f {{ crs_ssh_keypath }} -q -N ''"
+    args:
+      creates: "{{ crs_ssh_keypath }}"
+  - name: Read contents of the public SSH key
+    command: "cat {{ crs_ssh_keypath }}.pub"
+    register: crs_pub_key_raw
+  - name: Save public SSH key data to the variable
+    set_fact:
+      crs_pub_key: "{{ crs_pub_key_raw.stdout_lines[0].strip() }}"
+  - name: Copy public SSH key onto CRS nodes
+    shell: "echo {{ crs_pub_key }} >> /root/.ssh/authorized_keys"
+    delegate_to: "{{ item }}"
+    delegate_facts: true
+    with_items: "{{ groups[cluster_id + '-crs'] }}"
+  - name: Set var with SSH key path for master nodes
+    set_fact:
+      crs_ssh_keypath: "{{ crs_ssh_keypath }}"
+    delegate_to: "{{ item }}"
+    delegate_facts: true
+    with_items: "{{ groups[cluster_id + '-master'] }}"
+
+# Run CRS installation
+- hosts: single_master
+  tasks:
+  - name: Perform actions on master node which are required to install CRS
+    import_role:
+      name: openshift_storage_glusterfs
+    vars:
+      openshift_storage_glusterfs_name: 'storage'
+      openshift_storage_glusterfs_namespace: 'storage'
+      openshift_storage_glusterfs_is_native: false
+      openshift_storage_glusterfs_heketi_is_native: true
+      openshift_storage_glusterfs_heketi_admin_key: "{{
+          (dp_tool_heketi_admin_key.strip() != '') |
+              ternary(dp_tool_heketi_admin_key.strip(), omit) }}"
+      openshift_storage_glusterfs_heketi_user_key: "{{
+          (dp_tool_heketi_user_key.strip() != '') |
+              ternary(dp_tool_heketi_user_key.strip(), omit) }}"
+      openshift_storage_glusterfs_storageclass: true
+      openshift_storage_glusterfs_block_storageclass: true
+      openshift_storage_glusterfs_s3_deploy: false
+      openshift_storage_glusterfs_nodeselector: 'role=compute'
+      openshift_storage_glusterfs_heketi_executor: 'ssh'
+      openshift_storage_glusterfs_heketi_ssh_keyfile: "{{ crs_ssh_keypath }}"
+  - name: Allow to expand PVCs using 'glusterfs' storageclass.
+    oc_edit:
+      kind: sc
+      name: glusterfs-{{ glusterfs_name }}
+      content:
+        allowVolumeExpansion: true
+
+- name: Get IP address of the node with router
+  hosts: single_master
+  tasks:
+  - command: "oc get endpoints router -o=custom-columns=:.subsets[*].addresses[0].ip -n default"
+    register: router_get
+  - set_fact:
+      router_ip: "{{ router_get.stdout_lines[1].strip() }}"
+    delegate_to: "{{ item }}"
+    delegate_facts: True
+    with_items: "{{ groups['allnodes'] }}"
+
+- name: Restart dnsmasq on all the nodes to apply all the changes we made
+  hosts: allnodes
+  tasks:
+  - lineinfile:
+      path: /etc/dnsmasq.conf
+      line: "address=/.{{ app_dns_prefix }}.{{ dns_zone }}/{{ router_ip }}"
+  - service:
+      name: dnsmasq
+      state: restarted
+
+- name: Get IPv4 address of the main master node
+  hosts: single_master
+  tasks:
+  - command: "python -c \"import yaml ;
+        config = yaml.load(open('/etc/origin/master/master-config.yaml', 'r'));
+        print(config['kubernetesMasterConfig']['masterIP'])
+    \""
+    register: master_ipv4
+  - set_fact:
+      master_ipv4: "{{ master_ipv4.stdout_lines[0] }}"
+  - command: "oc patch svc heketi-storage
+                  --namespace storage
+                  -p '{\"spec\":{\"externalIPs\":[\"{{ master_ipv4 }}\"]}}'"
+    run_once: true
+
+# Following updates config file
+# which is required for automated tests from 'cns-automation' repo
+
+- name: Update 'cns-automation' config file
+  hosts: localhost
+  tasks:
+  - set_fact:
+      master_ipv4: "{{ hostvars[groups['single_master'][0]].master_ipv4 }}"
+  - yedit:
+      src: "{{ cns_automation_config_file_path }}"
+      state: present
+      edits:
+      - key: openshift.storage_project_name
+        value: "storage"
+      - key: openshift.heketi_config.heketi_dc_name
+        value: "heketi-storage"
+      - key: openshift.heketi_config.heketi_service_name
+        value: "heketi-storage"
+      - key: openshift.heketi_config.heketi_client_node
+        value: "{{ master_ipv4 }}"
+      - key: openshift.heketi_config.heketi_server_url
+        value: "http://{{ master_ipv4 }}:8080"
+      - key: openshift.heketi_config.heketi_cli_user
+        value: 'admin'
+      - key: openshift.heketi_config.heketi_cli_key
+        value: "{{ dp_tool_heketi_admin_key }}"
+      - key: openshift.dynamic_provisioning.storage_classes
+        value:
+          file_storage_class:
+            provisioner: "kubernetes.io/glusterfs"
+            resturl: "http://{{ master_ipv4 }}:8080"
+            restuser: "admin"
+            secretnamespace: "storage"
+            volumenameprefix: "autotests-file"
+          block_storage_class:
+            provisioner: "gluster.org/glusterblock"
+            resturl: "http://{{ master_ipv4 }}:8080"
+            restuser: "admin"
+            restsecretnamespace: "storage"
+            volumenameprefix: "autotests-block"
+            hacount: "3"
+            chapauthenabled: "true"
+    when: cns_automation_config_file_path | length > 0
+    run_once: true

@@ -1,0 +1,15 @@
+---
+- include: setup.yaml
+  tags: ['setup']
+
+- include: prod.yaml
+  tags: ['prod']
+
+- include: ocp-install.yaml
+  tags: ['ocp-install']
+
+- include: ocp-configure.yaml
+  tags: ['ocp-configure']
+
+- include: clean.yaml
+  tags: ['clean']

@@ -1,0 +1,44 @@
+# NOTE(vponomar): this role should not be run from nodes
+# which are going to be rebooted.
+---
+
+- block:
+  - name: Check that hostnames_for_reboot var is set and it is not empty list
+    fail:
+      msg: "Role 'yum-update-and-reboot' expects 'hostnames_for_reboot' var
+            to be set as a list of hostnames which should be rebooted."
+    when: "(hostnames_for_reboot is not defined) or hostnames_for_reboot | length < 1"
+
+  - name: Run yum_update command
+    command: "yum update -y"
+    delegate_to: "{{ item }}"
+    with_items: "{{ hostnames_for_reboot }}"
+
+  - name: Reboot machine to apply all major changes to the system if exist
+    shell: "sleep 3 ; /sbin/shutdown -r now 'Reboot triggered by Ansible'"
+    async: 1
+    poll: 0
+    ignore_errors: true
+    delegate_to: "{{ item }}"
+    with_items: "{{ hostnames_for_reboot }}"
+
+  - name: Wait for machine to go down
+    wait_for:
+      host: "{{ item }}"
+      port: 22
+      delay: 0
+      timeout: 180
+      connect_timeout: 5
+      state: stopped
+    with_items: "{{ hostnames_for_reboot }}"
+
+  - name: Wait for machine to go up
+    wait_for:
+      host: "{{ item }}"
+      port: 22
+      delay: 0
+      timeout: 180
+      connect_timeout: 5
+      state: started
+    with_items: "{{ hostnames_for_reboot }}"
+  when: "disable_yum_update_and_reboot is undefined or not (disable_yum_update_and_reboot | bool)"

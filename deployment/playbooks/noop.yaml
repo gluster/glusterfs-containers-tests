@@ -1,0 +1,7 @@
+---
+- hosts: localhost
+  gather_facts: no
+  ignore_errors: no
+  tasks:
+  - debug:
+      msg: "No operation TASK for placeholder playbook."

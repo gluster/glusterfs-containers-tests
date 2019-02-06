@@ -1,5 +1,6 @@
 # Virtual environment related stuff
 .tox/*
+deployment/.tox/*
 
 # Log files
 *.log
@@ -15,7 +16,18 @@
 # Development environment files
 .project
 .pydevproject
+.idea
+.vagrant
+*.komodoproject
 
-# Cache files
+# Cache and temp files
 .cache
 .pytest_cache
+*~
+
+# Deplyoment tool related files
+add-node.json
+infrastructure.json
+cns-automation-config*.yaml
+ocp-on-vmware*.ini*
+*.retry

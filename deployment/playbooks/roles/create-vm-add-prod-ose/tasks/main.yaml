@@ -1,0 +1,8 @@
+---
+- name: Add following nodes to the 'new_nodes' group
+  set_fact:
+    is_add_nodes: true
+
+- name: Import common node creation role
+  import_role:
+    name: create-vm-prod-ose

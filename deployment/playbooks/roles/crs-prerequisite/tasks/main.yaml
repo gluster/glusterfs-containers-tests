@@ -1,0 +1,66 @@
+---
+- name: Clear yum cache
+  command: "yum clean all"
+  ignore_errors: true
+
+- name: Install required common rpms
+  package:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+  - 'iptables'
+  - 'iptables-services'
+  retries: 5
+  delay: 5
+  register: result
+  until: result is succeeded
+
+- name: Enable Gluster 3 repo
+  import_role:
+    name: enable-gluster-repo
+
+- name: Install required Gluster 3 rpms
+  package:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+  - 'redhat-storage-server'
+  - 'heketi-client'
+  retries: 5
+  delay: 5
+  register: result
+  until: result is succeeded
+
+- name: Install gluster-block package
+  package:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+  - 'gluster-block'
+  retries: 5
+  delay: 5
+  ignore_errors: yes
+
+- name: Stop firewalld
+  service:
+    name: firewalld
+    state: stopped
+    enabled: no
+
+- name: Start Glusterd and iptables
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  with_items:
+  - iptables
+  - glusterd
+
+- name: Start gluster-blockd service
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  with_items:
+  - gluster-blockd
+  ignore_errors: yes
