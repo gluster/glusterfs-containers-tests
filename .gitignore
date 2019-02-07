@@ -28,6 +28,4 @@ deployment/.tox/*
 # Deplyoment tool related files
 add-node.json
 infrastructure.json
-cns-automation-config*.yaml
-ocp-on-vmware*.ini*
 *.retry
