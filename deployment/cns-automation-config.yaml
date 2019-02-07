@@ -1,0 +1,53 @@
+ocp_servers:
+    master:
+        master_ip_addr:
+            hostname: "master_hostname"
+    client:
+        client_ip_addr:
+            hostname: "client_hostname"
+    nodes:
+        node_ip_addr:
+            hostname: "node_hostname"
+
+gluster_servers:
+    gluster_server_ip_address1:
+        manage: "gluster_server_ip_hostname1"
+        storage: gluster_server_ip_address1
+        additional_devices: ['/dev/sdg']
+    gluster_server_ip_address2:
+        manage: "gluster_server_ip_hostname2"
+        storage: gluster_server_ip_address2
+        additional_devices: ['/dev/sdg']
+    gluster_server_ip_address3:
+        manage: "gluster_server_ip_hostname3"
+        storage: gluster_server_ip_address3
+        additional_devices: ['/dev/sdg']
+
+openshift:
+    storage_project_name: "storage"
+    heketi_config:
+        heketi_dc_name: name_of_the_heketi_deployment_config
+        heketi_service_name: name_of_the_heketi_service
+        heketi_client_node: master_ip_addr
+        heketi_server_url: "http://heketi.url"
+        heketi_cli_user: "admin"
+        heketi_cli_key: "secret_value_for_admin_user"
+    dynamic_provisioning:
+        storage_classes:
+            file_storage_class:
+                provisioner: "kubernetes.io/glusterfs"
+                resturl: "http://heketi.url"
+                restuser: "admin"
+                secretnamespace: "storage"
+                volumenameprefix: "autotests-file"
+            block_storage_class:
+                provisioner: "gluster.org/glusterblock"
+                resturl: "http://heketi.url"
+                restuser: "admin"
+                restsecretnamespace: "storage"
+                hacount: "3"
+                chapauthenabled: "true"
+                volumenameprefix: "autotests-block"
+
+common:
+    stop_on_first_failure: False
