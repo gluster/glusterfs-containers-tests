@@ -59,7 +59,8 @@ def main():
 
     if rc != 0:
         if state == 'present':
-            module.fail_json(msg="%s is not installed" % name, stdout=out, stderr=err, rc=rc)
+            module.fail_json(msg="%s is not installed" % name,
+                             stdout=out, stderr=err, rc=rc)
         else:
             module.exit_json(changed=False)
     elif state == 'present':

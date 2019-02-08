@@ -18,11 +18,13 @@
 # You should have received a copy of the GNU General Public License
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+ANSIBLE_METADATA = {
+    'status': ['preview'],
+    'supported_by': 'community',
+    'version': '1.0',
+}
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
 ---
 module: vmware_resource_pool
 short_description: Add/remove resource pools to/from vCenter
@@ -62,15 +64,19 @@ options:
         required: True
     cpu_expandable_reservations:
         description:
-            - In a resource pool with an expandable reservation, the reservation on a resource pool can grow beyond the specified value.
+            - In a resource pool with an expandable reservation,
+              the reservation on a resource pool can grow beyond
+              the specified value.
         default: True
     cpu_reservation:
         description:
-            - Amount of resource that is guaranteed available to the virtual machine or resource pool.
+            - Amount of resource that is guaranteed available to
+              the virtual machine or resource pool.
         default: 0
     cpu_limit:
         description:
-            - The utilization of a virtual machine/resource pool will not exceed this limit, even if there are available resources.
+            - The utilization of a virtual machine/resource pool will not
+              exceed this limit, even if there are available resources.
         default: -1 (No limit)
     cpu_shares:
         description:
@@ -83,15 +89,19 @@ options:
         default: Normal
     mem_expandable_reservations:
         description:
-            - In a resource pool with an expandable reservation, the reservation on a resource pool can grow beyond the specified value.
+            - In a resource pool with an expandable reservation,
+              the reservation on a resource pool can grow beyond
+              the specified value.
         default: True
     mem_reservation:
         description:
-            - Amount of resource that is guaranteed available to the virtual machine or resource pool.
+            - Amount of resource that is guaranteed available to
+              the virtual machine or resource pool.
         default: 0
     mem_limit:
         description:
-            - The utilization of a virtual machine/resource pool will not exceed this limit, even if there are available resources.
+            - The utilization of a virtual machine/resource pool will not
+              exceed this limit, even if there are available resources.
         default: -1 (No limit)
     mem_shares:
         description:
@@ -110,9 +120,9 @@ options:
             - 'present'
             - 'absent'
 extends_documentation_fragment: vmware.documentation
-'''
 
-EXAMPLES = '''
+
+EXAMPLES =
 # Create a resource pool
   - name: Add resource pool to vCenter
     vmware_resource_pool:
@@ -131,9 +141,9 @@ EXAMPLES = '''
       cpu_reservation: 0
       cpu_expandable_reservations: True
       state: present
-'''
 
-RETURN = """
+
+RETURN =
 instance:
     descripton: metadata about the new resource pool
     returned: always
@@ -147,9 +157,9 @@ try:
 except ImportError:
     HAS_PYVMOMI = False
 
-from ansible.module_utils.vmware import get_all_objs, connect_to_api, vmware_argument_spec, find_datacenter_by_name, \
-    find_cluster_by_name_datacenter, wait_for_task
-from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils import basic  # noqa
+from ansible.module_utils import vmware  # noqa
+
 
 class VMwareResourcePool(object):
     def __init__(self, module):
@@ -164,20 +174,24 @@ class VMwareResourcePool(object):
         self.mem_shares = module.params['mem_shares']
         self.mem_limit = module.params['mem_limit']
         self.mem_reservation = module.params['mem_reservation']
-        self.mem_expandable_reservations = module.params['cpu_expandable_reservations']
+        self.mem_expandable_reservations = (
+            module.params['cpu_expandable_reservations'])
         self.cpu_shares = module.params['cpu_shares']
         self.cpu_limit = module.params['cpu_limit']
         self.cpu_reservation = module.params['cpu_reservation']
-        self.cpu_expandable_reservations = module.params['cpu_expandable_reservations']
+        self.cpu_expandable_reservations = (
+            module.params['cpu_expandable_reservations'])
         self.dc_obj = None
         self.cluster_obj = None
         self.host_obj = None
         self.resource_pool_obj = None
-        self.content = connect_to_api(module)
+        self.content = vmware.connect_to_api(module)
 
     def find_host_by_cluster_datacenter(self):
-        self.dc_obj = find_datacenter_by_name(self.content, self.datacenter)
-        self.cluster_obj = find_cluster_by_name_datacenter(self.dc_obj, self.cluster)
+        self.dc_obj = vmware.find_datacenter_by_name(
+            self.content, self.datacenter)
+        self.cluster_obj = vmware.find_cluster_by_name_datacenter(
+            self.dc_obj, self.cluster)
 
         for host in self.cluster_obj.host:
             if host.name == self.hostname:
@@ -185,17 +199,13 @@ class VMwareResourcePool(object):
 
         return None, self.cluster
 
-
     def select_resource_pool(self, host):
         pool_obj = None
 
-        resource_pools = get_all_objs(self.content, [vim.ResourcePool])
+        resource_pools = vmware.get_all_objs(self.content, [vim.ResourcePool])
 
         pool_selections = self.get_obj(
-            [vim.ResourcePool],
-            self.resource_pool,
-            return_all = True
-        )
+            [vim.ResourcePool], self.resource_pool, return_all=True)
         if pool_selections:
             for p in pool_selections:
                 if p in resource_pools:
@@ -203,7 +213,7 @@ class VMwareResourcePool(object):
                     break
         return pool_obj
 
-    def get_obj(self, vimtype, name, return_all = False):
+    def get_obj(self, vimtype, name, return_all=False):
         obj = list()
         container = self.content.viewManager.CreateContainerView(
             self.content.rootFolder, vimtype, True)
@@ -238,14 +248,14 @@ class VMwareResourcePool(object):
             rp_states[self.state][self.check_rp_state()]()
 
         except vmodl.RuntimeFault as runtime_fault:
-            self.module.fail_json(msg = runtime_fault.msg)
+            self.module.fail_json(msg=runtime_fault.msg)
         except vmodl.MethodFault as method_fault:
-            self.module.fail_json(msg = method_fault.msg)
+            self.module.fail_json(msg=method_fault.msg)
         except Exception as e:
-            self.module.fail_json(msg = str(e))
+            self.module.fail_json(msg=str(e))
 
     def state_exit_unchanged(self):
-        self.module.exit_json(changed = False)
+        self.module.exit_json(changed=False)
 
     def state_remove_rp(self):
         changed = True
@@ -253,25 +263,25 @@ class VMwareResourcePool(object):
         resource_pool = self.select_resource_pool(self.host_obj)
         try:
             task = self.resource_pool_obj.Destroy()
-            success, result = wait_for_task(task)
+            success, result = vmware.wait_for_task(task)
 
-        except:
-            self.module.fail_json(msg = "Failed to remove resource pool '%s' '%s'" % (self.resource_pool,resource_pool))
-        self.module.exit_json(changed = changed, result = str(result))
+        except Exception:
+            self.module.fail_json(
+                msg="Failed to remove resource pool '%s' '%s'" % (
+                    self.resource_pool, resource_pool))
+        self.module.exit_json(changed=changed, result=str(result))
 
     def state_add_rp(self):
         changed = True
-        result = None
-        root_resource_pool = None
 
-        rp_spec=vim.ResourceConfigSpec()
-        cpu_alloc=vim.ResourceAllocationInfo()
+        rp_spec = vim.ResourceConfigSpec()
+        cpu_alloc = vim.ResourceAllocationInfo()
         cpu_alloc.expandableReservation = self.cpu_expandable_reservations
         cpu_alloc.limit = int(self.cpu_limit)
         cpu_alloc.reservation = int(self.cpu_reservation)
         cpu_alloc_shares = vim.SharesInfo()
         cpu_alloc_shares.level = self.cpu_shares
-        cpu_alloc.shares =  cpu_alloc_shares
+        cpu_alloc.shares = cpu_alloc_shares
         rp_spec.cpuAllocation = cpu_alloc
         mem_alloc = vim.ResourceAllocationInfo()
         mem_alloc.limit = int(self.mem_limit)
@@ -282,16 +292,19 @@ class VMwareResourcePool(object):
         mem_alloc.shares = mem_alloc_shares
         rp_spec.memoryAllocation = mem_alloc
 
-        self.dc_obj = find_datacenter_by_name(self.content, self.datacenter)
-        self.cluster_obj = find_cluster_by_name_datacenter(self.dc_obj, self.cluster)
+        self.dc_obj = vmware.find_datacenter_by_name(
+            self.content, self.datacenter)
+        self.cluster_obj = vmware.find_cluster_by_name_datacenter(
+            self.dc_obj, self.cluster)
         rootResourcePool = self.cluster_obj.resourcePool
-        task = rootResourcePool.CreateResourcePool(self.resource_pool, rp_spec)
+        rootResourcePool.CreateResourcePool(self.resource_pool, rp_spec)
 
-        self.module.exit_json(changed = changed)
+        self.module.exit_json(changed=changed)
 
     def check_rp_state(self):
 
-        self.host_obj, self.cluster_obj = self.find_host_by_cluster_datacenter()
+        self.host_obj, self.cluster_obj = (
+            self.find_host_by_cluster_datacenter())
         self.resource_pool_obj = self.select_resource_pool(self.host_obj)
 
         if self.resource_pool_obj is None:
@@ -301,30 +314,41 @@ class VMwareResourcePool(object):
 
 
 def main():
-    argument_spec = vmware_argument_spec()
-    argument_spec.update(dict(datacenter = dict(required = True, type = 'str'),
-                              cluster = dict(required = True, type = 'str'),
-                              resource_pool = dict(required=True, type='str'),
-                              hostname = dict(required = True, type = 'str'),
-                              username = dict(required = True, type = 'str'),
-                              password = dict(required = True, type = 'str', no_log = True),
-                              mem_shares = dict(type = 'str', default = "normal", choices = ['high','custom','normal', 'low']),
-                              mem_limit = dict(type = 'int',default = "-1"),
-                              mem_reservation = dict(type = 'int',default = "0"),
-                              mem_expandable_reservations = dict(type = 'bool',default = "True"),
-                              cpu_shares = dict(type = 'str', default = "normal", choices = ['high','custom','normal', 'low']),
-                              cpu_limit = dict(type = 'int',default = "-1"),
-                              cpu_reservation = dict(type = 'int',default = "0"),
-                              cpu_expandable_reservations = dict(type = 'bool',default = "True"),
-                              state = dict(default = 'present', choices = ['present', 'absent'], type = 'str')))
+    argument_spec = vmware.vmware_argument_spec()
+    argument_spec.update(dict(datacenter=dict(required=True, type='str'),
+                              cluster=dict(required=True, type='str'),
+                              resource_pool=dict(required=True, type='str'),
+                              hostname=dict(required=True, type='str'),
+                              username=dict(required=True, type='str'),
+                              password=dict(
+                                  required=True, type='str', no_log=True),
+                              mem_shares=dict(
+                                  type='str', default="normal",
+                                  choices=['high', 'custom', 'normal', 'low']),
+                              mem_limit=dict(type='int', default="-1"),
+                              mem_reservation=dict(type='int', default="0"),
+                              mem_expandable_reservations=dict(
+                                  type='bool', default="True"),
+                              cpu_shares=dict(
+                                  type='str', default="normal",
+                                  choices=['high', 'custom', 'normal', 'low']),
+                              cpu_limit=dict(type='int', default="-1"),
+                              cpu_reservation=dict(type='int', default="0"),
+                              cpu_expandable_reservations=dict(
+                                  type='bool', default="True"),
+                              state=dict(
+                                  default='present',
+                                  choices=['present', 'absent'], type='str')))
 
-    module = AnsibleModule(argument_spec = argument_spec, supports_check_mode = True)
+    module = basic.AnsibleModule(
+        argument_spec=argument_spec, supports_check_mode=True)
 
     if not HAS_PYVMOMI:
-        module.fail_json(msg = 'pyvmomi is required for this module')
+        module.fail_json(msg='pyvmomi is required for this module')
 
     vmware_rp = VMwareResourcePool(module)
     vmware_rp.process_state()
+
 
 if __name__ == '__main__':
     main()

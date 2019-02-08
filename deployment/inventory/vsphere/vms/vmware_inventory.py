@@ -26,7 +26,6 @@ from __future__ import print_function
 import argparse
 import atexit
 import datetime
-import getpass
 import jinja2
 import os
 import six
@@ -34,13 +33,11 @@ import ssl
 import sys
 import uuid
 
-from collections import defaultdict
 from six.moves import configparser
 from time import time
 
 HAS_PYVMOMI = False
 try:
-    from pyVmomi import vim
     from pyVim.connect import SmartConnect, Disconnect
     HAS_PYVMOMI = True
 except ImportError:
@@ -50,13 +47,6 @@ try:
     import json
 except ImportError:
     import simplejson as json
-
-hasvcr = False
-try:
-    import vcr
-    hasvcr = True
-except ImportError:
-    pass
 
 
 class VMWareInventory(object):
@@ -88,10 +78,8 @@ class VMWareInventory(object):
     iter_types = [dict, list]
     skip_keys = ['dynamicproperty', 'dynamictype', 'managedby', 'childtype']
 
-
     def _empty_inventory(self):
-        return {"_meta" : {"hostvars" : {}}}
-
+        return {"_meta": {"hostvars": {}}}
 
     def __init__(self, load=True):
         self.inventory = self._empty_inventory()
@@ -115,7 +103,7 @@ class VMWareInventory(object):
             try:
                 text = str(text)
             except UnicodeEncodeError:
-                text = text.encode('ascii','ignore')
+                text = text.encode('ascii', 'ignore')
             print(text)
 
     def show(self):
@@ -128,10 +116,8 @@ class VMWareInventory(object):
             data_to_print = self.inventory
         return json.dumps(data_to_print, indent=2)
 
-
     def is_cache_valid(self):
-
-        ''' Determines if the cache files have expired, or if it is still valid '''
+        """Determine if the cache files have expired or it is still valid."""
 
         valid = False
 
@@ -143,38 +129,29 @@ class VMWareInventory(object):
 
         return valid
 
-
     def do_api_calls_update_cache(self):
-
-        ''' Get instances and cache the data '''
+        """Get instances and cache the data."""
 
         instances = self.get_instances()
         self.instances = instances
         self.inventory = self.instances_to_inventory(instances)
         self.write_to_cache(self.inventory, self.cache_path_cache)
 
-
     def write_to_cache(self, data, cache_path):
-
-        ''' Dump inventory to json file '''
-
+        """Dump inventory to json file."""
         with open(self.cache_path_cache, 'wb') as f:
             f.write(json.dumps(data))
 
-
     def get_inventory_from_cache(self):
-
-        ''' Read in jsonified inventory '''
+        """Read in jsonified inventory."""
 
         jdata = None
         with open(self.cache_path_cache, 'rb') as f:
             jdata = f.read()
         return json.loads(jdata)
 
-
     def read_settings(self):
-
-        ''' Reads the settings from the vmware_inventory.ini file '''
+        """Reads the settings from the vmware_inventory.ini file."""
 
         scriptbasename = __file__
         scriptbasename = os.path.basename(scriptbasename)
@@ -185,17 +162,19 @@ class VMWareInventory(object):
             'port': 443,
             'username': '',
             'password': '',
-            'ini_path': os.path.join(os.path.dirname(__file__), '%s.ini' % scriptbasename),
+            'ini_path': os.path.join(
+                os.path.dirname(__file__), '%s.ini' % scriptbasename),
             'cache_name': 'ansible-vmware',
             'cache_path': '~/.ansible/tmp',
             'cache_max_age': 3600,
-                        'max_object_level': 1,
-                        'alias_pattern': '{{ config.name + "_" + config.uuid }}',
-                        'host_pattern': '{{ guest.ipaddress }}',
-                        'host_filters': '{{ guest.gueststate == "running" }}',
-                        'groupby_patterns': '{{ guest.guestid }},{{ "templates" if config.template else "guests"}}',
-                        'lower_var_keys': True }
-           }
+            'max_object_level': 1,
+            'alias_pattern': '{{ config.name + "_" + config.uuid }}',
+            'host_pattern': '{{ guest.ipaddress }}',
+            'host_filters': '{{ guest.gueststate == "running" }}',
+            'groupby_patterns': ('{{ guest.guestid }},{{ "templates" if '
+                                 'config.template else "guests"}}'),
+            'lower_var_keys': True,
+        }}
 
         if six.PY3:
             config = configparser.ConfigParser()
@@ -203,12 +182,14 @@ class VMWareInventory(object):
             config = configparser.SafeConfigParser()
 
         # where is the config?
-        vmware_ini_path = os.environ.get('VMWARE_INI_PATH', defaults['vmware']['ini_path'])
-        vmware_ini_path = os.path.expanduser(os.path.expandvars(vmware_ini_path))
+        vmware_ini_path = os.environ.get(
+            'VMWARE_INI_PATH', defaults['vmware']['ini_path'])
+        vmware_ini_path = os.path.expanduser(
+            os.path.expandvars(vmware_ini_path))
         config.read(vmware_ini_path)
 
         # apply defaults
-        for k,v in defaults['vmware'].iteritems():
+        for k, v in defaults['vmware'].items():
             if not config.has_option('vmware', k):
                     config.set('vmware', k, str(v))
 
@@ -223,10 +204,14 @@ class VMWareInventory(object):
         self.cache_max_age = int(config.getint('vmware', 'cache_max_age'))
 
         # mark the connection info
-        self.server =  os.environ.get('VMWARE_SERVER', config.get('vmware', 'server'))
-        self.port = int(os.environ.get('VMWARE_PORT', config.get('vmware', 'port')))
-        self.username = os.environ.get('VMWARE_USERNAME', config.get('vmware', 'username'))
-        self.password = os.environ.get('VMWARE_PASSWORD', config.get('vmware', 'password'))
+        self.server = os.environ.get(
+            'VMWARE_SERVER', config.get('vmware', 'server'))
+        self.port = int(os.environ.get(
+            'VMWARE_PORT', config.get('vmware', 'port')))
+        self.username = os.environ.get(
+            'VMWARE_USERNAME', config.get('vmware', 'username'))
+        self.password = os.environ.get(
+            'VMWARE_PASSWORD', config.get('vmware', 'password'))
 
         # behavior control
         self.maxlevel = int(config.get('vmware', 'max_object_level'))
@@ -237,41 +222,44 @@ class VMWareInventory(object):
             else:
                 self.lowerkeys = False
 
-        self.host_filters = list(config.get('vmware', 'host_filters').split(','))
-        self.groupby_patterns = list(config.get('vmware', 'groupby_patterns').split(','))
+        self.host_filters = list(
+            config.get('vmware', 'host_filters').split(','))
+        self.groupby_patterns = list(
+            config.get('vmware', 'groupby_patterns').split(','))
 
         # save the config
         self.config = config
 
-
     def parse_cli_args(self):
+        """Command line argument processing."""
 
-        ''' Command line argument processing '''
-
-        parser = argparse.ArgumentParser(description='Produce an Ansible Inventory file based on PyVmomi')
+        parser = argparse.ArgumentParser(
+            description='Produce an Ansible Inventory file based on PyVmomi')
         parser.add_argument('--debug', action='store_true', default=False,
-                           help='show debug info')
+                            help='show debug info')
         parser.add_argument('--list', action='store_true', default=True,
-                           help='List instances (default: True)')
-        parser.add_argument('--host', action='store',
-                           help='Get all the variables about a specific instance')
-        parser.add_argument('--refresh-cache', action='store_true', default=False,
-                           help='Force refresh of cache by making API requests to VSphere (default: False - use cache files)')
+                            help='List instances (default: True)')
+        parser.add_argument(
+            '--host', action='store',
+            help='Get all the variables about a specific instance')
+        parser.add_argument(
+            '--refresh-cache', action='store_true', default=False,
+            help=("Force refresh of cache by making API requests to VSphere "
+                  "(default: False - use cache files)"))
         parser.add_argument('--max-instances', default=None, type=int,
-                           help='maximum number of instances to retrieve')
+                            help='maximum number of instances to retrieve')
         self.args = parser.parse_args()
 
-
     def get_instances(self):
+        """Get a list of vm instances with pyvmomi."""
 
-        ''' Get a list of vm instances with pyvmomi '''
-
-        instances = []        
-
-        kwargs = {'host': self.server,
-                      'user': self.username,
-                      'pwd': self.password,
-                      'port': int(self.port) }
+        instances = []
+        kwargs = {
+            'host': self.server,
+            'user': self.username,
+            'pwd': self.password,
+            'port': int(self.port),
+        }
 
         if hasattr(ssl, 'SSLContext'):
             # older ssl libs do not have an SSLContext method:
@@ -287,17 +275,15 @@ class VMWareInventory(object):
         self.debugl("### INSTANCES RETRIEVED")
         return instances
 
-
     def _get_instances(self, inkwargs):
-
-        ''' Make API calls '''
+        """Make API calls."""
 
         instances = []
         si = SmartConnect(**inkwargs)
 
         if not si:
             print("Could not connect to the specified host using specified "
-                "username and password")
+                  "username and password")
             return -1
         atexit.register(Disconnect, si)
         content = si.RetrieveContent()
@@ -306,12 +292,11 @@ class VMWareInventory(object):
         if self.args.max_instances:
             if len(instances) >= (self.args.max_instances+1):
                 instances = instances[0:(self.args.max_instances+1)]
-        instance_tuples = []    
-        for instance in sorted(instances):    
+        instance_tuples = []
+        for instance in sorted(instances):
             ifacts = self.facts_from_vobj(instance)
             instance_tuples.append((instance, ifacts))
         return instance_tuples
-
 
     def _get_instances_from_children(self, child):
         instances = []
@@ -339,22 +324,19 @@ class VMWareInventory(object):
             self.debugl("ELSE ...")
             try:
                 self.debugl(child.__dict__)
-            except Exception as e:
+            except Exception:
                 pass
             self.debugl(child)
         return instances
 
-
     def instances_to_inventory(self, instances):
-
-        ''' Convert a list of vm objects into a json compliant inventory '''
+        """Convert a list of vm objects into a json compliant inventory."""
 
         inventory = self._empty_inventory()
         inventory['all'] = {}
         inventory['all']['hosts'] = []
-        last_idata = None
-        total = len(instances)
-        for idx,instance in enumerate(instances):
+
+        for idx, instance in enumerate(instances):
 
             # make a unique id for this object to avoid vmware's
             # numerous uuid's which aren't all unique.
@@ -367,27 +349,30 @@ class VMWareInventory(object):
             inventory['_meta']['hostvars'][thisid]['ansible_uuid'] = thisid
 
         # Make a map of the uuid to the name the user wants
-        name_mapping = self.create_template_mapping(inventory,
-                            self.config.get('vmware', 'alias_pattern'))
+        name_mapping = self.create_template_mapping(
+            inventory, self.config.get('vmware', 'alias_pattern'))
 
         # Make a map of the uuid to the ssh hostname the user wants
-        host_mapping = self.create_template_mapping(inventory,
-                            self.config.get('vmware', 'host_pattern'))
+        host_mapping = self.create_template_mapping(
+            inventory, self.config.get('vmware', 'host_pattern'))
 
         # Reset the inventory keys
-        for k,v in name_mapping.iteritems():
+        for k, v in name_mapping.items():
 
             # set ansible_host (2.x)
             inventory['_meta']['hostvars'][k]['ansible_host'] = host_mapping[k]
+
             # 1.9.x backwards compliance
-            inventory['_meta']['hostvars'][k]['ansible_ssh_host'] = host_mapping[k]
+            inventory['_meta']['hostvars'][k]['ansible_ssh_host'] = (
+                host_mapping[k])
 
             if k == v:
                 continue
 
             # add new key
             inventory['all']['hosts'].append(v)
-            inventory['_meta']['hostvars'][v] = inventory['_meta']['hostvars'][k]
+            inventory['_meta']['hostvars'][v] = (
+                inventory['_meta']['hostvars'][k])
 
             # cleanup old key
             inventory['all']['hosts'].remove(k)
@@ -419,8 +404,9 @@ class VMWareInventory(object):
             if not hf:
                 continue
             self.debugl('FILTER: %s' % hf)
-            filter_map = self.create_template_mapping(inventory, hf, dtype='boolean')
-            for k,v in filter_map.iteritems():
+            filter_map = self.create_template_mapping(
+                inventory, hf, dtype='boolean')
+            for k, v in filter_map.items():
                 if not v:
                     # delete this host
                     inventory['all']['hosts'].remove(k)
@@ -433,7 +419,7 @@ class VMWareInventory(object):
         # Create groups
         for gbp in self.groupby_patterns:
             groupby_map = self.create_template_mapping(inventory, gbp)
-            for k,v in groupby_map.iteritems():
+            for k, v in groupby_map.items():
                 if v not in inventory:
                     inventory[v] = {}
                     inventory[v]['hosts'] = []
@@ -442,13 +428,11 @@ class VMWareInventory(object):
 
         return inventory
 
-
     def create_template_mapping(self, inventory, pattern, dtype='string'):
-
-        ''' Return a hash of uuid to templated string from pattern '''
+        """Return a hash of uuid to templated string from pattern."""
 
         mapping = {}
-        for k,v in inventory['_meta']['hostvars'].iteritems():
+        for k, v in inventory['_meta']['hostvars'].items():
             t = jinja2.Template(pattern)
             newkey = None
             try:
@@ -456,7 +440,6 @@ class VMWareInventory(object):
                 newkey = newkey.strip()
             except Exception as e:
                 self.debugl(e)
-                #import epdb; epdb.st()
             if not newkey:
                 continue
             elif dtype == 'integer':
@@ -471,10 +454,8 @@ class VMWareInventory(object):
             mapping[k] = newkey
         return mapping
 
-
     def facts_from_vobj(self, vobj, level=0):
-
-        ''' Traverse a VM object and return a json compliant data structure '''
+        """Traverse a VM object and return a json compliant data structure."""
 
         # pyvmomi objects are not yet serializable, but may be one day ...
         # https://github.com/vmware/pyvmomi/issues/21
@@ -507,12 +488,10 @@ class VMWareInventory(object):
                     k = k.lower()
 
                 rdata[k] = self._process_object_types(v, level=level)
-
         else:
-
             methods = dir(vobj)
             methods = [str(x) for x in methods if not x.startswith('_')]
-            methods = [x for x in methods if not x in self.bad_types]
+            methods = [x for x in methods if x not in self.bad_types]
             methods = sorted(methods)
 
             for method in methods:
@@ -523,7 +502,7 @@ class VMWareInventory(object):
                 # Attempt to get the method, skip on fail
                 try:
                     methodToCall = getattr(vobj, method)
-                except Exception as e:
+                except Exception:
                     continue
 
                 # Skip callable methods
@@ -535,15 +514,13 @@ class VMWareInventory(object):
 
                 rdata[method] = self._process_object_types(
                     methodToCall,
-                    level=((level - 1) if method in ('guest', 'net') else level))
+                    level=((level - 1)
+                           if method in ('guest', 'net') else level))
 
         return rdata
 
-
     def _process_object_types(self, vobj, level=0):
-
         rdata = {}
-
         self.debugl("PROCESSING: %s" % vobj)
 
         if type(vobj) in self.safe_types:
@@ -581,9 +558,7 @@ class VMWareInventory(object):
         return rdata
 
     def get_host_info(self, host):
-
-        ''' Return hostvars for a single host '''
-
+        """Return hostvars for a single host."""
         return self.inventory['_meta']['hostvars'][host]
 
 

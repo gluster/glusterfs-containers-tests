@@ -16,49 +16,49 @@ import yaml
 class OCPOnVMWare(object):
 
     __name__ = 'OCPOnVMWare'
-    console_port=8443
-    cluster_id=None
-    deployment_type=None
-    openshift_vers=None
-    vcenter_host=None
-    vcenter_username=None
-    vcenter_password=None
-    vcenter_template_name=None
-    vcenter_folder=None
-    vcenter_cluster=None
-    vcenter_datacenter=None
-    vcenter_datastore=None
-    vcenter_resource_pool=None
-    dns_zone=None
-    app_dns_prefix=None
-    vm_network=None
-    rhel_subscription_user=None
-    rhel_subscription_pass=None
-    rhel_subscription_server=None
-    rhel_subscription_pool=None
-    no_confirm=False
-    tag=None
-    verbose=0
-    create_inventory=None
-    compute_nodes=None
-    ocp_hostname_prefix=None
-    create_ocp_vars=None
-    openshift_sdn=None
-    container_storage=None
-    openshift_disable_check=None
-    wildcard_zone=None
-    inventory_file='infrastructure.json'
-    vmware_ini_path=None
-    clean=None
-    cns_automation_config_file_path=None,
-    docker_registry_url=None
-    docker_additional_registries=None
-    docker_insecure_registries=None
-    docker_image_tag=None
-    ose_puddle_repo=None
-    gluster_puddle_repo=None
-    web_console_install=None
-    disable_yum_update_and_reboot=None
+    console_port = 8443
+    cluster_id = None
+    deployment_type = None
+    openshift_vers = None
+    vcenter_host = None
+    vcenter_username = None
+    vcenter_password = None
+    vcenter_template_name = None
+    vcenter_folder = None
+    vcenter_cluster = None
+    vcenter_datacenter = None
+    vcenter_datastore = None
+    vcenter_resource_pool = None
+    dns_zone = None
+    app_dns_prefix = None
+    vm_network = None
+    rhel_subscription_user = None
+    rhel_subscription_pass = None
+    rhel_subscription_server = None
+    rhel_subscription_pool = None
+    no_confirm = False
+    tag = None
+    verbose = 0
+    create_inventory = None
+    compute_nodes = None
+    ocp_hostname_prefix = None
+    create_ocp_vars = None
+    openshift_sdn = None
+    container_storage = None
+    openshift_disable_check = None
+    wildcard_zone = None
+    inventory_file = 'infrastructure.json'
+    vmware_ini_path = None
+    clean = None
+    cns_automation_config_file_path = None,
+    docker_registry_url = None
+    docker_additional_registries = None
+    docker_insecure_registries = None
+    docker_image_tag = None
+    ose_puddle_repo = None
+    gluster_puddle_repo = None
+    web_console_install = None
+    disable_yum_update_and_reboot = None
 
     def __init__(self):
         self._parse_cli_args()
@@ -132,7 +132,7 @@ class OCPOnVMWare(object):
             'vcenter_folder': 'ocp',
             'vcenter_resource_pool': '/Resources/OCP3',
             'app_dns_prefix': 'apps',
-            'vm_network':'VM Network',
+            'vm_network': 'VM Network',
             'cns_automation_config_file_path': '',
             'docker_registry_url': '',
             'docker_additional_registries': '',
@@ -163,20 +163,20 @@ class OCPOnVMWare(object):
         config.read(self.vmware_ini_path)
 
         # apply defaults
-        for k,v in defaults['vmware'].iteritems():
+        for k, v in defaults['vmware'].items():
             if not config.has_option('vmware', k):
                 config.set('vmware', k, str(v))
 
         self.console_port = config.get('vmware', 'console_port')
         self.cluster_id = config.get('vmware', 'cluster_id')
         self.container_storage = config.get('vmware', 'container_storage')
-        self.deployment_type = config.get('vmware','deployment_type')
+        self.deployment_type = config.get('vmware', 'deployment_type')
         if os.environ.get('VIRTUAL_ENV'):
             self.openshift_vers = (
                 'v3_%s' % os.environ['VIRTUAL_ENV'].split('_')[-1].split(
                     '.')[-1])
         else:
-            self.openshift_vers = config.get('vmware','openshift_vers')
+            self.openshift_vers = config.get('vmware', 'openshift_vers')
         self.vcenter_host = config.get('vmware', 'vcenter_host')
         self.vcenter_username = config.get('vmware', 'vcenter_username')
         self.vcenter_password = config.get('vmware', 'vcenter_password')
@@ -189,7 +189,7 @@ class OCPOnVMWare(object):
         self.vcenter_datacenter = config.get('vmware', 'vcenter_datacenter')
         self.vcenter_resource_pool = config.get(
             'vmware', 'vcenter_resource_pool')
-        self.dns_zone= config.get('vmware', 'dns_zone')
+        self.dns_zone = config.get('vmware', 'dns_zone')
         self.app_dns_prefix = config.get('vmware', 'app_dns_prefix')
         self.vm_network = config.get('vmware', 'vm_network')
         self.ocp_hostname_prefix = config.get(
@@ -225,7 +225,7 @@ class OCPOnVMWare(object):
                 'docker_storage,docker_image_availability,disk_availability')
         self.disable_yum_update_and_reboot = config.get(
             'vmware', 'disable_yum_update_and_reboot').strip() or 'no'
-        err_count=0
+        err_count = 0
 
         required_vars = {
             'vcenter_datacenter': self.vcenter_datacenter,
@@ -286,8 +286,8 @@ class OCPOnVMWare(object):
         if err_count > 0:
             print "Please fill out the missing variables in %s " % (
                 self.vmware_ini_path)
-            exit (1)
-        self.wildcard_zone="%s.%s" % (self.app_dns_prefix, self.dns_zone)
+            exit(1)
+        self.wildcard_zone = "%s.%s" % (self.app_dns_prefix, self.dns_zone)
 
         if not self.cluster_id:
             # Create a unique cluster_id first
@@ -305,9 +305,9 @@ class OCPOnVMWare(object):
         for each_section in config.sections():
             for (key, val) in config.items(each_section):
                 if 'pass' in key:
-                    print '\t %s:  ******' % ( key )
+                    print '\t %s:  ******' % (key)
                 else:
-                    print '\t %s:  %s' % ( key,  val )
+                    print '\t %s:  %s' % (key,  val)
         print '\n'
 
     def _create_inventory_file(self):
@@ -384,7 +384,7 @@ class OCPOnVMWare(object):
             tags = ",".join(tags)
 
         # remove any cached facts to prevent stale data during a re-run
-        command='rm -rf .ansible/cached_facts'
+        command = 'rm -rf .ansible/cached_facts'
         os.system(command)
 
         playbook_vars_dict = {

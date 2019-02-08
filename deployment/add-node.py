@@ -3,17 +3,13 @@
 
 import argparse
 import click
-from collections import defaultdict
 import fileinput
 import os
 import re
 import requests
-from shutil import copyfile
 import six
 from six.moves import configparser
 import sys
-import textwrap
-from time import time
 import yaml
 
 try:
@@ -21,64 +17,65 @@ try:
 except ImportError:
     import simplejson as json
 
+
 class VMWareAddNode(object):
     __name__ = 'VMWareAddNode'
 
-    openshift_vers=None
-    cluster_id=None
-    vcenter_host=None
-    vcenter_username=None
-    vcenter_password=None
-    vcenter_template_name=None
-    vcenter_folder=None
-    vcenter_datastore=None
-    vcenter_datacenter=None
-    vcenter_cluster=None
-    vcenter_datacenter=None
-    vcenter_resource_pool=None
-    rhel_subscription_server=None
-    openshift_sdn=None
-    compute_nodes=None
-    storage_nodes=None
-    cns_automation_config_file_path=None
-    ocp_hostname_prefix=None
-    deployment_type=None
-    console_port=8443
-    rhel_subscription_user=None
-    rhel_subscription_pass=None
-    rhel_subscription_pool=None
-    dns_zone=None
-    app_dns_prefix=None
-    admin_key=None
-    user_key=None
-    wildcard_zone=None
-    inventory_file='add-node.json'
-    node_type=None
-    node_number=None
-    openshift_disable_check=None
-    container_storage=None
-    container_storage_disks=None
-    container_storage_block_hosting_volume_size=None
-    container_storage_disk_type=None
-    additional_disks_to_storage_nodes=None
-    container_storage_glusterfs_timeout=None
-    heketi_admin_key=None
-    heketi_user_key=None
-    tag=None
-    verbose=0
-    docker_registry_url=None
-    docker_additional_registries=None
-    docker_insecure_registries=None
-    docker_image_tag=None
-    ose_puddle_repo=None
-    gluster_puddle_repo=None
+    openshift_vers = None
+    cluster_id = None
+    vcenter_host = None
+    vcenter_username = None
+    vcenter_password = None
+    vcenter_template_name = None
+    vcenter_folder = None
+    vcenter_datastore = None
+    vcenter_datacenter = None
+    vcenter_cluster = None
+    vcenter_datacenter = None
+    vcenter_resource_pool = None
+    rhel_subscription_server = None
+    openshift_sdn = None
+    compute_nodes = None
+    storage_nodes = None
+    cns_automation_config_file_path = None
+    ocp_hostname_prefix = None
+    deployment_type = None
+    console_port = 8443
+    rhel_subscription_user = None
+    rhel_subscription_pass = None
+    rhel_subscription_pool = None
+    dns_zone = None
+    app_dns_prefix = None
+    admin_key = None
+    user_key = None
+    wildcard_zone = None
+    inventory_file = 'add-node.json'
+    node_type = None
+    node_number = None
+    openshift_disable_check = None
+    container_storage = None
+    container_storage_disks = None
+    container_storage_block_hosting_volume_size = None
+    container_storage_disk_type = None
+    additional_disks_to_storage_nodes = None
+    container_storage_glusterfs_timeout = None
+    heketi_admin_key = None
+    heketi_user_key = None
+    tag = None
+    verbose = 0
+    docker_registry_url = None
+    docker_additional_registries = None
+    docker_insecure_registries = None
+    docker_image_tag = None
+    ose_puddle_repo = None
+    gluster_puddle_repo = None
     cns_glusterfs_image = None
     cns_glusterfs_version = None
     cns_glusterfs_block_image = None
     cns_glusterfs_block_version = None
     cns_glusterfs_heketi_image = None
     cns_glusterfs_heketi_version = None
-    disable_yum_update_and_reboot=None
+    disable_yum_update_and_reboot = None
 
     def __init__(self):
         self.parse_cli_args()
@@ -93,7 +90,7 @@ class VMWareAddNode(object):
             'ini_path': os.path.join(
                 os.path.dirname(__file__), '%s.ini' % scriptbasename),
             'storage_nodes': '3',
-            'compute_nodes':'2',
+            'compute_nodes': '2',
         }}
         # where is the config?
         if six.PY3:
@@ -185,7 +182,7 @@ class VMWareAddNode(object):
             'container_storage_disks': '100,600',
             'container_storage_block_hosting_volume_size': '99',
             'additional_disks_to_storage_nodes': '100',
-            'container_storage_disk_type':'eagerZeroedThick',
+            'container_storage_disk_type': 'eagerZeroedThick',
             'container_storage_glusterfs_timeout': '',
             'heketi_admin_key': '',
             'heketi_user_key': '',
@@ -210,7 +207,7 @@ class VMWareAddNode(object):
             'app_dns_prefix': 'apps',
             'vm_network': 'VM Network',
             'rhel_subscription_pool': 'Employee SKU',
-            'openshift_sdn':'redhat/openshift-ovs-subnet',
+            'openshift_sdn': 'redhat/openshift-ovs-subnet',
             'compute_nodes': '2',
             'storage_nodes': '3',
             'cns_automation_config_file_path': '',
@@ -235,7 +232,7 @@ class VMWareAddNode(object):
         config.read(vmware_ini_path)
 
         # apply defaults
-        for k,v in defaults['vmware'].items():
+        for k, v in defaults['vmware'].items():
             if not config.has_option('vmware', k):
                 config.set('vmware', k, str(v))
 
@@ -276,8 +273,8 @@ class VMWareAddNode(object):
             config.get('vmware', 'cns_glusterfs_heketi_image')).strip()
         self.cns_glusterfs_heketi_version = (
             config.get('vmware', 'cns_glusterfs_heketi_version')).strip()
-        self.deployment_type = config.get('vmware','deployment_type')
-        self.openshift_vers = config.get('vmware','openshift_vers')
+        self.deployment_type = config.get('vmware', 'deployment_type')
+        self.openshift_vers = config.get('vmware', 'openshift_vers')
         self.vcenter_host = config.get('vmware', 'vcenter_host')
         self.vcenter_username = config.get('vmware', 'vcenter_username')
         self.vcenter_password = config.get('vmware', 'vcenter_password')
@@ -290,7 +287,7 @@ class VMWareAddNode(object):
         self.vcenter_datacenter = config.get('vmware', 'vcenter_datacenter')
         self.vcenter_resource_pool = config.get(
             'vmware', 'vcenter_resource_pool')
-        self.dns_zone= config.get('vmware', 'dns_zone')
+        self.dns_zone = config.get('vmware', 'dns_zone')
         self.app_dns_prefix = config.get('vmware', 'app_dns_prefix')
         self.vm_network = config.get('vmware', 'vm_network')
         self.rhel_subscription_user = config.get(
@@ -317,7 +314,7 @@ class VMWareAddNode(object):
         self.node_type = config.get('vmware', 'node_type')
         self.node_number = config.get('vmware', 'node_number')
         self.tag = config.get('vmware', 'tag')
-        err_count=0
+        err_count = 0
 
         if 'storage' in self.node_type:
             if self.node_number < 3:
@@ -335,7 +332,7 @@ class VMWareAddNode(object):
             'dns_zone': self.dns_zone,
             'vcenter_host': self.vcenter_host,
             'vcenter_password': self.vcenter_password,
-            'vcenter_datacenter':self.vcenter_datacenter,
+            'vcenter_datacenter': self.vcenter_datacenter,
         }
         for k, v in required_vars.items():
             if v == '':
@@ -358,7 +355,8 @@ class VMWareAddNode(object):
                        "either empty or integer. Provided value is '%s'" % (
                            self.container_storage_block_hosting_volume_size))
         if (self.additional_disks_to_storage_nodes and not re.search(
-                r'^[0-9]*(,[0-9]*)*$', self.additional_disks_to_storage_nodes)):
+                r'^[0-9]*(,[0-9]*)*$',
+                self.additional_disks_to_storage_nodes)):
             err_count += 1
             print ("'additional_disks_to_storage_nodes' has improper "
                    "value - '%s'. Only integers separated with comma "
@@ -423,20 +421,20 @@ class VMWareAddNode(object):
                        allowed_disable_checks), self.openshift_disable_check))
 
         if err_count > 0:
-            print "Please fill out the missing variables in %s " %  vmware_ini_path
-            exit (1)
-        self.wildcard_zone="%s.%s" % (self.app_dns_prefix, self.dns_zone)
-        self.support_nodes=0
+            print "Please fill out the missing variables in %s " % (
+                vmware_ini_path)
+            exit(1)
+        self.wildcard_zone = "%s.%s" % (self.app_dns_prefix, self.dns_zone)
+        self.support_nodes = 0
 
         print 'Configured inventory values:'
         for each_section in config.sections():
             for (key, val) in config.items(each_section):
                 if 'pass' in key:
-                    print '\t %s:  ******' % ( key )
+                    print '\t %s:  ******' % key
                 else:
-                    print '\t %s:  %s' % ( key,  val )
+                    print '\t %s:  %s' % (key, val)
         print '\n'
-
 
     def create_inventory_file(self):
         if not self.args.no_confirm:
@@ -446,7 +444,7 @@ class VMWareAddNode(object):
 
         d = {'host_inventory': {}}
         for i in range(0, int(self.node_number)):
-            # Determine node_number increment on the number of nodes 
+            # Determine node_number increment on the number of nodes
             if self.node_type == 'compute':
                 guest_name = '%s-%s' % (self.node_type, i)
                 guest_type = 'compute'
@@ -470,9 +468,6 @@ class VMWareAddNode(object):
                 'guesttype': guest_type,
                 'tag': str(self.cluster_id) + '-' + self.node_type,
             }
-            # NOTE(vponomar): following will be replaced automatically in
-            #                 playbooks.
-            storage_address = '__%s__' % guest_name
 
         with open(self.inventory_file, 'w') as outfile:
             json.dump(d, outfile, indent=4, sort_keys=True)
@@ -506,7 +501,6 @@ class VMWareAddNode(object):
             'vcenter_template_name': self.vcenter_template_name,
             'vcenter_folder': self.vcenter_folder,
             'vcenter_datastore': self.vcenter_datastore,
-            'vcenter_datacenter': self.vcenter_datacenter,
             'vcenter_cluster': self.vcenter_cluster,
             'vcenter_datacenter': self.vcenter_datacenter,
             'vcenter_resource_pool': self.vcenter_resource_pool,
@@ -616,11 +610,12 @@ class VMWareAddNode(object):
 
             # refresh the inventory cache to prevent stale hosts from
             # interferring with re-running
-            command='inventory/vsphere/vms/vmware_inventory.py %s' % (devnull)
+            command = 'inventory/vsphere/vms/vmware_inventory.py %s' % (
+                devnull)
             os.system(command)
 
             # remove any cached facts to prevent stale data during a re-run
-            command='rm -rf .ansible/cached_facts'
+            command = 'rm -rf .ansible/cached_facts'
             os.system(command)
 
             command = (
