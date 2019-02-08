@@ -5,7 +5,7 @@ from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 
 from cnslibs.common import exceptions
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import (heketi_node_list,
                                        heketi_node_enable,
                                        heketi_node_disable,
@@ -18,7 +18,7 @@ from cnslibs.common.heketi_ops import (heketi_node_list,
 from cnslibs.common import podcmd
 
 
-class TestHeketiVolume(HeketiBaseClass):
+class TestHeketiVolume(BaseClass):
 
     def setUp(self):
         super(TestHeketiVolume, self).setUp()

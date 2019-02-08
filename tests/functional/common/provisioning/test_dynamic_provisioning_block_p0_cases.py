@@ -1,6 +1,6 @@
 from unittest import skip
 
-from cnslibs.cns.cns_baseclass import GlusterBlockBaseClass
+from cnslibs.common.baseclass import GlusterBlockBaseClass
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.openshift_ops import (
     get_gluster_pod_names_by_pvc_name,

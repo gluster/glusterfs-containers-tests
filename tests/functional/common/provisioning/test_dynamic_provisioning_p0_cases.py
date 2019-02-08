@@ -1,7 +1,7 @@
 import time
 from unittest import skip
 
-from cnslibs.cns.cns_baseclass import BaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.heketi_ops import (
     verify_volume_name_prefix)

@@ -4,7 +4,7 @@ import ddt
 from glusto.core import Glusto as g
 
 from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import (heketi_node_enable,
                                        heketi_node_info,
                                        heketi_node_disable,
@@ -16,11 +16,12 @@ from cnslibs.common.heketi_ops import (heketi_node_enable,
                                        heketi_device_remove,
                                        heketi_device_info,
                                        heketi_device_enable,
-                                       heketi_topology_info)
+                                       heketi_topology_info,
+                                       heketi_volume_delete)
 
 
 @ddt.ddt
-class TestHeketiDeviceOperations(HeketiBaseClass):
+class TestHeketiDeviceOperations(BaseClass):
     """Test Heketi device enable/disable and remove functionality."""
 
     def check_any_of_bricks_present_in_device(self, bricks, device_id):
@@ -124,7 +125,9 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
                                         json=True)
         self.assertTrue(vol_info, (
             "Failed to create heketi volume of size %d" % vol_size))
-        self.addCleanup(self.delete_volumes, vol_info['id'])
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_info['id'])
 
         # Check that one of volume's bricks is present on the device
         present = self.check_any_of_bricks_present_in_device(
@@ -144,7 +147,9 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
             self.heketi_client_node, self.heketi_server_url,
             vol_size, json=True, raw_cli_output=True)
         if ret == 0:
-            self.addCleanup(self.delete_volumes, json.loads(out)["id"])
+            self.addCleanup(
+                heketi_volume_delete, self.heketi_client_node,
+                self.heketi_server_url, json.loads(out)["id"])
         self.assertNotEqual(ret, 0,
                             ("Volume creation did not fail. ret- %s "
                              "out- %s err- %s" % (ret, out, err)))
@@ -159,9 +164,9 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
         vol_info = heketi_volume_create(self.heketi_client_node,
                                         self.heketi_server_url, vol_size,
                                         json=True)
-        self.assertTrue(vol_info, (
-            "Failed to create heketi volume of size %d" % vol_size))
-        self.addCleanup(self.delete_volumes, vol_info['id'])
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_info['id'])
 
         # Check that one of volume's bricks is present on the device
         present = self.check_any_of_bricks_present_in_device(
@@ -226,9 +231,9 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
         vol_info = heketi_volume_create(
             self.heketi_client_node, self.heketi_server_url, vol_size,
             json=True)
-        self.assertTrue(vol_info, (
-            "Failed to create heketi volume of size %d" % vol_size))
-        self.addCleanup(self.delete_volumes, vol_info['id'])
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_info['id'])
 
         # Add extra device, then remember it's ID and size
         heketi_device_add(self.heketi_client_node, self.heketi_server_url,
@@ -310,9 +315,9 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
         vol_info = heketi_volume_create(self.heketi_client_node,
                                         self.heketi_server_url, vol_size,
                                         json=True)
-        self.assertTrue(vol_info, (
-                "Failed to create heketi volume of size %d" % vol_size))
-        self.addCleanup(self.delete_volumes, vol_info['id'])
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_info['id'])
 
         if delete_device:
             return
@@ -391,7 +396,9 @@ class TestHeketiDeviceOperations(HeketiBaseClass):
             vol_size_gb -= 1
             heketi_vol = heketi_volume_create(
                 heketi_node, heketi_url, vol_size_gb, json=True)
-        self.addCleanup(self.delete_volumes, heketi_vol["bricks"][0]["volume"])
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, heketi_vol["bricks"][0]["volume"])
 
         # Try to 'remove' bigger Heketi disk expecting error,
         # because there is no space on smaller disk to relocate bricks to

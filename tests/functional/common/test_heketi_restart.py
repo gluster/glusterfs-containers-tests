@@ -1,10 +1,12 @@
 from jsondiff import diff
 
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import (
+    heketi_topology_info,
     hello_heketi,
     heketi_volume_create,
-    heketi_topology_info)
+    heketi_volume_delete
+)
 from cnslibs.common.openshift_ops import (
     get_pod_name_from_dc,
     oc_delete,
@@ -12,7 +14,7 @@ from cnslibs.common.openshift_ops import (
     wait_for_resource_absence)
 
 
-class TestRestartHeketi(HeketiBaseClass):
+class TestRestartHeketi(BaseClass):
 
     def test_restart_heketi_pod(self):
         """Validate restarting heketi pod"""
@@ -22,24 +24,26 @@ class TestRestartHeketi(HeketiBaseClass):
                                         self.heketi_server_url,
                                         size=1, json=True)
         self.assertTrue(vol_info, "Failed to create heketi volume of size 1")
-        self.addCleanup(self.delete_volumes, vol_info['id'])
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_info['id'], raise_on_error=False)
         topo_info = heketi_topology_info(self.heketi_client_node,
                                          self.heketi_server_url,
                                          json=True)
 
         # get heketi-pod name
-        heketi_pod_name = get_pod_name_from_dc(self.ocp_master_node,
+        heketi_pod_name = get_pod_name_from_dc(self.ocp_master_node[0],
                                                self.heketi_dc_name)
 
         # delete heketi-pod (it restarts the pod)
-        oc_delete(self.ocp_master_node, 'pod', heketi_pod_name)
-        wait_for_resource_absence(self.ocp_master_node,
+        oc_delete(self.ocp_master_node[0], 'pod', heketi_pod_name)
+        wait_for_resource_absence(self.ocp_master_node[0],
                                   'pod', heketi_pod_name)
 
         # get new heketi-pod name
-        heketi_pod_name = get_pod_name_from_dc(self.ocp_master_node,
+        heketi_pod_name = get_pod_name_from_dc(self.ocp_master_node[0],
                                                self.heketi_dc_name)
-        wait_for_pod_be_ready(self.ocp_master_node,
+        wait_for_pod_be_ready(self.ocp_master_node[0],
                               heketi_pod_name)
 
         # check heketi server is running
@@ -60,4 +64,5 @@ class TestRestartHeketi(HeketiBaseClass):
                                         self.heketi_server_url,
                                         size=2, json=True)
         self.assertTrue(vol_info, "Failed to create heketi volume of size 20")
-        self.delete_volumes(vol_info['id'])
+        heketi_volume_delete(
+            self.heketi_client_node, self.heketi_server_url, vol_info['id'])

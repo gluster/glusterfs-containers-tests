@@ -3,7 +3,7 @@ from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 import six
 
 from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import (heketi_volume_create,
                                        heketi_volume_list,
                                        heketi_volume_info,
@@ -13,11 +13,12 @@ from cnslibs.common.heketi_ops import (heketi_volume_create,
                                        heketi_cluster_delete,
                                        heketi_node_info,
                                        heketi_node_list,
-                                       heketi_node_delete)
+                                       heketi_node_delete,
+                                       heketi_volume_delete)
 from cnslibs.common import podcmd
 
 
-class TestHeketiVolume(HeketiBaseClass):
+class TestHeketiVolume(BaseClass):
     """
     Class to test heketi volume create
     """
@@ -45,7 +46,9 @@ class TestHeketiVolume(HeketiBaseClass):
                                    self.volume_size, json=True)
         g.log.info("Heketi volume successfully created" % out)
         volume_id = out["bricks"][0]["volume"]
-        self.addCleanup(self.delete_volumes, volume_id)
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, volume_id)
 
         g.log.info("List heketi volumes after volume creation")
         h_vol_list = heketi_volume_list(
@@ -82,7 +85,9 @@ class TestHeketiVolume(HeketiBaseClass):
                         "volume of size %s" % self.volume_size))
         g.log.info("Heketi volume successfully created" % out)
         volume_id = out["bricks"][0]["volume"]
-        self.addCleanup(self.delete_volumes, volume_id)
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, volume_id)
 
         g.log.info("Retrieving heketi volume info")
         out = heketi_volume_info(
@@ -112,7 +117,9 @@ class TestHeketiVolume(HeketiBaseClass):
                             "volume of size %s" % self.volume_size))
             g.log.info("Heketi volume successfully created" % out)
             volume_id = out["bricks"][0]["volume"]
-            self.addCleanup(self.delete_volumes, volume_id)
+            self.addCleanup(
+                heketi_volume_delete, self.heketi_client_node,
+                self.heketi_server_url, volume_id)
 
         # List heketi cluster's
         g.log.info("Listing heketi cluster list")
@@ -154,7 +161,9 @@ class TestHeketiVolume(HeketiBaseClass):
         self.assertTrue(vol, "Failed to create heketi volume.")
         g.log.info("Heketi volume successfully created")
         volume_id = vol["bricks"][0]["volume"]
-        self.addCleanup(self.delete_volumes, volume_id)
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, volume_id)
 
         # Pick up suitable node
         node_ids = heketi_node_list(self.heketi_client_node, heketi_url)

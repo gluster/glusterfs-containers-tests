@@ -2,12 +2,12 @@ from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_info
 
 from cnslibs.common import exceptions
-from cnslibs.common import heketi_libs
+from cnslibs.common import baseclass
 from cnslibs.common import heketi_ops
 from cnslibs.common import podcmd
 
 
-class TestDisableHeketiDevice(heketi_libs.HeketiBaseClass):
+class TestDisableHeketiDevice(baseclass.BaseClass):
     @podcmd.GlustoPod()
     def test_create_volumes_enabling_and_disabling_heketi_devices(self):
         """Validate enable/disable of heketi device"""
@@ -57,7 +57,9 @@ class TestDisableHeketiDevice(heketi_libs.HeketiBaseClass):
         self.assertTrue(out, "Failed to create heketi volume of size 1")
         g.log.info("Successfully created heketi volume of size 1")
         device_id = out["bricks"][0]["device"]
-        self.addCleanup(self.delete_volumes, [out["bricks"][0]["volume"]])
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, out["bricks"][0]["volume"])
 
         # Disable device
         g.log.info("Disabling '%s' device" % device_id)
@@ -90,7 +92,8 @@ class TestDisableHeketiDevice(heketi_libs.HeketiBaseClass):
                 g.log.info("Volume was not created as expected.")
             else:
                 self.addCleanup(
-                    self.delete_volumes, [out["bricks"][0]["volume"]])
+                    heketi_ops.heketi_volume_delete, self.heketi_client_node,
+                    self.heketi_server_url, out["bricks"][0]["volume"])
                 msg = "Volume unexpectedly created. Out: %s" % out
                 assert False, msg
         finally:
@@ -116,7 +119,9 @@ class TestDisableHeketiDevice(heketi_libs.HeketiBaseClass):
         out = heketi_ops.heketi_volume_create(
             self.heketi_client_node, self.heketi_server_url, 1, json=True)
         self.assertTrue(out, "Failed to create volume of size 1")
-        self.addCleanup(self.delete_volumes, [out["bricks"][0]["volume"]])
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, out["bricks"][0]["volume"])
         g.log.info("Successfully created volume of size 1")
         name = out["name"]
 

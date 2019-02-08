@@ -1,10 +1,10 @@
-from cnslibs.cns import cns_baseclass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common import heketi_ops
 from cnslibs.common import heketi_version
 from cnslibs.common import openshift_ops
 
 
-class TestHeketiServerStateExamineGluster(cns_baseclass.BaseClass):
+class TestHeketiServerStateExamineGluster(BaseClass):
 
     def setUp(self):
         self.node = self.ocp_master_node[0]

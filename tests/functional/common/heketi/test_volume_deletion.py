@@ -1,11 +1,11 @@
 from __future__ import division
 
 from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common import heketi_ops
 
 
-class TestVolumeDeleteTestCases(HeketiBaseClass):
+class TestVolumeDeleteTestCases(BaseClass):
     """
     Class for volume deletion related test cases
 
@@ -40,17 +40,11 @@ class TestVolumeDeleteTestCases(HeketiBaseClass):
             self.heketi_client_node,
             self.heketi_server_url, 10, json=True)
 
-        self.assertNotEqual(creation_output_dict, False,
-                            "Volume creation failed")
-
         volume_id = creation_output_dict["name"].strip().split("_")[1]
         free_space_after_creation = self.get_free_space_summary_devices()
 
-        deletion_output = heketi_ops.heketi_volume_delete(
+        heketi_ops.heketi_volume_delete(
             self.heketi_client_node, self.heketi_server_url, volume_id)
-
-        self.assertNotEqual(deletion_output, False,
-                            "Deletion of volume failed, id: %s" % volume_id)
 
         free_space_after_deletion = self.get_free_space_summary_devices()
 
@@ -62,7 +56,6 @@ class TestVolumeDeleteTestCases(HeketiBaseClass):
         """
         Method to test heketidb volume deletion via heketi-cli
         """
-        volume_id_list = []
         heketidbexists = False
         msg = "Error: Cannot delete volume containing the Heketi database"
 
@@ -70,17 +63,14 @@ class TestVolumeDeleteTestCases(HeketiBaseClass):
             volume_info = heketi_ops.heketi_volume_create(
                 self.heketi_client_node, self.heketi_server_url,
                 10, json=True)
-            self.assertNotEqual(volume_info, False, "Volume creation failed")
-            volume_id_list.append(volume_info["id"])
 
-        self.addCleanup(self.delete_volumes, volume_id_list)
+            self.addCleanup(
+                heketi_ops.heketi_volume_delete, self.heketi_client_node,
+                self.heketi_server_url, volume_info["id"])
 
         volume_list_info = heketi_ops.heketi_volume_list(
             self.heketi_client_node,
             self.heketi_server_url, json=True)
-
-        self.assertNotEqual(volume_list_info, False,
-                            "Heketi volume list command failed")
 
         if volume_list_info["volumes"] == []:
             raise ExecutionError("Heketi volume list empty")

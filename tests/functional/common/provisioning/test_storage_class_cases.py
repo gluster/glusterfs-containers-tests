@@ -3,7 +3,7 @@ from unittest import skip
 import ddt
 from glusto.core import Glusto as g
 
-from cnslibs.cns import cns_baseclass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.cns_libs import validate_multipath_pod
 from cnslibs.common.openshift_ops import (
     get_amount_of_gluster_nodes,
@@ -22,7 +22,7 @@ from cnslibs.common.openshift_ops import (
 
 
 @ddt.ddt
-class TestStorageClassCases(cns_baseclass.BaseClass):
+class TestStorageClassCases(BaseClass):
 
     def create_sc_with_parameter(self, vol_type, success=False, parameter={}):
         """creates storage class, pvc and validates event

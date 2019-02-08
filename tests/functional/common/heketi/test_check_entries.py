@@ -1,17 +1,17 @@
 from glusto.core import Glusto as g
 
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import (heketi_volume_create,
                                        heketi_volume_delete)
 from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
 
 
-class TestHeketiVolume(HeketiBaseClass):
+class TestHeketiVolume(BaseClass):
     """Check volume bricks presence in fstab files on Gluster PODs."""
 
     def _find_bricks_in_fstab_files(self, brick_paths, present):
         """Make sure that vol brick paths either exist or not in fstab file."""
-        oc_node = self.ocp_master_nodes[0]
+        oc_node = self.ocp_master_node[0]
         gluster_pods = get_ocp_gluster_pod_names(oc_node)
         get_fstab_entries_cmd = "oc exec %s -- cat /var/lib/heketi/fstab"
         fstab_files_data = ''

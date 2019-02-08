@@ -2,10 +2,10 @@ from cnslibs.common.heketi_ops import (heketi_volume_delete,
                                        heketi_volume_create,
                                        heketi_volume_expand,
                                        heketi_volume_info)
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 
 
-class TestHeketiVolumeOperations(HeketiBaseClass):
+class TestHeketiVolumeOperations(BaseClass):
     """
     Class to test heketi volume operations - create, expand
     """

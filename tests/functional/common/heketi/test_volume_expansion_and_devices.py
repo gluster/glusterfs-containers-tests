@@ -5,11 +5,11 @@ from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops, rebalance_ops
 
 from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common import heketi_ops, podcmd
 
 
-class TestVolumeExpansionAndDevicesTestCases(HeketiBaseClass):
+class TestVolumeExpansionAndDevicesTestCases(BaseClass):
     """
     Class for volume expansion and devices addition related test cases
     """

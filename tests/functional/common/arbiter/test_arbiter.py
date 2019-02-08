@@ -1,6 +1,6 @@
 import ddt
 
-from cnslibs.cns import cns_baseclass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common import heketi_ops
 from cnslibs.common import heketi_version
 from cnslibs.common.openshift_ops import (
@@ -18,7 +18,7 @@ from cnslibs.common.openshift_ops import (
 
 
 @ddt.ddt
-class TestArbiterVolumeCreateExpandDelete(cns_baseclass.BaseClass):
+class TestArbiterVolumeCreateExpandDelete(BaseClass):
 
     def setUp(self):
         super(TestArbiterVolumeCreateExpandDelete, self).setUp()

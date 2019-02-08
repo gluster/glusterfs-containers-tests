@@ -11,7 +11,7 @@ import yaml
 
 from glusto.core import Glusto as g
 
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import (
     heketi_volume_list)
 from cnslibs.common.naming import (
@@ -192,7 +192,7 @@ def _heketi_name_id_map(vols):
 
 
 @ddt.ddt
-class TestVolumeMultiReq(HeketiBaseClass):
+class TestVolumeMultiReq(BaseClass):
     def setUp(self):
         super(TestVolumeMultiReq, self).setUp()
         self.volcount = self._count_vols()

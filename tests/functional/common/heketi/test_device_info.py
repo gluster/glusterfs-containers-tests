@@ -1,8 +1,8 @@
-from cnslibs.common import heketi_libs
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common import heketi_ops
 
 
-class TestHeketiDeviceInfo(heketi_libs.HeketiBaseClass):
+class TestHeketiDeviceInfo(BaseClass):
 
     def test_heketi_devices_info_verification(self):
         """Validate whether device related information is displayed"""

@@ -16,7 +16,7 @@ from cnslibs.common.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence)
 from cnslibs.common.openshift_version import get_openshift_version
-from cnslibs.cns.cns_baseclass import BaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.exceptions import ExecutionError
 from glusto.core import Glusto as g
 

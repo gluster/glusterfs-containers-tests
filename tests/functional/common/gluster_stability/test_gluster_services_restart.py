@@ -6,7 +6,7 @@ from unittest import skip
 import ddt
 from glusto.core import Glusto as g
 
-from cnslibs.cns.cns_baseclass import BaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import heketi_blockvolume_list
 from cnslibs.common.openshift_ops import (
     get_pod_name_from_dc,

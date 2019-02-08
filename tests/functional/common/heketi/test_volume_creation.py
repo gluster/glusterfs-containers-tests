@@ -2,12 +2,12 @@ from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
 
 from cnslibs.common import exceptions
-from cnslibs.common import heketi_libs
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common import heketi_ops
 from cnslibs.common import podcmd
 
 
-class TestVolumeCreationTestCases(heketi_libs.HeketiBaseClass):
+class TestVolumeCreationTestCases(BaseClass):
     """
     Class for volume creation related test cases
     """
@@ -29,7 +29,9 @@ class TestVolumeCreationTestCases(heketi_libs.HeketiBaseClass):
         volume_name = output_dict["name"]
         volume_id = output_dict["id"]
 
-        self.addCleanup(self.delete_volumes, volume_id)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, volume_id)
 
         self.assertEqual(output_dict["durability"]
                          ["replicate"]["replica"], 3,
@@ -127,7 +129,9 @@ class TestVolumeCreationTestCases(heketi_libs.HeketiBaseClass):
 
         # Create first small volume
         vol = heketi_ops.heketi_volume_create(node, server_url, 1, json=True)
-        self.addCleanup(self.delete_volumes, vol["id"])
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol["id"])
 
         # Try to create second volume getting "no free space" error
         try:
@@ -137,7 +141,8 @@ class TestVolumeCreationTestCases(heketi_libs.HeketiBaseClass):
             g.log.info("Volume was not created as expected.")
         else:
             self.addCleanup(
-                self.delete_volumes, vol_fail["bricks"][0]["volume"])
+                heketi_ops.heketi_volume_delete, self.heketi_client_node,
+                self.heketi_server_url, vol_fail["bricks"][0]["volume"])
             self.assertFalse(
                 vol_fail,
                 "Volume should have not been created. Out: %s" % vol_fail)

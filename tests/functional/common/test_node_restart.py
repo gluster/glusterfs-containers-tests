@@ -2,7 +2,7 @@
 import time
 
 from unittest import skip
-from cnslibs.cns.cns_baseclass import BaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.openshift_ops import (
     check_service_status_on_pod,
     get_ocp_gluster_pod_names,

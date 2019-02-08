@@ -1,16 +1,18 @@
 """Test cases to disable and enable node in heketi."""
 import json
 
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import (heketi_node_enable,
                                        heketi_node_info,
                                        heketi_node_disable,
                                        heketi_node_list,
-                                       heketi_volume_create)
+                                       heketi_volume_create,
+                                       heketi_volume_delete
+                                       )
 from glusto.core import Glusto as g
 
 
-class TestHeketiNodeState(HeketiBaseClass):
+class TestHeketiNodeState(BaseClass):
     """Test node enable and disable functionality."""
 
     def enable_node(self, node_id):
@@ -107,9 +109,9 @@ class TestHeketiNodeState(HeketiBaseClass):
         vol_info = heketi_volume_create(self.heketi_client_node,
                                         self.heketi_server_url, vol_size,
                                         json=True)
-        self.assertTrue(vol_info, (
-                "Failed to create heketi volume of size %d" % vol_size))
-        self.addCleanup(self.delete_volumes, vol_info['id'])
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_info['id'])
 
         node_id = online_hosts[0]['id']
         g.log.info("going to disable node id %s", node_id)
@@ -122,7 +124,9 @@ class TestHeketiNodeState(HeketiBaseClass):
             vol_size, raw_cli_output=True)
         if ret == 0:
             out_json = json.loads(out)
-            self.addCleanup(self.delete_volumes, out_json["id"])
+            self.addCleanup(
+                heketi_volume_delete, self.heketi_client_node,
+                self.heketi_server_url, out_json["id"])
         self.assertNotEqual(ret, 0,
                             ("Volume creation did not fail ret- %s "
                              "out- %s err- %s" % (ret, out, err)))
@@ -135,6 +139,6 @@ class TestHeketiNodeState(HeketiBaseClass):
         vol_info = heketi_volume_create(self.heketi_client_node,
                                         self.heketi_server_url, vol_size,
                                         json=True)
-        self.assertTrue(vol_info, (
-                "Failed to create heketi volume of size %d" % vol_size))
-        self.addCleanup(self.delete_volumes, vol_info['id'])
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_info['id'])

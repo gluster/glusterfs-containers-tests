@@ -1,5 +1,5 @@
 from cnslibs.common import exceptions
-from cnslibs.common.heketi_libs import HeketiBaseClass
+from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import (
     get_heketi_metrics,
     heketi_cluster_info,
@@ -17,7 +17,7 @@ from cnslibs.common.openshift_ops import (
     )
 
 
-class TestHeketiMetrics(HeketiBaseClass):
+class TestHeketiMetrics(BaseClass):
 
     def setUp(self):
         self.node = self.ocp_master_node[0]
@@ -177,9 +177,9 @@ class TestHeketiMetrics(HeketiBaseClass):
     def test_heketi_metrics_heketipod_failure(self):
         """Validate heketi metrics after heketi pod failure"""
         scale_dc_pod_amount_and_wait(
-            self.ocp_master_node, self.heketi_dc_name, pod_amount=0)
+            self.ocp_master_node[0], self.heketi_dc_name, pod_amount=0)
         self.addCleanup(
-            scale_dc_pod_amount_and_wait, self.ocp_master_node,
+            scale_dc_pod_amount_and_wait, self.ocp_master_node[0],
             self.heketi_dc_name, pod_amount=1)
 
         # verify that metrics is not accessable when heketi pod is down
@@ -190,11 +190,11 @@ class TestHeketiMetrics(HeketiBaseClass):
                 prometheus_format=True)
 
         scale_dc_pod_amount_and_wait(
-            self.ocp_master_node, self.heketi_dc_name, pod_amount=1)
+            self.ocp_master_node[0], self.heketi_dc_name, pod_amount=1)
 
         pod_name = get_pod_name_from_dc(
-            self.ocp_master_node, self.heketi_dc_name, self.heketi_dc_name)
-        wait_for_pod_be_ready(self.ocp_master_node, pod_name, wait_step=5)
+            self.ocp_master_node[0], self.heketi_dc_name, self.heketi_dc_name)
+        wait_for_pod_be_ready(self.ocp_master_node[0], pod_name, wait_step=5)
 
         for i in range(3):
             vol = heketi_volume_create(
