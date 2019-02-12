@@ -7,25 +7,8 @@
   # Group systems
   - instance-groups
 
-- hosts: master
-  gather_facts: yes
-  vars_files:
-  - vars/main.yaml
-  tasks:
-  - name: Enable Gluster 3 repo
-    import_role:
-      name: enable-gluster-repo
-  - name: Install heketi client for CNS and CRS needs
-    package:
-      name: heketi-client
-      state: latest
-    retries: 5
-    delay: 5
-    register: result
-    until: result is succeeded
-
 - hosts: single_master
-  gather_facts: no
+  gather_facts: yes
   vars_files:
   - vars/main.yaml
   roles:

@@ -119,3 +119,36 @@
             chapauthenabled: "true"
     when: cns_automation_config_file_path | length > 0
     run_once: true
+
+- name: Install 'heketi-client' package on all the master nodes
+  hosts: master
+  gather_facts: no
+  tasks:
+  - name: Get Heketi POD name on master node
+    command: "oc get pods -l glusterfs=heketi-storage-pod --no-headers {{ ''
+                  }}-o=custom-columns=:.metadata.name --namespace storage"
+    register: heketi_pod_name
+  - name: Read heketi-client package version from Heketi POD
+    shell: "oc exec --namespace storage {{ heketi_pod_name.stdout_lines[0]
+                }} -- rpm -q heketi-client --queryformat{{ ''
+                }} '%{version}-%{release}\n' | cut -d '.' -f 1,2,3"
+    register: heketi_client_version
+  - name: Enable Gluster 3 repo on master node
+    import_role:
+      name: enable-gluster-repo
+  - name: Remove existing heketi client from master node if present
+    package:
+      name: "heketi-client"
+      state: absent
+    retries: 5
+    delay: 5
+    register: result
+    until: result is succeeded
+  - name: Install heketi client on master node for CNS and CRS needs
+    package:
+      name: "heketi-client-{{heketi_client_version.stdout_lines[0].strip() }}*"
+      state: present
+    retries: 5
+    delay: 5
+    register: result
+    until: result is succeeded
