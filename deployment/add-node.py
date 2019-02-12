@@ -121,9 +121,9 @@ class VMWareAddNode(object):
 
         for line in fileinput.input(vmware_ini_path, inplace=True):
             if line.startswith("compute_nodes"):
-                print "compute_nodes=" + self.compute_nodes
+                print "compute_nodes=" + str(self.compute_nodes)
             elif line.startswith("storage_nodes"):
-                print "storage_nodes=" + self.storage_nodes
+                print "storage_nodes=" + str(self.storage_nodes)
             else:
                 print line,
 
