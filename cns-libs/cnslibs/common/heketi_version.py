@@ -1,9 +1,11 @@
 """
-Use this module for any Heketi client package version comparisons.
+Use this module for any Heketi server and client packages versions comparisons.
 
 Usage example:
 
-    # Assume Heketi version is '7.0.0-3'. Then we have following:
+    # Assume Heketi server version is '7.0.0-3' and client is '7.0.0-5'
+    Then we have following:
+
     from cnslibs.common import heketi_version
     version = heketi_version.get_heketi_version()
     if version < '7.0.0-4':
@@ -12,21 +14,28 @@ Usage example:
         # False
     if '7.0.0-2' < version <= '7.0.0-3':
         # True
+
+    At first step, we compare requested version against the Heketi server
+    version, making sure they are compatible. Then, we make sure, that
+    existing heketi client package has either the same or newer version than
+    server's one.
 """
 import re
 
 from glusto.core import Glusto as g
 import six
 
+from cnslibs.common import command
 from cnslibs.common import exceptions
 
 
 HEKETI_VERSION_RE = r"(\d+)(?:\.)(\d+)(?:\.)(\d+)(?:\-)(\d+)$"
-HEKETI_VERSION = None
+HEKETI_CLIENT_VERSION = None
+HEKETI_SERVER_VERSION = None
 
 
-def _get_heketi_version_str(hostname=None):
-    """Gets Heketi client package version.
+def _get_heketi_client_version_str(hostname=None):
+    """Gets Heketi client package version from heketi client node.
 
     Args:
         hostname (str): Node on which the version check command should run.
@@ -42,8 +51,8 @@ def _get_heketi_version_str(hostname=None):
            "cut -d '.' -f 1,2,3")
     ret, out, err = g.run(hostname, cmd, "root")
     if ret != 0:
-        msg = "Failed to get heketi version. \n'err': %s\n 'out': %s" % (
-            err, out)
+        msg = ("Failed to get heketi client version. "
+               "\n'err': %s\n 'out': %s" % (err, out))
         g.log.error(msg)
         raise AssertionError(msg)
     out = out.strip()
@@ -53,6 +62,49 @@ def _get_heketi_version_str(hostname=None):
         raise exceptions.ExecutionError(error_msg)
 
     return out
+
+
+def _get_heketi_server_version_str(ocp_client_node=None):
+    """Gets Heketi server package version from Heketi POD.
+
+    Args:
+        ocp_client_node (str): Node on which the version check command should
+                               run.
+    Returns:
+        str : heketi version, i.e. '7.0.0-1'
+    Raises: 'exceptions.ExecutionError' if failed to get version
+    """
+    if not ocp_client_node:
+        ocp_client_node = g.config["ocp_servers"]["client"].keys()[0]
+    get_package_version_cmd = (
+        "rpm -q heketi --queryformat '%{version}-%{release}\n' | "
+        "cut -d '.' -f 1,2,3")
+
+    # NOTE(vponomar): we implement Heketi POD call command here, not in common
+    # module for OC commands just to avoid cross-reference imports.
+    get_pods_cmd = "oc get -o wide --no-headers=true pods --selector heketi"
+    heketi_pods = command.cmd_run(get_pods_cmd, hostname=ocp_client_node)
+
+    err_msg = ""
+    for heketi_pod_line in heketi_pods.split("\n"):
+        heketi_pod_data = heketi_pod_line.split()
+        if ("-deploy" in heketi_pod_data[0] or
+                heketi_pod_data[1].lower() != "1/1" or
+                heketi_pod_data[2].lower() != "running"):
+            continue
+        try:
+            pod_cmd = "oc exec %s -- %s" % (
+                heketi_pod_data[0], get_package_version_cmd)
+            return command.cmd_run(pod_cmd, hostname=ocp_client_node)
+        except Exception as e:
+            err = ("Failed to run '%s' command on '%s' Heketi POD. "
+                   "Error: %s\n" % (pod_cmd, heketi_pod_data[0], e))
+            err_msg += err
+            g.log.error(err)
+    if not err_msg:
+        err_msg += "Haven't found 'Running' and 'ready' (1/1) Heketi PODs.\n"
+    err_msg += "Heketi PODs: %s" % heketi_pods
+    raise exceptions.ExecutionError(err_msg)
 
 
 def _parse_heketi_version(heketi_version_str):
@@ -110,32 +162,62 @@ class HeketiVersion(object):
                 "'%s' type is not supported for Heketi version "
                 "comparison." % type(other))
 
+    def _compare_client_and_server_versions(self, client_v, server_v):
+        if client_v < server_v:
+            raise Exception(
+                "Client version (%s) is older than server's (%s)." % (
+                    client_v, server_v))
+
     def __lt__(self, other):
+        global HEKETI_CLIENT_VERSION
+        global HEKETI_SERVER_VERSION
+        self._compare_client_and_server_versions(
+            HEKETI_CLIENT_VERSION.v, HEKETI_SERVER_VERSION.v)
         adapted_other = self._adapt_other(other)
         return self.v < adapted_other.v
 
     def __le__(self, other):
+        global HEKETI_CLIENT_VERSION
+        global HEKETI_SERVER_VERSION
+        self._compare_client_and_server_versions(
+            HEKETI_CLIENT_VERSION.v, HEKETI_SERVER_VERSION.v)
         adapted_other = self._adapt_other(other)
         return self.v <= adapted_other.v
 
     def __eq__(self, other):
+        global HEKETI_CLIENT_VERSION
+        global HEKETI_SERVER_VERSION
+        self._compare_client_and_server_versions(
+            HEKETI_CLIENT_VERSION.v, HEKETI_SERVER_VERSION.v)
         adapted_other = self._adapt_other(other)
         return self.v == adapted_other.v
 
     def __ge__(self, other):
+        global HEKETI_CLIENT_VERSION
+        global HEKETI_SERVER_VERSION
+        self._compare_client_and_server_versions(
+            HEKETI_CLIENT_VERSION.v, HEKETI_SERVER_VERSION.v)
         adapted_other = self._adapt_other(other)
         return self.v >= adapted_other.v
 
     def __gt__(self, other):
+        global HEKETI_CLIENT_VERSION
+        global HEKETI_SERVER_VERSION
+        self._compare_client_and_server_versions(
+            HEKETI_CLIENT_VERSION.v, HEKETI_SERVER_VERSION.v)
         adapted_other = self._adapt_other(other)
         return self.v > adapted_other.v
 
     def __ne__(self, other):
+        global HEKETI_CLIENT_VERSION
+        global HEKETI_SERVER_VERSION
+        self._compare_client_and_server_versions(
+            HEKETI_CLIENT_VERSION.v, HEKETI_SERVER_VERSION.v)
         adapted_other = self._adapt_other(other)
         return self.v != adapted_other.v
 
 
-def get_heketi_version(hostname=None):
+def get_heketi_version(hostname=None, ocp_client_node=None):
     """Cacher of the Heketi client package version.
 
     Version of Heketi client package is constant value. So, we call API just
@@ -146,11 +228,19 @@ def get_heketi_version(hostname=None):
             If not specified, then first key
             from 'openshift.heketi_config.heketi_client_node' config option
             will be picked up.
+        ocp_client_node (str): a node with the 'oc' client,
+            where Heketi POD command will run.
+            If not specified, then first key
+            from 'ocp_servers.client' config option will be picked up.
     Returns:
         HeketiVersion object instance.
     """
-    global HEKETI_VERSION
-    if not HEKETI_VERSION:
-        version_str = _get_heketi_version_str(hostname=hostname)
-        HEKETI_VERSION = HeketiVersion(version_str)
-    return HEKETI_VERSION
+    global HEKETI_CLIENT_VERSION
+    global HEKETI_SERVER_VERSION
+    if not (HEKETI_SERVER_VERSION and HEKETI_CLIENT_VERSION):
+        client_version_str = _get_heketi_client_version_str(hostname=hostname)
+        server_version_str = _get_heketi_server_version_str(
+            ocp_client_node=ocp_client_node)
+        HEKETI_CLIENT_VERSION = HeketiVersion(client_version_str)
+        HEKETI_SERVER_VERSION = HeketiVersion(server_version_str)
+    return HEKETI_SERVER_VERSION
