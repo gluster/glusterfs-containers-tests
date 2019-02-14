@@ -17,4 +17,3 @@
     - cloud-provider-setup
     - docker-storage-setup
     - openshift-volume-quota
-  ignore_errors: yes
