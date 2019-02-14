@@ -1451,3 +1451,56 @@ def restart_service_on_gluster_pod_or_node(ocp_client, service, gluster_node):
     """
     cmd_run_on_gluster_pod_or_node(
         ocp_client, SERVICE_RESTART % service, gluster_node)
+
+
+def oc_adm_manage_node(
+        ocp_client, operation, nodes=None, node_selector=None):
+    """Manage common operations on nodes for administrators.
+
+    Args:
+        ocp_client (str): host on which we want to run 'oc' commands.
+        operations (str):
+            eg. --schedulable=true.
+        nodes (list): list of nodes to manage.
+        node_selector (str): selector to select the nodes.
+            Note: 'nodes' and 'node_selector' are are mutually exclusive.
+            Only either of them should be passed as parameter not both.
+    Returns:
+        str: In case of success.
+    Raises:
+        AssertionError: In case of any failures.
+    """
+
+    if (not nodes) == (not node_selector):
+        raise AssertionError(
+            "'nodes' and 'node_selector' are mutually exclusive. "
+            "Only either of them should be passed as parameter not both.")
+
+    cmd = "oc adm manage-node %s" % operation
+    if node_selector:
+        cmd += " --selector %s" % node_selector
+    else:
+        node = ' '.join(nodes)
+        cmd += " " + node
+
+    return command.cmd_run(cmd, ocp_client)
+
+
+def oc_get_schedulable_nodes(ocp_client):
+    """Get the list of schedulable nodes.
+
+    Args:
+        ocp_client (str): host on which we want to run 'oc' commands.
+
+    Returns:
+        list: list of nodes if present.
+    Raises:
+        AssertionError: In case of any failures.
+    """
+    cmd = ("oc get nodes --field-selector=spec.unschedulable!=true "
+           "-o=custom-columns=:.metadata.name,:.spec.taints[*].effect "
+           "--no-headers | awk '!/NoSchedule/{print $1}'")
+
+    out = command.cmd_run(cmd, ocp_client)
+
+    return out.split('\n') if out else out

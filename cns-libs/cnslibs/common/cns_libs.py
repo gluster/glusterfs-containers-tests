@@ -1,6 +1,7 @@
 from glusto.core import Glusto as g
 import yaml
 
+from cnslibs.common.command import cmd_run
 from cnslibs.common.exceptions import (
     ExecutionError,
     NotSupportedException)
@@ -10,7 +11,7 @@ from cnslibs.common.openshift_version import get_openshift_version
 MASTER_CONFIG_FILEPATH = "/etc/origin/master/master-config.yaml"
 
 
-def validate_multipath_pod(hostname, podname, hacount):
+def validate_multipath_pod(hostname, podname, hacount, mpath=""):
     '''
      This function validates multipath for given app-pod
      Args:
@@ -31,7 +32,7 @@ def validate_multipath_pod(hostname, podname, hacount):
     pod_nodename = out.strip()
     active_node_count = 1
     enable_node_count = hacount - 1
-    cmd = "multipath -ll | grep 'status=active' | wc -l"
+    cmd = "multipath -ll %s | grep 'status=active' | wc -l" % mpath
     ret, out, err = g.run(pod_nodename, cmd, "root")
     if ret != 0 or out == "":
         g.log.error("failed to exectute cmd %s on %s, err %s"
@@ -42,7 +43,7 @@ def validate_multipath_pod(hostname, podname, hacount):
         g.log.error("active node count on %s for %s is %s and not 1"
                     % (pod_nodename, podname, active_count))
         return False
-    cmd = "multipath -ll | grep 'status=enabled' | wc -l"
+    cmd = "multipath -ll %s | grep 'status=enabled' | wc -l" % mpath
     ret, out, err = g.run(pod_nodename, cmd, "root")
     if ret != 0 or out == "":
         g.log.error("failed to exectute cmd %s on %s, err %s"
@@ -132,3 +133,95 @@ def enable_pvc_resize(master_node):
         raise ExecutionError(err_msg)
 
     return True
+
+
+def get_iscsi_session(node, iqn=None, raise_on_error=True):
+    """Get the list of ip's of iscsi sessions.
+
+    Args:
+        node (str): where we want to run the command.
+        iqn (str): name of iqn.
+    Returns:
+        list: list of session ip's.
+    raises:
+        ExecutionError: In case of any failure if raise_on_error=True.
+    """
+
+    cmd = "set -o pipefail && ((iscsiadm -m session"
+    if iqn:
+        cmd += " | grep %s" % iqn
+    cmd += ") | awk '{print $3}' | cut -d ':' -f 1)"
+
+    out = cmd_run(cmd, node, raise_on_error=raise_on_error)
+
+    return out.split("\n") if out else out
+
+
+def get_iscsi_block_devices_by_path(node, iqn=None, raise_on_error=True):
+    """Get list of iscsiadm block devices from path.
+
+    Args:
+        node (str): where we want to run the command.
+        iqn (str): name of iqn.
+    returns:
+        dictionary: block devices and there ips.
+    raises:
+        ExecutionError: In case of any failure if raise_on_error=True.
+    """
+    cmd = "set -o pipefail && ((ls --format=context /dev/disk/by-path/ip*"
+    if iqn:
+        cmd += " | grep %s" % iqn
+    cmd += ") | awk -F '/|:|-' '{print $10,$25}')"
+
+    out = cmd_run(cmd, node, raise_on_error=raise_on_error)
+
+    if not out:
+        return out
+
+    out_dic = {}
+    for i in out.split("\n"):
+        ip, device = i.strip().split(" ")
+        out_dic[device] = ip
+
+    return out_dic
+
+
+def get_mpath_name_from_device_name(node, device, raise_on_error=True):
+    """Get name of mpath device form block device
+
+    Args:
+        node (str): where we want to run the command.
+        device (str): for which we have to find mpath.
+    Returns:
+        str: name of device
+    Raises:
+        ExecutionError: In case of any failure if raise_on_error=True.
+    """
+    cmd = ("set -o pipefail && ((lsblk -n --list --output=NAME /dev/%s)"
+           " | tail -1)" % device)
+
+    return cmd_run(cmd, node, raise_on_error=raise_on_error)
+
+
+def get_active_and_enabled_devices_from_mpath(node, mpath):
+    """Get active and enabled devices from mpath name.
+
+    Args:
+        node (str): where we want to run the command.
+        mpath (str): name of mpath for which we have to find devices.
+    Returns:
+        dictionary: devices info
+    Raises:
+        ExecutionError: In case of any failure
+    """
+
+    cmd = ("set -o pipefail && ((multipath -ll %s | grep -A 1 status=%s)"
+           " | cut -d ':' -f 4 | awk '{print $2}')")
+
+    active = cmd_run(cmd % (mpath, 'active'), node).split('\n')[1::2]
+    enabled = cmd_run(cmd % (mpath, 'enabled'), node).split('\n')[1::2]
+
+    out_dic = {
+        'active': active,
+        'enabled': enabled}
+    return out_dic
