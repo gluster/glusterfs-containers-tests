@@ -41,4 +41,7 @@
       connect_timeout: 5
       state: started
     with_items: "{{ hostnames_for_reboot }}"
+
+  - name: Sleep for some time to let services start up in time
+    shell: "sleep 60"
   when: "disable_yum_update_and_reboot is undefined or not (disable_yum_update_and_reboot | bool)"
