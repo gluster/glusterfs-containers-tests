@@ -15,6 +15,11 @@
   when: s.stat.exists
 
 - block:
+    - name: Install 'sos' package
+      yum:
+        name: sos
+        state: installed
+      ignore_errors: yes
     - name: be sure all pre-req packages are installed
       yum: name={{item}} state=installed
       with_items:

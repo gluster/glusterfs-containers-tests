@@ -74,7 +74,9 @@
     - glusterd
     - heketi
     - gluster-blockd
+    - gluster-block-target
     - tcmu-runner
+    - rpcbind
     heketi_pod_package_list:
     - gluster
     - heketi
