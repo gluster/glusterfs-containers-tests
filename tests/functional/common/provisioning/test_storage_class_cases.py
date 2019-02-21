@@ -19,6 +19,7 @@ from cnslibs.common.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence
 )
+from cnslibs.common.heketi_ops import verify_volume_name_prefix
 
 
 @ddt.ddt
@@ -244,3 +245,16 @@ class TestStorageClassCases(BaseClass):
             raise AssertionError(
                 "Invalid chapauthenabled value '%s'" % chapauthenabled
             )
+
+    def test_create_and_verify_pvc_with_volume_name_prefix(self):
+        """create and verify pvc with volname prefix on an app pod"""
+        sc_name = self.create_storage_class(create_vol_name_prefix=True)
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
+        namespace = (self.sc.get(
+            'secretnamespace',
+            self.sc.get('restsecretnamespace', 'default')))
+        verify_volume_name_prefix(
+            self.heketi_client_node,
+            self.sc.get("volumenameprefix", "autotest"),
+            namespace, pvc_name, self.heketi_server_url)
+        self.create_dc_with_pvc(pvc_name)
