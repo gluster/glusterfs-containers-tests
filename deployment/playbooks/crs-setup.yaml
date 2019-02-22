@@ -25,9 +25,12 @@
 - hosts: localhost
   ignore_errors: no
   tasks:
+  - name: Get home dir of the current user
+    shell: "getent passwd $(whoami) | cut -d: -f6"
+    register: user_home_dir
   - name: Define path for the SSH key
     set_fact:
-      crs_ssh_keypath: "/root/.ssh/crs_nodes_{{
+      crs_ssh_keypath: "{{ user_home_dir.stdout_lines[0].strip() }}/.ssh/crs_nodes_{{
           cluster_id + '_' + (999999999999999 | random | string ) }}"
   - name: Generate SSH key pair for Heketi and CRS interactions
     shell: "yes y| ssh-keygen -b 2048 -t rsa -f {{ crs_ssh_keypath }} -q -N ''"
