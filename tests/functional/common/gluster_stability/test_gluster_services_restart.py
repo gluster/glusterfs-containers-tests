@@ -35,6 +35,7 @@ from cnslibs.common.gluster_ops import (
     restart_gluster_vol_brick_processes,
     wait_to_heal_complete,
 )
+from cnslibs.common import utils
 
 
 HEKETI_BLOCK_VOLUME_REGEX = "^Id:(.*).Cluster:(.*).Name:%s_(.*)$"
@@ -53,11 +54,7 @@ class GlusterStabilityTestSetup(BaseClass):
            in cleanup method
         """
         self.oc_node = self.ocp_master_node[0]
-
-        # prefix used to create resources, generating using glusto_test_id
-        # which uses time and date of test case
-        self.prefix = "autotest-%s" % (self.glustotest_run_id.replace("_", ""))
-
+        self.prefix = "autotest-%s" % utils.get_random_str()
         _storage_class = self.storage_classes.get(
             'storage_class2',
             self.storage_classes.get('block_storage_class'))
