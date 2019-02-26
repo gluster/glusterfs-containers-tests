@@ -3,11 +3,13 @@ from unittest import skip
 from cnslibs.common.baseclass import GlusterBlockBaseClass
 from cnslibs.common.exceptions import ExecutionError
 from cnslibs.common.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
     get_gluster_pod_names_by_pvc_name,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
     oc_create_app_dc_with_io,
     oc_create_pvc,
+    oc_get_pods,
     oc_delete,
     oc_get_custom_resource,
     oc_rsh,
@@ -192,30 +194,25 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         self.create_storage_class()
         self.create_and_wait_for_pvc()
 
-        # Get list of Gluster PODs
-        g_pod_list_cmd = (
-            "oc get pods --all-namespaces -l glusterfs-node=pod "
-            "-o=custom-columns=:.metadata.name,:.metadata.namespace")
-        ret, out, err = g.run(self.ocp_client[0], g_pod_list_cmd, "root")
+        # Get list of Gluster nodes
+        g_hosts = list(g.config.get("gluster_servers", {}).keys())
+        self.assertGreater(
+            len(g_hosts), 0,
+            "We expect, at least, one Gluster Node/POD:\n %s" % g_hosts)
 
-        self.assertEqual(ret, 0, "Failed to get list of Gluster PODs.")
-        g_pod_data_list = out.split()
-        g_pods_namespace = g_pod_data_list[1]
-        g_pods = [pod for pod in out.split()[::2]]
+        # Perform checks on Gluster nodes/PODs
         logs = ("gluster-block-configshell", "gluster-blockd")
 
-        # Verify presence and not emptiness of logs on Gluster PODs
-        self.assertGreater(len(g_pods), 0, "We expect some PODs:\n %s" % out)
-        for g_pod in g_pods:
+        gluster_pods = oc_get_pods(
+            self.ocp_client[0], selector="glusterfs-node=pod")
+        if gluster_pods:
+            cmd = "tail -n 5 /var/log/glusterfs/gluster-block/%s.log"
+        else:
+            cmd = "tail -n 5 /var/log/gluster-block/%s.log"
+        for g_host in g_hosts:
             for log in logs:
-                cmd = (
-                    "oc exec -n %s %s -- "
-                    "tail -n 5 /var/log/glusterfs/gluster-block/%s.log" % (
-                        g_pods_namespace, g_pod, log))
-                ret, out, err = g.run(self.ocp_client[0], cmd, "root")
-
-                self.assertFalse(err, "Error output is not empty: \n%s" % err)
-                self.assertEqual(ret, 0, "Failed to exec '%s' command." % cmd)
+                out = cmd_run_on_gluster_pod_or_node(
+                    self.ocp_client[0], cmd % log, gluster_node=g_host)
                 self.assertTrue(out, "Command '%s' output is empty." % cmd)
 
     def test_dynamic_provisioning_glusterblock_heketidown_pvc_delete(self):
