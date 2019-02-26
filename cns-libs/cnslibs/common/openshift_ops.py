@@ -790,6 +790,7 @@ def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node=None):
     """
     # Containerized Glusterfs
     gluster_pods = oc_get_pods(ocp_client_node, selector="glusterfs-node=pod")
+    err_msg = ""
     if gluster_pods:
         if gluster_node:
             for pod_name, pod_data in gluster_pods.items():
@@ -803,7 +804,6 @@ def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node=None):
         else:
             gluster_pod_names = gluster_pods.keys()
 
-        err_msg = ""
         for gluster_pod_name in gluster_pod_names:
             try:
                 pod_cmd = "oc exec %s -- %s" % (gluster_pod_name, cmd)
@@ -824,12 +824,15 @@ def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node=None):
         try:
             return command.cmd_run(cmd, hostname=g_host)
         except Exception as e:
-            g.log.error(
-                "Failed to run '%s' command on '%s' Gluster node. "
-                "Error: %s" % (cmd, g_host,  e))
+            err = ("Failed to run '%s' command on '%s' Gluster node. "
+                   "Error: %s\n" % (cmd, g_host, e))
+            err_msg += err
+            g.log.error(err)
 
-    raise exceptions.ExecutionError(
-        "Haven't found neither Gluster PODs nor Gluster nodes.")
+    if not err_msg:
+        raise exceptions.ExecutionError(
+            "Haven't found neither Gluster PODs nor Gluster nodes.")
+    raise exceptions.ExecutionError(err_msg)
 
 
 def get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name):
