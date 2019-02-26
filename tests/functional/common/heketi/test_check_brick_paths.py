@@ -3,31 +3,30 @@ from glusto.core import Glusto as g
 from cnslibs.common.baseclass import BaseClass
 from cnslibs.common.heketi_ops import (heketi_volume_create,
                                        heketi_volume_delete)
-from cnslibs.common.openshift_ops import get_ocp_gluster_pod_names
+from cnslibs.common import openshift_ops
 
 
 class TestHeketiVolume(BaseClass):
     """Check volume bricks presence in fstab files on Gluster PODs."""
 
-    def _find_bricks_in_fstab_files(self, brick_paths, present):
+    def _find_bricks(self, brick_paths, present):
         """Make sure that vol brick paths either exist or not in fstab file."""
         oc_node = self.ocp_master_node[0]
-        gluster_pods = get_ocp_gluster_pod_names(oc_node)
-        get_fstab_entries_cmd = "oc exec %s -- cat /var/lib/heketi/fstab"
-        fstab_files_data = ''
-        for gluster_pod in gluster_pods:
-            ret, out, err = g.run(oc_node, get_fstab_entries_cmd % gluster_pod)
-            self.assertEqual(
-                ret, 0,
-                "Failed to read fstab file on '%s' gluster POD. "
-                "\nOut: %s \nError: %s" % (gluster_pod, out, err))
-            fstab_files_data += '%s\n' % out
+        cmd = (
+            'bash -c "'
+            'if [ -d "%s" ]; then echo present; else echo absent; fi"')
+        g_hosts = list(g.config.get("gluster_servers", {}).keys())
+        results = []
         assertion_method = self.assertIn if present else self.assertNotIn
         for brick_path in brick_paths:
-            assertion_method(brick_path, fstab_files_data)
+            for g_host in g_hosts:
+                out = openshift_ops.cmd_run_on_gluster_pod_or_node(
+                    oc_node, cmd % brick_path, gluster_node=g_host)
+                results.append(out)
+            assertion_method('present', results)
 
-    def test_to_check_entry_in_fstab_file(self):
-        """Validate /etc/fstab entries after creation/deletion of volume"""
+    def test_validate_brick_paths_on_gluster_pods_or_nodes(self):
+        """Validate brick paths after creation and deletion of a volume."""
 
         # Create heketi volume
         vol = heketi_volume_create(
@@ -40,10 +39,10 @@ class TestHeketiVolume(BaseClass):
             raise_on_error=False)
 
         # Gather brick paths
-        brick_paths = [p['path'].rstrip("/brick") for p in vol["bricks"]]
+        brick_paths = [p['path'] for p in vol["bricks"]]
 
         # Make sure that volume's brick paths exist in the fstab files
-        self._find_bricks_in_fstab_files(brick_paths, present=True)
+        self._find_bricks(brick_paths, present=True)
 
         # Delete heketi volume
         out = heketi_volume_delete(
@@ -51,4 +50,4 @@ class TestHeketiVolume(BaseClass):
         self.assertTrue(out, "Failed to delete heketi volume %s" % vol_id)
 
         # Make sure that volume's brick paths are absent in the fstab file
-        self._find_bricks_in_fstab_files(brick_paths, present=False)
+        self._find_bricks(brick_paths, present=False)
