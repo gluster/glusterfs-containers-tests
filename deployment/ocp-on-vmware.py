@@ -59,6 +59,7 @@ class OCPOnVMWare(object):
     gluster_puddle_repo = None
     web_console_install = None
     disable_yum_update_and_reboot = None
+    openshift_use_crio = None
 
     def __init__(self):
         self._parse_cli_args()
@@ -149,6 +150,7 @@ class OCPOnVMWare(object):
             'openshift_disable_check': (
                 'docker_storage,docker_image_availability,disk_availability'),
             'disable_yum_update_and_reboot': 'no',
+            'openshift_use_crio': 'false',
         }}
         if six.PY3:
             config = configparser.ConfigParser()
@@ -225,6 +227,8 @@ class OCPOnVMWare(object):
                 'docker_storage,docker_image_availability,disk_availability')
         self.disable_yum_update_and_reboot = config.get(
             'vmware', 'disable_yum_update_and_reboot').strip() or 'no'
+        self.openshift_use_crio = (
+            config.get('vmware', 'openshift_use_crio') or '').strip()
         err_count = 0
 
         required_vars = {
@@ -437,6 +441,14 @@ class OCPOnVMWare(object):
         if self.web_console_install:
             playbook_vars_dict['openshift_web_console_install'] = (
                 self.web_console_install)
+        if self.openshift_use_crio:
+            playbook_vars_dict['openshift_use_crio'] = self.openshift_use_crio
+            playbook_vars_dict['openshift_use_crio_only'] = (
+                self.openshift_use_crio)
+            playbook_vars_dict['openshift_crio_enable_docker_gc'] = (
+                self.openshift_use_crio)
+        else:
+            playbook_vars_dict['openshift_use_crio'] = 'false'
         if self.openshift_vers in ('v3_6', 'v3_7'):
             playbook_vars_dict['docker_version'] = '1.12.6'
 

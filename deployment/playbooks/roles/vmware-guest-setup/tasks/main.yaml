@@ -27,16 +27,23 @@
         - python-six
         - iptables
         - iptables-services
-        - docker{{ '-' + docker_version if docker_version is defined else '' }}
         - dnsmasq
       retries: 5
       delay: 5
       register: result
       until: result is succeeded
+    - name: Install docker
+      yum: name={{item}} state=installed
+      with_items:
+        - docker{{ '-' + docker_version if docker_version is defined else '' }}
+      retries: 5
+      delay: 5
+      register: result
+      until: result is succeeded
+      when: not (openshift_use_crio | bool)
 
     - name: be sure openvmtools is running and enabled
       service: name=vmtoolsd state=started enabled=yes
-
   when:
     - not is_atomic | bool
     - ansible_distribution == "RedHat"

@@ -29,23 +29,68 @@
   become: no
   tasks:
   - set_fact:
+      openshift_crio_docker_gc_node_selector:
+        runtime: crio
       openshift_node_groups:
       - name: node-config-master
         labels:
         - 'node-role.kubernetes.io/master=true'
         - 'role=master'
         edits: []
+      - name: node-config-master-crio
+        labels:
+        - 'node-role.kubernetes.io/master=true'
+        - 'role=master'
+        - 'runtime=cri-o'
+        edits:
+        - key: kubeletArguments.container-runtime
+          value: ["remote"]
+        - key: kubeletArguments.container-runtime-endpoint
+          value: ["/var/run/crio/crio.sock"]
+        - key: kubeletArguments.image-service-endpoint
+          value: ["/var/run/crio/crio.sock"]
+        - key: kubeletArguments.runtime-request-timeout
+          value: ["10m"]
       - name: node-config-compute
         labels:
         - 'node-role.kubernetes.io/compute=true'
         - 'node-role.kubernetes.io/infra=true'
         - 'role=compute'
         edits: []
+      - name: node-config-compute-crio
+        labels:
+        - 'node-role.kubernetes.io/compute=true'
+        - 'node-role.kubernetes.io/infra=true'
+        - 'role=compute'
+        - 'runtime=cri-o'
+        edits:
+        - key: kubeletArguments.container-runtime
+          value: ["remote"]
+        - key: kubeletArguments.container-runtime-endpoint
+          value: ["/var/run/crio/crio.sock"]
+        - key: kubeletArguments.image-service-endpoint
+          value: ["/var/run/crio/crio.sock"]
+        - key: kubeletArguments.runtime-request-timeout
+          value: ["10m"]
       - name: node-config-storage
         labels:
         - 'node-role.kubernetes.io/storage=true'
         - 'role=storage'
         edits: []
+      - name: node-config-storage-crio
+        labels:
+        - 'node-role.kubernetes.io/storage=true'
+        - 'role=storage'
+        - 'runtime=cri-o'
+        edits:
+        - key: kubeletArguments.container-runtime
+          value: ["remote"]
+        - key: kubeletArguments.container-runtime-endpoint
+          value: ["/var/run/crio/crio.sock"]
+        - key: kubeletArguments.image-service-endpoint
+          value: ["/var/run/crio/crio.sock"]
+        - key: kubeletArguments.runtime-request-timeout
+          value: ["10m"]
 
 - include: add-node-prerequisite.yaml
   when: openshift_vers in ['v3_6', 'v3_7']

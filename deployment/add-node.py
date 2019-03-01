@@ -76,6 +76,7 @@ class VMWareAddNode(object):
     cns_glusterfs_heketi_image = None
     cns_glusterfs_heketi_version = None
     disable_yum_update_and_reboot = None
+    openshift_use_crio = None
 
     def __init__(self):
         self.parse_cli_args()
@@ -218,6 +219,7 @@ class VMWareAddNode(object):
             'openshift_disable_check': (
                 'docker_storage,docker_image_availability,disk_availability'),
             'disable_yum_update_and_reboot': 'no',
+            'openshift_use_crio': 'false',
         }}
         if six.PY3:
             config = configparser.ConfigParser()
@@ -314,6 +316,8 @@ class VMWareAddNode(object):
         self.node_type = config.get('vmware', 'node_type')
         self.node_number = config.get('vmware', 'node_number')
         self.tag = config.get('vmware', 'tag')
+        self.openshift_use_crio = (
+            config.get('vmware', 'openshift_use_crio') or '').strip()
         err_count = 0
 
         if 'storage' in self.node_type:
@@ -558,6 +562,15 @@ class VMWareAddNode(object):
                 self.docker_insecure_registries)
         if self.docker_image_tag:
             playbook_vars_dict['openshift_image_tag'] = self.docker_image_tag
+
+        if self.openshift_use_crio:
+            playbook_vars_dict['openshift_use_crio'] = self.openshift_use_crio
+            playbook_vars_dict['openshift_use_crio_only'] = (
+                self.openshift_use_crio)
+            playbook_vars_dict['openshift_crio_enable_docker_gc'] = (
+                self.openshift_use_crio)
+        else:
+            playbook_vars_dict['openshift_use_crio'] = 'false'
 
         if self.openshift_vers in ("v3_6", "v3_7", "v3_9"):
             for key in ('image', 'version',
