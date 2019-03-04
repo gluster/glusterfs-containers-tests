@@ -100,7 +100,13 @@ except ImportError:
     HAS_PYVMOMI = False
 
 from ansible.module_utils import basic  # noqa
-from ansible.module_utils import vmware  # noqa
+from ansible.module_utils.vmware import (  # noqa
+    connect_to_api,
+    vmware_argument_spec,
+    find_datacenter_by_name,
+    find_cluster_by_name_datacenter,
+    wait_for_task,
+)
 
 
 class VMwareFolder(object):
@@ -120,12 +126,12 @@ class VMwareFolder(object):
         self.folder_name = None
         self.folder_expanded = None
         self.folder_full_path = []
-        self.content = vmware.connect_to_api(module)
+        self.content = connect_to_api(module)
 
     def find_host_by_cluster_datacenter(self):
-        self.dc_obj = vmware.find_datacenter_by_name(
+        self.dc_obj = find_datacenter_by_name(
             self.content, self.datacenter)
-        self.cluster_obj = vmware.find_cluster_by_name_datacenter(
+        self.cluster_obj = find_cluster_by_name_datacenter(
             self.dc_obj, self.cluster)
 
         for host in self.cluster_obj.host:
@@ -194,7 +200,7 @@ class VMwareFolder(object):
         task = self.get_obj([vim.Folder], f).Destroy()
 
         try:
-            success, result = vmware.wait_for_task(task)
+            success, result = wait_for_task(task)
         except Exception:
             self.module.fail_json(
                 msg="Failed to remove folder '%s'" % self.folder)
@@ -204,9 +210,9 @@ class VMwareFolder(object):
     def state_add_folder(self):
         changed = True
 
-        self.dc_obj = vmware.find_datacenter_by_name(
+        self.dc_obj = find_datacenter_by_name(
             self.content, self.datacenter)
-        self.cluster_obj = vmware.find_cluster_by_name_datacenter(
+        self.cluster_obj = find_cluster_by_name_datacenter(
             self.dc_obj, self.cluster)
         self.folder_expanded = self.folder.split("/")
         index = 0
@@ -236,7 +242,7 @@ class VMwareFolder(object):
 
 
 def main():
-    argument_spec = vmware.vmware_argument_spec()
+    argument_spec = vmware_argument_spec()
     argument_spec.update(dict(datacenter=dict(required=True, type='str'),
                               cluster=dict(required=True, type='str'),
                               folder=dict(required=True, type='str'),

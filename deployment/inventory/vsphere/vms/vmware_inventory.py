@@ -191,7 +191,7 @@ class VMWareInventory(object):
         # apply defaults
         for k, v in defaults['vmware'].items():
             if not config.has_option('vmware', k):
-                    config.set('vmware', k, str(v))
+                config.set('vmware', k, str(v))
 
         # where is the cache?
         self.cache_dir = os.path.expanduser(config.get('vmware', 'cache_path'))
@@ -263,7 +263,7 @@ class VMWareInventory(object):
 
         if hasattr(ssl, 'SSLContext'):
             # older ssl libs do not have an SSLContext method:
-                #     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+            #     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
             #     AttributeError: 'module' object has no attribute 'SSLContext'
             # older pyvmomi version also do not have an sslcontext kwarg:
             # https://github.com/vmware/pyvmomi/commit/92c1de5056be7c5390ac2a28eb08ad939a4b7cdd

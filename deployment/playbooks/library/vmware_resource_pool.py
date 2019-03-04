@@ -158,7 +158,14 @@ except ImportError:
     HAS_PYVMOMI = False
 
 from ansible.module_utils import basic  # noqa
-from ansible.module_utils import vmware  # noqa
+from ansible.module_utils.vmware import (  # noqa
+    get_all_objs,
+    connect_to_api,
+    vmware_argument_spec,
+    find_datacenter_by_name,
+    find_cluster_by_name_datacenter,
+    wait_for_task,
+)
 
 
 class VMwareResourcePool(object):
@@ -185,12 +192,12 @@ class VMwareResourcePool(object):
         self.cluster_obj = None
         self.host_obj = None
         self.resource_pool_obj = None
-        self.content = vmware.connect_to_api(module)
+        self.content = connect_to_api(module)
 
     def find_host_by_cluster_datacenter(self):
-        self.dc_obj = vmware.find_datacenter_by_name(
+        self.dc_obj = find_datacenter_by_name(
             self.content, self.datacenter)
-        self.cluster_obj = vmware.find_cluster_by_name_datacenter(
+        self.cluster_obj = find_cluster_by_name_datacenter(
             self.dc_obj, self.cluster)
 
         for host in self.cluster_obj.host:
@@ -202,7 +209,7 @@ class VMwareResourcePool(object):
     def select_resource_pool(self, host):
         pool_obj = None
 
-        resource_pools = vmware.get_all_objs(self.content, [vim.ResourcePool])
+        resource_pools = get_all_objs(self.content, [vim.ResourcePool])
 
         pool_selections = self.get_obj(
             [vim.ResourcePool], self.resource_pool, return_all=True)
@@ -263,7 +270,7 @@ class VMwareResourcePool(object):
         resource_pool = self.select_resource_pool(self.host_obj)
         try:
             task = self.resource_pool_obj.Destroy()
-            success, result = vmware.wait_for_task(task)
+            success, result = wait_for_task(task)
 
         except Exception:
             self.module.fail_json(
@@ -292,9 +299,9 @@ class VMwareResourcePool(object):
         mem_alloc.shares = mem_alloc_shares
         rp_spec.memoryAllocation = mem_alloc
 
-        self.dc_obj = vmware.find_datacenter_by_name(
+        self.dc_obj = find_datacenter_by_name(
             self.content, self.datacenter)
-        self.cluster_obj = vmware.find_cluster_by_name_datacenter(
+        self.cluster_obj = find_cluster_by_name_datacenter(
             self.dc_obj, self.cluster)
         rootResourcePool = self.cluster_obj.resourcePool
         rootResourcePool.CreateResourcePool(self.resource_pool, rp_spec)
@@ -314,7 +321,7 @@ class VMwareResourcePool(object):
 
 
 def main():
-    argument_spec = vmware.vmware_argument_spec()
+    argument_spec = vmware_argument_spec()
     argument_spec.update(dict(datacenter=dict(required=True, type='str'),
                               cluster=dict(required=True, type='str'),
                               resource_pool=dict(required=True, type='str'),
