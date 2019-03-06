@@ -6,6 +6,10 @@ from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_version
 from openshiftstoragelibs.utils import parse_prometheus_data
 
+HEKETI_COMMAND_TIMEOUT = g.config.get("common", {}).get(
+    "heketi_command_timeout", 120)
+TIMEOUT_PREFIX = "timeout %s " % HEKETI_COMMAND_TIMEOUT
+
 
 def _set_heketi_global_flags(heketi_server_url, **kwargs):
     """Helper function to set heketi-cli global flags."""
@@ -132,6 +136,7 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
                persistent_volume_arg, persistent_volume_endpoint_arg,
                persistent_volume_file_arg, redundancy_arg, replica_arg,
                snapshot_factor_arg, json_arg, secret_arg, user_arg))
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -177,6 +182,7 @@ def heketi_volume_info(heketi_client_node, heketi_server_url, volume_id,
 
     cmd = "heketi-cli -s %s volume info %s %s %s %s" % (
         heketi_server_url, volume_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -229,6 +235,7 @@ def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
            "--expand-size=%s %s %s %s" % (
                heketi_server_url, volume_id, expand_size, json_arg,
                admin_key, user))
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -279,6 +286,7 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
 
     cmd = "heketi-cli -s %s volume delete %s %s %s %s" % (
         heketi_server_url, volume_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -322,6 +330,7 @@ def heketi_volume_list(heketi_client_node, heketi_server_url,
 
     cmd = "heketi-cli -s %s volume list %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -368,6 +377,7 @@ def heketi_topology_info(heketi_client_node, heketi_server_url,
 
     cmd = "heketi-cli -s %s topology info %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -451,6 +461,7 @@ def heketi_cluster_delete(heketi_client_node, heketi_server_url, cluster_id,
 
     cmd = "heketi-cli -s %s cluster delete %s %s %s %s" % (
         heketi_server_url, cluster_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -493,6 +504,7 @@ def heketi_cluster_info(heketi_client_node, heketi_server_url, cluster_id,
 
     cmd = "heketi-cli -s %s cluster info %s %s %s %s" % (
         heketi_server_url, cluster_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -535,6 +547,7 @@ def heketi_cluster_list(heketi_client_node, heketi_server_url, **kwargs):
 
     cmd = "heketi-cli -s %s cluster list %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -581,6 +594,7 @@ def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
 
     cmd = "heketi-cli -s %s device add --name=%s --node=%s %s %s %s" % (
         heketi_server_url, device_name, node_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -625,6 +639,7 @@ def heketi_device_delete(heketi_client_node, heketi_server_url, device_id,
 
     cmd = "heketi-cli -s %s device delete %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -668,6 +683,7 @@ def heketi_device_disable(heketi_client_node, heketi_server_url, device_id,
         heketi_server_url, **kwargs)
     cmd = "heketi-cli -s %s device disable %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
 
     ret, out, err = g.run(heketi_client_node, cmd)
 
@@ -712,6 +728,7 @@ def heketi_device_enable(heketi_client_node, heketi_server_url, device_id,
         heketi_server_url, **kwargs)
     cmd = "heketi-cli -s %s device enable %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
 
     ret, out, err = g.run(heketi_client_node, cmd)
 
@@ -758,6 +775,7 @@ def heketi_device_info(heketi_client_node, heketi_server_url, device_id,
 
     cmd = "heketi-cli -s %s device info %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -807,6 +825,7 @@ def heketi_device_remove(heketi_client_node, heketi_server_url, device_id,
 
     cmd = "heketi-cli -s %s device remove %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if raw_cli_output:
@@ -851,6 +870,7 @@ def heketi_node_delete(heketi_client_node, heketi_server_url, node_id,
 
     cmd = "heketi-cli -s %s node delete %s %s %s %s" % (
         heketi_server_url, node_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -892,6 +912,7 @@ def heketi_node_disable(heketi_client_node, heketi_server_url, node_id,
 
     cmd = "heketi-cli -s %s node disable %s %s %s %s" % (
         heketi_server_url, node_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -933,6 +954,7 @@ def heketi_node_enable(heketi_client_node, heketi_server_url, node_id,
 
     cmd = "heketi-cli -s %s node enable %s %s %s %s" % (
         heketi_server_url, node_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -974,6 +996,7 @@ def heketi_node_info(heketi_client_node, heketi_server_url, node_id, **kwargs):
 
     cmd = "heketi-cli -s %s node info %s %s %s %s" % (
         heketi_server_url, node_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -1006,6 +1029,7 @@ def heketi_node_list(heketi_client_node, heketi_server_url,
 
     cmd = "heketi-cli -s %s node list %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -1054,6 +1078,7 @@ def heketi_blockvolume_info(heketi_client_node, heketi_server_url,
 
     cmd = "heketi-cli -s %s blockvolume info %s %s %s %s" % (
         heketi_server_url, block_volume_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -1129,6 +1154,7 @@ def heketi_blockvolume_create(heketi_client_node, heketi_server_url, size,
            "%s %s %s %s" % (heketi_server_url, str(size), auth_arg,
                             clusters_arg, ha_arg, name_arg, name_arg,
                             admin_key, user, json_arg))
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -1176,6 +1202,7 @@ def heketi_blockvolume_delete(heketi_client_node, heketi_server_url,
 
     cmd = "heketi-cli -s %s blockvolume delete %s %s %s %s" % (
         heketi_server_url, block_volume_id, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -1216,6 +1243,7 @@ def heketi_blockvolume_list(heketi_client_node, heketi_server_url, **kwargs):
 
     cmd = "heketi-cli -s %s blockvolume list %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:
@@ -1259,6 +1287,7 @@ def verify_volume_name_prefix(hostname, prefix, namespace, pvc_name,
     heketi_vol_name_prefix = "%s_%s_%s_" % (prefix, namespace,  pvc_name)
     cmd = "heketi-cli -s %s volume list %s %s %s | grep %s" % (
         heketi_server_url, json_arg, admin_key, user, heketi_vol_name_prefix)
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(hostname, cmd, "root")
 
     if ret != 0:
@@ -1309,6 +1338,7 @@ def set_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
 
     cmd = ("heketi-cli -s %s %s settags %s %s %s %s" %
            (heketi_server_url, source, source_id, tag, user, secret))
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if not ret:
@@ -1398,6 +1428,7 @@ def rm_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
 
     cmd = ("heketi-cli -s %s %s rmtags %s %s %s %s" %
            (heketi_server_url, source, source_id, tag, user, secret))
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if not ret:
@@ -1506,6 +1537,7 @@ def heketi_examine_gluster(heketi_client_node, heketi_server_url):
     # output is always json-like and we do not need to provide "--json" CLI arg
     cmd = ("heketi-cli server state examine gluster -s %s %s %s"
            % (heketi_server_url, user, secret))
+    cmd = TIMEOUT_PREFIX + cmd
     ret, out, err = g.run(heketi_client_node, cmd)
 
     if ret != 0:

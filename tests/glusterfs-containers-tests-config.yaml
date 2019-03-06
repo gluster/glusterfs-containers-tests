@@ -58,3 +58,4 @@ openshift:
 
 common:
     stop_on_first_failure: False
+    heketi_command_timeout: 120
