@@ -1,8 +1,11 @@
 import ddt
-from cnslibs.common.cns_libs import (
-    enable_pvc_resize)
-from cnslibs.common import heketi_ops
-from cnslibs.common.openshift_ops import (
+from glusto.core import Glusto as g
+
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.openshift_storage_libs import enable_pvc_resize
+from openshiftstoragelibs.exceptions import ExecutionError
+from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs.openshift_ops import (
     resize_pvc,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
@@ -15,10 +18,7 @@ from cnslibs.common.openshift_ops import (
     wait_for_events,
     wait_for_pod_be_ready,
     wait_for_resource_absence)
-from cnslibs.common.openshift_version import get_openshift_version
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.exceptions import ExecutionError
-from glusto.core import Glusto as g
+from openshiftstoragelibs.openshift_version import get_openshift_version
 
 
 @ddt.ddt

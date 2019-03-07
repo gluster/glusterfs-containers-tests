@@ -2,8 +2,8 @@ from glusto.core import Glusto as g
 from glustolibs.gluster.exceptions import ExecutionError
 from glustolibs.gluster.peer_ops import get_pool_list
 
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common import heketi_ops, podcmd
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import heketi_ops, podcmd
 
 
 class TestHeketiVolume(BaseClass):

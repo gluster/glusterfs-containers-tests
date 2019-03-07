@@ -3,17 +3,17 @@ import unittest
 
 from glusto.core import Glusto as g
 
-from cnslibs.common import command
-from cnslibs.common.exceptions import (
+from openshiftstoragelibs import command
+from openshiftstoragelibs.exceptions import (
+    ConfigError,
     ExecutionError,
-    ConfigError
 )
-from cnslibs.common.heketi_ops import (
+from openshiftstoragelibs.heketi_ops import (
     hello_heketi,
     heketi_blockvolume_delete,
-    heketi_volume_delete
+    heketi_volume_delete,
 )
-from cnslibs.common.openshift_ops import (
+from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
     oc_create_app_dc_with_io,

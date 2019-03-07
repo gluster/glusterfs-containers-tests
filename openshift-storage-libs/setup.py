@@ -1,8 +1,8 @@
 #!/usr/bin/python
 from setuptools import setup, find_packages
 
-version = '0.1'
-name = 'cns-libs'
+version = '0.2'
+name = 'openshift-storage-libs'
 
 setup(
     name=name,

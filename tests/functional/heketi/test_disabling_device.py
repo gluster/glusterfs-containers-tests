@@ -1,10 +1,10 @@
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_info
 
-from cnslibs.common import exceptions
-from cnslibs.common import baseclass
-from cnslibs.common import heketi_ops
-from cnslibs.common import podcmd
+from openshiftstoragelibs import baseclass
+from openshiftstoragelibs import exceptions
+from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs import podcmd
 
 
 class TestDisableHeketiDevice(baseclass.BaseClass):

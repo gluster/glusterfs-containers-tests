@@ -1,11 +1,12 @@
 from glusto.core import Glusto as g
 import yaml
 
-from cnslibs.common.command import cmd_run
-from cnslibs.common.exceptions import (
+from openshiftstoragelibs.command import cmd_run
+from openshiftstoragelibs.exceptions import (
     ExecutionError,
-    NotSupportedException)
-from cnslibs.common.openshift_version import get_openshift_version
+    NotSupportedException,
+)
+from openshiftstoragelibs.openshift_version import get_openshift_version
 
 
 MASTER_CONFIG_FILEPATH = "/etc/origin/master/master-config.yaml"

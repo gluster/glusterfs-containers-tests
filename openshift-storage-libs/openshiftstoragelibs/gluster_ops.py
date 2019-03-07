@@ -10,16 +10,14 @@ from glustolibs.gluster.volume_ops import (
     get_volume_list,
     volume_status,
     volume_start,
-    volume_stop
+    volume_stop,
 )
 
-from cnslibs.common import exceptions
-from cnslibs.common.heketi_ops import heketi_blockvolume_info
-from cnslibs.common.openshift_ops import (
-    cmd_run_on_gluster_pod_or_node,
-)
-from cnslibs.common import podcmd
-from cnslibs.common import waiter
+from openshiftstoragelibs import exceptions
+from openshiftstoragelibs.heketi_ops import heketi_blockvolume_info
+from openshiftstoragelibs.openshift_ops import cmd_run_on_gluster_pod_or_node
+from openshiftstoragelibs import podcmd
+from openshiftstoragelibs import waiter
 
 
 @podcmd.GlustoPod()

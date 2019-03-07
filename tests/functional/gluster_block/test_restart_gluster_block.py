@@ -1,12 +1,13 @@
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.heketi_ops import (
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_create,
     heketi_blockvolume_delete)
-from cnslibs.common.openshift_ops import (
+from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
     oc_delete,
     wait_for_pod_be_ready,
-    wait_for_resource_absence)
+    wait_for_resource_absence,
+)
 
 
 class TestRestartGlusterBlockPod(BaseClass):

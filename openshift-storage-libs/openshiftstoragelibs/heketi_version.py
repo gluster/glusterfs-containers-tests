@@ -6,7 +6,7 @@ Usage example:
     # Assume Heketi server version is '7.0.0-3' and client is '7.0.0-5'
     Then we have following:
 
-    from cnslibs.common import heketi_version
+    from openshiftstoragelibs import heketi_version
     version = heketi_version.get_heketi_version()
     if version < '7.0.0-4':
         # True
@@ -25,8 +25,8 @@ import re
 from glusto.core import Glusto as g
 import six
 
-from cnslibs.common import command
-from cnslibs.common import exceptions
+from openshiftstoragelibs import command
+from openshiftstoragelibs import exceptions
 
 
 HEKETI_VERSION_RE = r"(\d+)(?:\.)(\d+)(?:\.)(\d+)(?:\-)(\d+)$"

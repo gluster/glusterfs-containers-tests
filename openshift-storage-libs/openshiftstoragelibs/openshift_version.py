@@ -4,7 +4,7 @@ Use this module for any OpenShift version comparisons.
 Usage example:
 
     # Assume OpenShift version is '3.10.45'. Then we have following:
-    from cnslibs.common import openshift_version
+    from openshiftstoragelibs import openshift_version
     version = openshift_version.get_openshift_version()
     if version < '3.10':
         # False
@@ -28,7 +28,7 @@ import re
 from glusto.core import Glusto as g
 import six
 
-from cnslibs.common import exceptions
+from openshiftstoragelibs import exceptions
 
 
 OPENSHIFT_VERSION_RE = r"(?:v?)(\d+)(?:\.)(\d+)(?:\.(\d+))?$"

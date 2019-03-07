@@ -1,20 +1,20 @@
-from cnslibs.common import exceptions
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.heketi_ops import (
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import exceptions
+from openshiftstoragelibs.heketi_ops import (
     get_heketi_metrics,
     heketi_cluster_info,
     heketi_cluster_list,
     heketi_topology_info,
     heketi_volume_create,
     heketi_volume_delete,
-    heketi_volume_list
-    )
-from cnslibs.common import heketi_version
-from cnslibs.common.openshift_ops import (
+    heketi_volume_list,
+)
+from openshiftstoragelibs import heketi_version
+from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
     scale_dc_pod_amount_and_wait,
-    wait_for_pod_be_ready
-    )
+    wait_for_pod_be_ready,
+)
 
 
 class TestHeketiMetrics(BaseClass):

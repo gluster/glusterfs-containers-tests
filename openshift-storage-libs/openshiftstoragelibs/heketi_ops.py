@@ -2,9 +2,9 @@ import json
 
 from glusto.core import Glusto as g
 
-from cnslibs.common import exceptions
-from cnslibs.common import heketi_version
-from cnslibs.common.utils import parse_prometheus_data
+from openshiftstoragelibs import exceptions
+from openshiftstoragelibs import heketi_version
+from openshiftstoragelibs.utils import parse_prometheus_data
 
 
 def _set_heketi_global_flags(heketi_server_url, **kwargs):
@@ -998,7 +998,7 @@ def heketi_node_list(heketi_client_node, heketi_server_url,
         heketi_secret (str): Secret for 'heketi_user'
     Returns:
         list of strings which are node IDs
-    Raises: cnslibs.common.exceptions.ExecutionError when CLI command fails.
+    Raises: openshiftstoragelibs.exceptions.ExecutionError when command fails.
     """
 
     heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(

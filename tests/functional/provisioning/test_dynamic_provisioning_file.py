@@ -1,11 +1,16 @@
 import time
 from unittest import skip
 
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.heketi_ops import (
-    verify_volume_name_prefix)
-from cnslibs.common.openshift_ops import (
+from glusto.core import Glusto as g
+
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.exceptions import ExecutionError
+from openshiftstoragelibs.heketi_ops import (
+    heketi_volume_delete,
+    heketi_volume_list,
+    verify_volume_name_prefix,
+)
+from openshiftstoragelibs.openshift_ops import (
     get_gluster_pod_names_by_pvc_name,
     get_pv_name_from_pvc,
     get_pod_name_from_dc,
@@ -22,12 +27,7 @@ from cnslibs.common.openshift_ops import (
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
     wait_for_resource_absence)
-from cnslibs.common.heketi_ops import (
-    heketi_volume_delete,
-    heketi_volume_list
-    )
-from cnslibs.common.waiter import Waiter
-from glusto.core import Glusto as g
+from openshiftstoragelibs.waiter import Waiter
 
 
 class TestDynamicProvisioningP0(BaseClass):

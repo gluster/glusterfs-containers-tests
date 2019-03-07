@@ -1,9 +1,11 @@
 from glusto.core import Glusto as g
 
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.heketi_ops import (heketi_volume_create,
-                                       heketi_volume_delete)
-from cnslibs.common import openshift_ops
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.heketi_ops import (
+    heketi_volume_create,
+    heketi_volume_delete,
+)
+from openshiftstoragelibs import openshift_ops
 
 
 class TestHeketiVolume(BaseClass):

@@ -1,7 +1,7 @@
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common import heketi_ops
-from cnslibs.common import heketi_version
-from cnslibs.common import openshift_ops
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs import heketi_version
+from openshiftstoragelibs import openshift_ops
 
 
 class TestHeketiServerStateExamineGluster(BaseClass):

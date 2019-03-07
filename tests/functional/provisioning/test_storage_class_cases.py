@@ -3,9 +3,10 @@ from unittest import skip
 import ddt
 from glusto.core import Glusto as g
 
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.cns_libs import validate_multipath_pod
-from cnslibs.common.openshift_ops import (
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.openshift_storage_libs import validate_multipath_pod
+from openshiftstoragelibs.heketi_ops import verify_volume_name_prefix
+from openshiftstoragelibs.openshift_ops import (
     get_amount_of_gluster_nodes,
     get_gluster_blockvol_info_by_pvc_name,
     get_pod_name_from_dc,
@@ -17,9 +18,8 @@ from cnslibs.common.openshift_ops import (
     scale_dc_pod_amount_and_wait,
     wait_for_events,
     wait_for_pod_be_ready,
-    wait_for_resource_absence
+    wait_for_resource_absence,
 )
-from cnslibs.common.heketi_ops import verify_volume_name_prefix
 
 
 @ddt.ddt

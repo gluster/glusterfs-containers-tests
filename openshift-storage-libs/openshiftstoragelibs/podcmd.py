@@ -51,7 +51,7 @@ import types
 
 from glusto.core import Glusto as g
 
-from cnslibs.common import openshift_ops
+from openshiftstoragelibs import openshift_ops
 
 # Define a namedtuple that allows us to address pods instead of just
 # hosts,

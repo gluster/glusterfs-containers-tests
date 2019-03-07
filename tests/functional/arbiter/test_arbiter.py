@@ -1,9 +1,9 @@
 import ddt
 
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common import heketi_ops
-from cnslibs.common import heketi_version
-from cnslibs.common.openshift_ops import (
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs import heketi_version
+from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_gluster_vol_info_by_pvc_name,
     oc_create_pvc,

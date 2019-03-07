@@ -1,11 +1,11 @@
-
-from cnslibs.common.heketi_ops import (heketi_blockvolume_create,
-                                       heketi_blockvolume_delete,
-                                       heketi_blockvolume_list,
-                                       heketi_volume_create,
-                                       heketi_volume_delete
-                                       )
-from cnslibs.common.baseclass import BaseClass
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.heketi_ops import (
+    heketi_blockvolume_create,
+    heketi_blockvolume_delete,
+    heketi_blockvolume_list,
+    heketi_volume_create,
+    heketi_volume_delete,
+)
 
 
 class TestBlockVolumeOps(BaseClass):

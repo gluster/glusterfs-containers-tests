@@ -1,5 +1,5 @@
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common import heketi_ops
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import heketi_ops
 
 
 class TestHeketiDeviceInfo(BaseClass):

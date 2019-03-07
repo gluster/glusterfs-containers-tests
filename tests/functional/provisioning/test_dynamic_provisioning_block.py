@@ -1,15 +1,22 @@
 from unittest import skip
 
-from cnslibs.common.baseclass import GlusterBlockBaseClass
-from cnslibs.common.cns_libs import (
+from glusto.core import Glusto as g
+
+from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
+from openshiftstoragelibs.openshift_storage_libs import (
     get_iscsi_block_devices_by_path,
     get_iscsi_session,
     get_mpath_name_from_device_name,
     validate_multipath_pod,
-    )
-from cnslibs.common.command import cmd_run
-from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.openshift_ops import (
+)
+from openshiftstoragelibs.command import cmd_run
+from openshiftstoragelibs.exceptions import ExecutionError
+from openshiftstoragelibs.heketi_ops import (
+    heketi_blockvolume_delete,
+    heketi_blockvolume_info,
+    heketi_blockvolume_list
+)
+from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_gluster_pod_names_by_pvc_name,
     get_pod_name_from_dc,
@@ -25,15 +32,9 @@ from cnslibs.common.openshift_ops import (
     scale_dc_pod_amount_and_wait,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
-    wait_for_resource_absence
-    )
-from cnslibs.common.heketi_ops import (
-    heketi_blockvolume_delete,
-    heketi_blockvolume_info,
-    heketi_blockvolume_list
-    )
-from cnslibs.common.waiter import Waiter
-from glusto.core import Glusto as g
+    wait_for_resource_absence,
+)
+from openshiftstoragelibs.waiter import Waiter
 
 
 class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):

@@ -3,21 +3,23 @@ import json
 import ddt
 from glusto.core import Glusto as g
 
-from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.heketi_ops import (heketi_node_enable,
-                                       heketi_node_info,
-                                       heketi_node_disable,
-                                       heketi_node_list,
-                                       heketi_volume_create,
-                                       heketi_device_add,
-                                       heketi_device_delete,
-                                       heketi_device_disable,
-                                       heketi_device_remove,
-                                       heketi_device_info,
-                                       heketi_device_enable,
-                                       heketi_topology_info,
-                                       heketi_volume_delete)
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.exceptions import ExecutionError
+from openshiftstoragelibs.heketi_ops import (
+    heketi_device_add,
+    heketi_device_delete,
+    heketi_device_disable,
+    heketi_device_enable,
+    heketi_device_info,
+    heketi_device_remove,
+    heketi_node_disable,
+    heketi_node_enable,
+    heketi_node_info,
+    heketi_node_list,
+    heketi_topology_info,
+    heketi_volume_create,
+    heketi_volume_delete,
+)
 
 
 @ddt.ddt

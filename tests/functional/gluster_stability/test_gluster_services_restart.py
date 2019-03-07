@@ -6,9 +6,9 @@ from unittest import skip
 import ddt
 from glusto.core import Glusto as g
 
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.heketi_ops import heketi_blockvolume_list
-from cnslibs.common.openshift_ops import (
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.heketi_ops import heketi_blockvolume_list
+from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
     match_pv_and_heketi_block_volumes,
     match_pvc_and_pv,
@@ -27,7 +27,7 @@ from cnslibs.common.openshift_ops import (
     wait_for_resource_absence,
     wait_for_service_status_on_gluster_pod_or_node,
 )
-from cnslibs.common.gluster_ops import (
+from openshiftstoragelibs.gluster_ops import (
     get_block_hosting_volume_name,
     get_gluster_vol_hosting_nodes,
     match_heketi_and_gluster_block_volumes_by_prefix,
@@ -35,7 +35,7 @@ from cnslibs.common.gluster_ops import (
     restart_gluster_vol_brick_processes,
     wait_to_heal_complete,
 )
-from cnslibs.common import utils
+from openshiftstoragelibs import utils
 
 
 HEKETI_BLOCK_VOLUME_REGEX = "^Id:(.*).Cluster:(.*).Name:%s_(.*)$"

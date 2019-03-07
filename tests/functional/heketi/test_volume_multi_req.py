@@ -11,14 +11,20 @@ import yaml
 
 from glusto.core import Glusto as g
 
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.heketi_ops import (
-    heketi_volume_list)
-from cnslibs.common.naming import (
-    make_unique_label, extract_method_name)
-from cnslibs.common.openshift_ops import (
-    oc_create, oc_delete, oc_get_pvc, oc_get_pv, oc_get_all_pvs)
-from cnslibs.common.waiter import Waiter
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.heketi_ops import heketi_volume_list
+from openshiftstoragelibs.naming import (
+    make_unique_label,
+    extract_method_name,
+)
+from openshiftstoragelibs.openshift_ops import (
+    oc_create,
+    oc_delete,
+    oc_get_all_pvs,
+    oc_get_pv,
+    oc_get_pvc,
+)
+from openshiftstoragelibs.waiter import Waiter
 
 
 def build_storage_class(name, resturl, restuser='foo', restuserkey='foo'):

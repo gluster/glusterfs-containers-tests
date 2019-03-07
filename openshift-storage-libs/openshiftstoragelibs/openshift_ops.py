@@ -13,12 +13,12 @@ from glustolibs.gluster import volume_ops
 import mock
 import yaml
 
-from cnslibs.common import command
-from cnslibs.common import exceptions
-from cnslibs.common import openshift_version
-from cnslibs.common import utils
-from cnslibs.common import waiter
-from cnslibs.common.heketi_ops import (
+from openshiftstoragelibs import command
+from openshiftstoragelibs import exceptions
+from openshiftstoragelibs import openshift_version
+from openshiftstoragelibs import utils
+from openshiftstoragelibs import waiter
+from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_info,
     heketi_volume_info,
 )

@@ -1,10 +1,10 @@
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
 
-from cnslibs.common import exceptions
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common import heketi_ops
-from cnslibs.common import podcmd
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import exceptions
+from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs import podcmd
 
 
 class TestVolumeCreationTestCases(BaseClass):

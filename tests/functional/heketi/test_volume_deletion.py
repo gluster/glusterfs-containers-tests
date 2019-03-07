@@ -1,8 +1,8 @@
 from __future__ import division
 
-from cnslibs.common.exceptions import ExecutionError
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common import heketi_ops
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.exceptions import ExecutionError
+from openshiftstoragelibs import heketi_ops
 
 
 class TestVolumeDeleteTestCases(BaseClass):

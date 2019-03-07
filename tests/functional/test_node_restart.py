@@ -1,16 +1,17 @@
-
 import time
-
 from unittest import skip
-from cnslibs.common.baseclass import BaseClass
-from cnslibs.common.openshift_ops import (
+
+from glusto.core import Glusto as g
+
+from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.exceptions import ExecutionError
+from openshiftstoragelibs.openshift_ops import (
     check_service_status_on_pod,
     get_ocp_gluster_pod_names,
     oc_rsh,
-    wait_for_pod_be_ready)
-from cnslibs.common.waiter import Waiter
-from cnslibs.common.exceptions import ExecutionError
-from glusto.core import Glusto as g
+    wait_for_pod_be_ready,
+)
+from openshiftstoragelibs.waiter import Waiter
 
 
 class TestNodeRestart(BaseClass):

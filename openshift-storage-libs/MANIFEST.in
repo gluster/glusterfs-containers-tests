@@ -1,0 +1,1 @@
+recursive-include openshiftstoragelibs *.yaml *.json *.txt
