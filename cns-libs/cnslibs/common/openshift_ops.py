@@ -930,7 +930,8 @@ def wait_for_pod_be_ready(hostname, pod_name,
                ":.status.phase") % pod_name
         ret, out, err = g.run(hostname, cmd, "root")
         if ret != 0:
-            msg = ("failed to execute cmd %s" % cmd)
+            msg = "Failed to execute cmd: %s\nout: %s\nerr: %s" % (
+                cmd, out, err)
             g.log.error(msg)
             raise exceptions.ExecutionError(msg)
         output = out.strip().split()

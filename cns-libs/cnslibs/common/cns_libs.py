@@ -127,8 +127,8 @@ def enable_pvc_resize(master_node):
                "/usr/local/bin/master-restart controllers")
     ret, out, err = g.run(master_node, cmd, "root")
     if ret != 0 or out == "":
-        err_msg = ("failed to execute cmd %s on %s, err %s"
-                   % (cmd, master_node, out))
+        err_msg = "Failed to execute cmd %s on %s\nout: %s\nerr: %s" % (
+            cmd, master_node, out, err)
         g.log.error(err_msg)
         raise ExecutionError(err_msg)
 
