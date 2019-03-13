@@ -258,6 +258,13 @@ class BaseClass(unittest.TestCase):
                               timeout=timeout, wait_step=wait_step)
         return dc_name, pod_name
 
+    def is_containerized_gluster(self):
+        cmd = ("oc get pods --no-headers -l glusterfs-node=pod "
+               "-o=custom-columns=:.spec.nodeName")
+        g_nodes = command.cmd_run(cmd, self.ocp_client[0])
+        g_nodes = g_nodes.split('\n') if g_nodes else g_nodes
+        return not not g_nodes
+
     def _is_error_or_failure_exists(self):
         if hasattr(self, '_outcome'):
             # Python 3.4+

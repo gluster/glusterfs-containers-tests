@@ -1,5 +1,4 @@
 import time
-from unittest import skip
 
 from glusto.core import Glusto as g
 
@@ -168,10 +167,13 @@ class TestDynamicProvisioningP0(BaseClass):
             ret, 0,
             "Failed to execute command %s on %s" % (write_data_cmd, self.node))
 
-    @skip("Blocked by BZ-1632873")
     def test_dynamic_provisioning_glusterfile_glusterpod_failure(self):
-        """Validate dynamic provisioning for gluster file when gluster pod down
-        """
+        """Create glusterblock PVC when gluster pod is down."""
+
+        # Check that we work with containerized Gluster
+        if not self.is_containerized_gluster():
+            self.skipTest("Only containerized Gluster clusters are supported.")
+
         mount_path = "/mnt"
         datafile_path = '%s/fake_file_for_%s' % (mount_path, self.id())
 
@@ -207,7 +209,7 @@ class TestDynamicProvisioningP0(BaseClass):
         cmd = ("oc get pods -o wide | grep glusterfs | grep %s | "
                "grep -v Terminating | awk '{print $1}'") % (
                    gluster_pod_data["host_name"])
-        for w in Waiter(600, 30):
+        for w in Waiter(600, 15):
             out = self.cmd_run(cmd)
             new_gluster_pod_name = out.strip().split("\n")[0].strip()
             if not new_gluster_pod_name:
