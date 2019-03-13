@@ -69,7 +69,7 @@ Executing the test cases
 
     .. code-block::
 
-        $ tests/cns_tests_sample_config.yml
+        $ tests/glusterfs-containers-tests-config.yaml
 
 * To run test cases in a virtual environment:
 
