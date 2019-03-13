@@ -84,9 +84,9 @@ Executing the test cases
         .. code-block::
 
             $ tox -e functional -- glusto -c \
-                ../tests/glusterfs-containers-tests-config.yaml \
+                tests/glusterfs-containers-tests-config.yaml \
                 '--pytest=-v -rsx \
-                ../tests/functional/common/arbiter/test_arbiter.py \
+                tests/functional/arbiter/test_arbiter.py \
                 -k test_arbiter_pvc_create'
 
         * Execute all test cases from test class file
@@ -94,17 +94,17 @@ Executing the test cases
         .. code-block::
 
             $ tox -e functional -- glusto -c \
-                ../tests/glusterfs-containers-tests-config.yaml \
+                tests/glusterfs-containers-tests-config.yaml \
                 '--pytest=-v -rsx
-                tests/functional/common/arbiter/test_arbiter.py'
+                tests/functional/arbiter/test_arbiter.py'
 
         * Execute all test cases from test directory
 
         .. code-block::
 
             $ tox -e functional -- glusto -c \
-                ../tests/glusterfs-containers-tests-config.yaml \
-                '--pytest=-v -rsx ../tests'
+                tests/glusterfs-containers-tests-config.yaml \
+                '--pytest=-v -rsx tests'
 
 Writing tests in `glusterfs-containers-tests`
 *********************************************
@@ -149,7 +149,7 @@ pep-0008/>`__ for more information on `PEP 8` rules.
 
         .. code-block::
 
-             $ tox -e pep8 tests/functional/common/test_heketi_restart.py
+             $ tox -e pep8 tests/functional/test_heketi_restart.py
 
 Logging
 *******
