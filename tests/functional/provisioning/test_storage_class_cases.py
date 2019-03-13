@@ -165,7 +165,6 @@ class TestStorageClassCases(BaseClass):
         """Validate glusterblock storage with different incorrect parameters"""
         self.create_sc_with_parameter("glusterblock", parameter=parameter)
 
-    @skip("Blocked by BZ-1609703")
     @ddt.data(1, 2)
     def test_gluster_block_provisioning_with_valid_ha_count(self, hacount):
         """Validate gluster-block provisioning with different valid 'hacount'
