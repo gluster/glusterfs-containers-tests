@@ -37,7 +37,7 @@
       host: "{{ item }}"
       port: 22
       delay: 0
-      timeout: 180
+      timeout: 360
       connect_timeout: 5
       state: started
     with_items: "{{ hostnames_for_reboot }}"
