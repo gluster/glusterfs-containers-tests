@@ -6,10 +6,12 @@ from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs.heketi_ops import (
     heketi_volume_delete,
+    heketi_volume_info,
     heketi_volume_list,
     verify_volume_name_prefix,
 )
 from openshiftstoragelibs.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
     get_gluster_pod_names_by_pvc_name,
     get_pv_name_from_pvc,
     get_pod_name_from_dc,
@@ -62,6 +64,32 @@ class TestDynamicProvisioningP0(BaseClass):
                                             self.sc['secretnamespace'],
                                             pvc_name, self.sc['resturl'])
             self.assertTrue(ret, "verify volnameprefix failed")
+        else:
+            # Get the volume name and volume id from PV
+            pv_name = get_pv_name_from_pvc(self.ocp_client[0], pvc_name)
+            custom = [
+                r':spec.glusterfs.path',
+                r':metadata.annotations.'
+                r'"gluster\.kubernetes\.io\/heketi-volume-id"'
+            ]
+            pv_vol_name, vol_id = oc_get_custom_resource(
+                    self.ocp_client[0], 'pv', custom, pv_name)
+
+            # check if the pv_volume_name is present in heketi
+            # Check if volume name is "vol_"+volumeid or not
+            heketi_vol_name = heketi_volume_info(
+                self.ocp_client[0], self.heketi_server_url, vol_id,
+                json=True)['name']
+            self.assertEqual(pv_vol_name, heketi_vol_name,
+                             'Volume with vol_id = %s not found'
+                             'in heketidb' % vol_id)
+            self.assertEqual(heketi_vol_name, 'vol_' + vol_id,
+                             'Volume with vol_id = %s have a'
+                             'custom perfix' % vol_id)
+            out = cmd_run_on_gluster_pod_or_node(self.ocp_master_node[0],
+                                                 "gluster volume list")
+            self.assertIn(pv_vol_name, out,
+                          "Volume with id %s does not exist" % vol_id)
 
         # Make sure we are able to work with files on the mounted volume
         filepath = "/mnt/file_for_testing_io.log"
