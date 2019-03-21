@@ -43,11 +43,11 @@ class BaseClass(unittest.TestCase):
 
         # Initializes OCP config variables
         cls.ocp_servers_info = g.config['ocp_servers']
-        cls.ocp_master_node = g.config['ocp_servers']['master'].keys()
+        cls.ocp_master_node = list(g.config['ocp_servers']['master'].keys())
         cls.ocp_master_node_info = g.config['ocp_servers']['master']
-        cls.ocp_client = g.config['ocp_servers']['client'].keys()
+        cls.ocp_client = list(g.config['ocp_servers']['client'].keys())
         cls.ocp_client_info = g.config['ocp_servers']['client']
-        cls.ocp_nodes = g.config['ocp_servers']['nodes'].keys()
+        cls.ocp_nodes = list(g.config['ocp_servers']['nodes'].keys())
         cls.ocp_nodes_info = g.config['ocp_servers']['nodes']
 
         # Initializes storage project config variables
@@ -65,7 +65,7 @@ class BaseClass(unittest.TestCase):
         cls.heketi_cli_user = heketi_config['heketi_cli_user']
         cls.heketi_cli_key = heketi_config['heketi_cli_key']
 
-        cls.gluster_servers = g.config['gluster_servers'].keys()
+        cls.gluster_servers = list(g.config['gluster_servers'].keys())
         cls.gluster_servers_info = g.config['gluster_servers']
 
         cls.storage_classes = openshift_config['dynamic_provisioning'][

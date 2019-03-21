@@ -4,7 +4,12 @@ Various utility functions for interacting with OCP/OpenShift.
 """
 
 import base64
-import json
+try:
+    # py2/3
+    import simplejson as json
+except ImportError:
+    # py2
+    import json
 import re
 import types
 
@@ -111,7 +116,7 @@ def get_ocp_gluster_pod_names(ocp_node):
         get_ocp_gluster_pod_names(ocp_node)
     """
 
-    pod_names = oc_get_pods(ocp_node).keys()
+    pod_names = list(oc_get_pods(ocp_node).keys())
     return [pod for pod in pod_names if pod.startswith('glusterfs-')]
 
 
@@ -269,6 +274,7 @@ def oc_create_secret(hostname, secret_name_prefix="autotests-secret-",
     Returns: name of a secret
     """
     secret_name = "%s-%s" % (secret_name_prefix, utils.get_random_str())
+    data_key = data_key.encode('utf-8')
     secret_data = json.dumps({
         "apiVersion": "v1",
         "data": {"key": base64.b64encode(data_key)},
@@ -527,11 +533,12 @@ def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None,
         return []
 
     if name:
-        return filter(None, map(str.strip, (out.strip()).split(' ')))
+        return list(filter(None, map(str.strip, (out.strip()).split(' '))))
     else:
         out_list = []
         for line in (out.strip()).split('\n'):
-            out_list.append(filter(None, map(str.strip, line.split(' '))))
+            out_list.append(
+                list(filter(None, map(str.strip, line.split(' ')))))
         return out_list
 
 
@@ -802,7 +809,7 @@ def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node=None):
                     "Could not find Gluster PODs with node filter as "
                     "'%s'." % gluster_node)
         else:
-            gluster_pod_names = gluster_pods.keys()
+            gluster_pod_names = list(gluster_pods.keys())
 
         for gluster_pod_name in gluster_pod_names:
             try:
@@ -819,7 +826,7 @@ def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node=None):
     if gluster_node:
         g_hosts = [gluster_node]
     else:
-        g_hosts = g.config.get("gluster_servers", {}).keys()
+        g_hosts = list(g.config.get("gluster_servers", {}).keys())
     for g_host in g_hosts:
         try:
             return command.cmd_run(cmd, hostname=g_host)
@@ -887,7 +894,7 @@ def get_gluster_blockvol_info_by_pvc_name(ocp_node, heketi_server_url,
         r':.metadata.annotations."gluster\.org\/volume\-id",'
         r':.spec.claimRef.name | grep "%s"' % pvc_name)
     out = command.cmd_run(get_block_vol_data_cmd, hostname=ocp_node)
-    parsed_out = filter(None, map(str.strip, out.split(" ")))
+    parsed_out = list(filter(None, map(str.strip, out.split(" "))))
     assert len(parsed_out) == 3, "Expected 3 fields in following: %s" % out
     block_vol_name, block_vol_id = parsed_out[:2]
 

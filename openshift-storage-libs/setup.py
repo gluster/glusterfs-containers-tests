@@ -23,7 +23,7 @@ setup(
         'Topic :: Software Development :: Testing'
     ],
     install_requires=['glusto', 'ddt', 'mock', 'rtyaml', 'jsondiff', 'six',
-                      'prometheus_client>=0.4.2'],
+                      'simplejson', 'prometheus_client>=0.4.2'],
     dependency_links=[
         'http://github.com/loadtheaccumulator/glusto/tarball/master#egg=glusto'
     ],

@@ -1,6 +1,11 @@
-import time
-import json
+try:
+    # py2/3
+    import simplejson as json
+except ImportError:
+    # py2
+    import json
 import re
+import time
 
 from glusto.core import Glusto as g
 from glustolibs.gluster.block_ops import block_list

@@ -7,7 +7,12 @@ import re
 
 # we only use lowercase here because kubernetes requires
 # names to be lowercase or digits, so that is our default
-UNIQUE_CHARS = (string.lowercase + string.digits)
+try:
+    # py2
+    UNIQUE_CHARS = (string.lowercase + string.digits)
+except AttributeError:
+    # py3
+    UNIQUE_CHARS = (string.ascii_lowercase + string.digits)
 
 
 def make_unique_label(prefix=None, suffix=None, sep='-',

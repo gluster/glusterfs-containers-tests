@@ -75,7 +75,7 @@ def _get_heketi_server_version_str(ocp_client_node=None):
     Raises: 'exceptions.ExecutionError' if failed to get version
     """
     if not ocp_client_node:
-        ocp_client_node = g.config["ocp_servers"]["client"].keys()[0]
+        ocp_client_node = list(g.config["ocp_servers"]["client"].keys())[0]
     get_package_version_cmd = (
         "rpm -q heketi --queryformat '%{version}-%{release}\n' | "
         "cut -d '.' -f 1,2,3")

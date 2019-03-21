@@ -1,5 +1,10 @@
 """Test cases to disable and enable node in heketi."""
-import json
+try:
+    # py2/3
+    import simplejson as json
+except ImportError:
+    # py2
+    import json
 
 from glusto.core import Glusto as g
 

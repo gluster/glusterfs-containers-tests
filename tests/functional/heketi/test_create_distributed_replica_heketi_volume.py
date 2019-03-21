@@ -24,8 +24,8 @@ class TestHeketiVolume(BaseClass):
 
     def setUp(self):
         super(TestHeketiVolume, self).setUp()
-        self.master_node = g.config['ocp_servers']['master'].keys()[0]
-        self.gluster_node = g.config["gluster_servers"].keys()[0]
+        self.master_node = list(g.config['ocp_servers']['master'].keys())[0]
+        self.gluster_node = list(g.config["gluster_servers"].keys())[0]
 
     def _get_free_space(self):
         """Get free space in each heketi device"""

@@ -219,7 +219,7 @@ class TestVolumeMultiReq(BaseClass):
             'wait for volume count to settle timed out')
 
     def _count_vols(self):
-        ocp_node = g.config['ocp_servers']['master'].keys()[0]
+        ocp_node = list(g.config['ocp_servers']['master'].keys())[0]
         return len(_heketi_vols(ocp_node, self.heketi_server_url))
 
     def test_simple_serial_vol_create(self):
@@ -229,7 +229,7 @@ class TestVolumeMultiReq(BaseClass):
         # TODO A nice thing to add to this test would be to also verify
         # the gluster volumes also exist.
         tname = make_unique_label(extract_method_name(self.id()))
-        ocp_node = g.config['ocp_servers']['master'].keys()[0]
+        ocp_node = list(g.config['ocp_servers']['master'].keys())[0]
         # deploy a temporary storage class
         sc = build_storage_class(
             name=tname,
@@ -290,7 +290,7 @@ class TestVolumeMultiReq(BaseClass):
         """
         self.addCleanup(self.wait_to_settle)
         tname = make_unique_label(extract_method_name(self.id()))
-        ocp_node = g.config['ocp_servers']['master'].keys()[0]
+        ocp_node = list(g.config['ocp_servers']['master'].keys())[0]
         # deploy a temporary storage class
         sc = build_storage_class(
             name=tname,
@@ -345,7 +345,7 @@ class TestVolumeMultiReq(BaseClass):
         """
         self.addCleanup(self.wait_to_settle)
         tname = make_unique_label(extract_method_name(self.id()))
-        ocp_node = g.config['ocp_servers']['master'].keys()[0]
+        ocp_node = list(g.config['ocp_servers']['master'].keys())[0]
         # deploy a temporary storage class
         sc = build_storage_class(
             name=tname,
@@ -389,7 +389,7 @@ class TestVolumeMultiReq(BaseClass):
         """
         self.addCleanup(self.wait_to_settle)
         tname = make_unique_label(extract_method_name(self.id()))
-        ocp_node = g.config['ocp_servers']['master'].keys()[0]
+        ocp_node = list(g.config['ocp_servers']['master'].keys())[0]
         # deploy a temporary storage class
         sc = build_storage_class(
             name=tname,
