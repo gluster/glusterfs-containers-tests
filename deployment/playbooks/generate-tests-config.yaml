@@ -1,0 +1,140 @@
+# Run this playbook this way:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i ocp-master-node-hostname-or-ip, \
+#   playbooks/generate-tests-config.yaml \
+#   -e output_filepath=tests-config.yaml \
+#   -e additional_devices=/dev/sdf
+#
+# Supported vars:
+# - output_filepath: optional. Defines path for an output tests config file.
+# - additional_devices: optional. Device names like "/dev/sdf" separated by
+#   comma. Should be bare devices which can be attached to a Heketi cluster.
+#   If it is not specified or empty, then appropriate test cases will be
+#   skipped.
+# - master_ip: optional. Will be used as master node IP address if provided.
+#
+# Requirements:
+# - 'yedit' module should be enabled. It will be enabled running this playbook
+#   via 'tox' command.
+# - playbook should run only on one host - OpenShift master node.
+#
+# Notes:
+# - tox's env name can be any of the following:
+#   'ocp3.6', 'ocp3.7', 'ocp3.9', 'ocp3.10' or 'ocp3.11'. The criterion is
+#   to have 'yedit' module enabled. Which is enabled in any of those envs.
+
+---
+- hosts: all[0]
+  gather_facts: no
+  tasks:
+  - name: Read full hostname of the master node
+    shell: "hostname -f"
+    register: master_hostname_raw
+  - name: Init vars
+    set_fact:
+      master_hostname: "{{ master_hostname_raw.stdout.strip() }}"
+      master_ip: "{{ master_ip | default(hostvars.keys()[0]) }}"
+      output_filepath: "{{
+        output_filepath | default('../tests-config.yaml') }}"
+      additional_devices_list: []
+  - name: Process specified additional devices
+    set_fact:
+      additional_devices_list: "{{ additional_devices_list + [item] }}"
+    with_items: "{{ (additional_devices | default('')).split(',') }}"
+    when: item.strip() != ''
+
+  - name: Read namespace of a Heketi deployment config
+    shell: "oc get dc --all-namespaces | grep heketi | awk '{ print $1}'"
+    register: heketi_namespace_raw
+  - name: Save namespace name in a separate var
+    set_fact:
+      heketi_namespace: "{{ heketi_namespace_raw.stdout.strip() }}"
+  - name: Read Heketi dc name
+    shell: "oc get dc -n {{ heketi_namespace
+      }} | grep heketi | awk '{ print $1}'"
+    register: heketi_dc_name_raw
+  - name: Read Heketi svc name
+    shell: "oc get svc -n {{ heketi_namespace
+      }} | grep -e heketi | grep -v heketi-db | awk '{ print $1}'"
+    register: heketi_svc_name_raw
+  - name: Save Heketi DC and SVC names in separate vars
+    set_fact:
+      heketi_dc_name: "{{ heketi_dc_name_raw.stdout.strip() }}"
+      heketi_svc_name: "{{ heketi_svc_name_raw.stdout.strip() }}"
+  - name: Read Heketi service IP address
+    shell: "oc get svc {{ heketi_svc_name }} -n {{ heketi_namespace
+      }} -o=custom-columns=:.spec.clusterIP --no-headers"
+    register: heketi_ip_raw
+  - name: Read Heketi admin's secret
+    shell: oc get dc -n {{ heketi_namespace }} {{ heketi_dc_name
+      }} -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==
+        "HEKETI_ADMIN_KEY")].value}'
+    register: heketi_admin_secret_raw
+  - name: Save Heketi admin secret to a var
+    set_fact:
+      heketi_admin_secret: "{{ heketi_admin_secret_raw.stdout.strip() }}"
+  - name: Read Gluster nodes addresses
+    shell: "heketi-cli --server=http://{{
+        heketi_ip_raw.stdout.strip() }}:8080 --user=admin --secret={{
+      heketi_admin_secret }} topology info --json |
+        python -c \"from __future__ import print_function; import sys, json;
+        topology = json.loads(sys.stdin.readlines()[0]);
+        ips = [(n['hostnames']['manage'][0], n['hostnames']['storage'][0])
+               for n in topology['clusters'][0]['nodes']];
+        [print(ip[0], ip[1]) for ip in ips]\""
+    register: gluster_nodes_addresses_raw
+  - name: Process gluster data and save it to a var
+    set_fact:
+      gluster_servers_data: "{{ gluster_servers_data | default({}) | combine(
+        {item.split(' ')[1]: {
+          'manage': item.split(' ')[0], 'storage': item.split(' ')[1],
+          'additional_devices': additional_devices_list,
+        }}
+      )}}"
+    with_items: "{{ gluster_nodes_addresses_raw.stdout_lines }}"
+
+  - name: Save all the calculated data to the tests config file
+    delegate_to: localhost
+    connection: local
+    yedit:
+      src: "{{ output_filepath }}"
+      state: present
+      backup: false
+      edits:
+      - key: common
+        value:
+          stop_on_first_failure: false
+      - key: gluster_servers
+        value: "{{ gluster_servers_data }}"
+      - key: ocp_servers.client
+        value: "{{ {master_ip: {'hostname': master_hostname}} }}"
+      - key: ocp_servers.master
+        value: "{{ {master_ip: {'hostname': master_hostname}} }}"
+      - key: ocp_servers.nodes
+        value: {}
+      - key: openshift.storage_project_name
+        value: "{{ heketi_namespace }}"
+      - key: openshift.dynamic_provisioning.storage_classes.block_storage_class
+        value:
+          chapauthenabled: "true"
+          hacount: "3"
+          provisioner: "gluster.org/glusterblock"
+          restsecretnamespace: "{{ heketi_namespace }}"
+          resturl: "http://{{ master_ip }}:8080"
+          restuser: "admin"
+          volumenameprefix: "autotests-block"
+      - key: openshift.dynamic_provisioning.storage_classes.file_storage_class
+        value:
+          provisioner: "kubernetes.io/glusterfs"
+          resturl: "http://{{ master_ip }}:8080"
+          restuser: "admin"
+          secretnamespace: "{{ heketi_namespace }}"
+          volumenameprefix: "autotests-file"
+      - key: openshift.heketi_config
+        value:
+          heketi_cli_key: "{{ heketi_admin_secret }}"
+          heketi_cli_user: "admin"
+          heketi_client_node: "{{ master_ip }}"
+          heketi_dc_name: "{{ heketi_dc_name }}"
+          heketi_server_url: "http://{{ master_ip }}:8080"
+          heketi_service_name: "{{ heketi_svc_name }}"
