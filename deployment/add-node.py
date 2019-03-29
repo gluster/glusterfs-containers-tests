@@ -563,15 +563,16 @@ class VMWareAddNode(object):
         if self.docker_image_tag:
             playbook_vars_dict['openshift_image_tag'] = self.docker_image_tag
 
-        if self.openshift_use_crio:
-            playbook_vars_dict['openshift_use_crio'] = self.openshift_use_crio
-            playbook_vars_dict['openshift_use_crio_only'] = (
-                self.openshift_use_crio)
-            playbook_vars_dict['openshift_crio_enable_docker_gc'] = (
-                self.openshift_use_crio)
-        else:
-            playbook_vars_dict['openshift_use_crio'] = 'false'
-
+        if self.openshift_vers == 'v3_11':
+            if self.openshift_use_crio:
+                playbook_vars_dict['openshift_use_crio'] = (
+                    self.openshift_use_crio)
+                playbook_vars_dict['openshift_use_crio_only'] = (
+                    self.openshift_use_crio)
+                playbook_vars_dict['openshift_crio_enable_docker_gc'] = (
+                    self.openshift_use_crio)
+            else:
+                playbook_vars_dict['openshift_use_crio'] = 'false'
         if self.openshift_vers in ("v3_6", "v3_7", "v3_9"):
             for key in ('image', 'version',
                         'block_image', 'block_version',

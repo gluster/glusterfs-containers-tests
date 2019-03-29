@@ -78,7 +78,133 @@
       - key: kubeletArguments.runtime-request-timeout
         value: ["10m"]
 
-- name: call openshift includes for installer
+- name: Call openshift includes for OCP3.6 and OCP3.7 installer
+  include: "{{
+      lookup('env', 'VIRTUAL_ENV')
+  }}/usr/share/ansible/openshift-ansible/playbooks/{{
+      (openshift_vers in ['v3_6', 'v3_7']) |
+          ternary('byo/config.yml', 'deploy_cluster.yml')
+  }}"
+  vars:
+    openshift_release: "v3.{{ openshift_vers.split('_')[-1] }}"
+    debug_level: 2
+    console_port: 8443
+    openshift_debug_level: "{{ debug_level }}"
+    openshift_node_debug_level: "{{ node_debug_level | default(debug_level, true) }}"
+    # NOTE(vponomar): following two can be changed to "true" when
+    # https://github.com/openshift/openshift-ansible/issues/6086 is fixed
+    openshift_enable_service_catalog: false
+    template_service_broker_install: false
+    osm_controller_args:
+      cloud-provider:
+      - "vsphere"
+      cloud-config:
+      - "/etc/origin/cloudprovider/vsphere.conf"
+    osm_api_server_args:
+      cloud-provider:
+      - "vsphere"
+      cloud-config:
+      - "/etc/origin/cloudprovider/vsphere.conf"
+    openshift_master_debug_level: "{{ master_debug_level | default(debug_level, true) }}"
+    openshift_master_access_token_max_seconds: 2419200
+    openshift_hosted_router_replicas: 1
+    openshift_hosted_registry_replicas: 1
+    openshift_master_api_port: "{{ console_port }}"
+    openshift_master_console_port: "{{ console_port }}"
+    openshift_node_local_quota_per_fsgroup: 512Mi
+    osm_cluster_network_cidr: 172.16.0.0/16
+    osm_use_cockpit: false
+    osm_default_node_selector: "role=compute"
+    openshift_registry_selector: "role=compute"
+    openshift_override_hostname_check: true
+    openshift_router_selector: "role=compute"
+    openshift_master_cluster_method: native
+    openshift_cloudprovider_kind: vsphere
+    openshift_cloudprovider_vsphere_host: "{{ vcenter_host }}"
+    openshift_cloudprovider_vsphere_username: "{{ vcenter_username }}"
+    openshift_cloudprovider_vsphere_password: "{{ vcenter_password }}"
+    openshift_cloudprovider_vsphere_datacenter: "{{ vcenter_datacenter }}"
+    openshift_cloudprovider_vsphere_datastore: "{{ vcenter_datastore }}"
+    openshift_cloudprovider_vsphere_folder: "{{ vcenter_folder }}"
+    wildcard_zone: "{{ app_dns_prefix }}.{{ dns_zone }}"
+    osm_default_subdomain: "{{ wildcard_zone }}"
+    openshift_master_default_subdomain: "{{osm_default_subdomain}}"
+    deployment_type: "{{ deployment_type }}"
+    load_balancer_hostname: "{{ lb_host }}"
+    openshift_master_cluster_hostname: "{{ load_balancer_hostname }}"
+    openshift_master_cluster_public_hostname: "{{ load_balancer_hostname }}"
+    os_sdn_network_plugin_name: "{{ openshift_sdn }}"
+    openshift_master_identity_providers:
+    - name: 'allow_all'
+      kind: 'AllowAllPasswordIdentityProvider'
+      login: True
+      challenge: True
+    openshift_crio_docker_gc_node_selector:
+      runtime: crio
+    # 'openshift_node_groups' is required for OCP3.10
+    openshift_node_groups:
+    - name: node-config-master
+      labels:
+      - 'node-role.kubernetes.io/master=true'
+      - 'role=master'
+      edits: []
+    - name: node-config-master-crio
+      labels:
+      - 'node-role.kubernetes.io/master=true'
+      - 'role=master'
+      - 'runtime=cri-o'
+      edits:
+      - key: kubeletArguments.container-runtime
+        value: ["remote"]
+      - key: kubeletArguments.container-runtime-endpoint
+        value: ["/var/run/crio/crio.sock"]
+      - key: kubeletArguments.image-service-endpoint
+        value: ["/var/run/crio/crio.sock"]
+      - key: kubeletArguments.runtime-request-timeout
+        value: ["10m"]
+    - name: node-config-compute
+      labels:
+      - 'node-role.kubernetes.io/compute=true'
+      - 'node-role.kubernetes.io/infra=true'
+      - 'role=compute'
+      edits: []
+    - name: node-config-compute-crio
+      labels:
+      - 'node-role.kubernetes.io/compute=true'
+      - 'node-role.kubernetes.io/infra=true'
+      - 'role=compute'
+      - 'runtime=cri-o'
+      edits:
+      - key: kubeletArguments.container-runtime
+        value: ["remote"]
+      - key: kubeletArguments.container-runtime-endpoint
+        value: ["/var/run/crio/crio.sock"]
+      - key: kubeletArguments.image-service-endpoint
+        value: ["/var/run/crio/crio.sock"]
+      - key: kubeletArguments.runtime-request-timeout
+        value: ["10m"]
+    - name: node-config-storage
+      labels:
+      - 'node-role.kubernetes.io/storage=true'
+      - 'role=storage'
+      edits: []
+    - name: node-config-storage-crio
+      labels:
+      - 'node-role.kubernetes.io/storage=true'
+      - 'role=storage'
+      - 'runtime=cri-o'
+      edits:
+      - key: kubeletArguments.container-runtime
+        value: ["remote"]
+      - key: kubeletArguments.container-runtime-endpoint
+        value: ["/var/run/crio/crio.sock"]
+      - key: kubeletArguments.image-service-endpoint
+        value: ["/var/run/crio/crio.sock"]
+      - key: kubeletArguments.runtime-request-timeout
+        value: ["10m"]
+  when: openshift_vers in ['v3_6', 'v3_7']
+
+- name: "Call openshift includes for OCP3.9+ installer"
   include: "{{
       lookup('env', 'VIRTUAL_ENV')
   }}/usr/share/ansible/openshift-ansible/playbooks/{{
@@ -212,6 +338,7 @@
         value: ["/var/run/crio/crio.sock"]
       - key: kubeletArguments.runtime-request-timeout
         value: ["10m"]
+  when: openshift_vers not in ['v3_6', 'v3_7']
 
 - hosts: allnodes
   gather_facts: no
@@ -226,3 +353,13 @@
   gather_facts: no
   roles:
   - yum-update-and-reboot
+
+- hosts: single_master
+  gather_facts: no
+  tasks:
+  - name: Make sure oc client is responsive
+    command: oc status
+    retries: 120
+    delay: 5
+    register: oc_status_result
+    until: oc_status_result is succeeded

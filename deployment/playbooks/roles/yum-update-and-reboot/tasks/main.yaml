@@ -10,7 +10,8 @@
     when: "(hostnames_for_reboot is not defined) or hostnames_for_reboot | length < 1"
 
   - name: Run yum_update command
-    command: "yum update -y"
+    command: "yum update -y {{ (openshift_vers in ['v3_6', 'v3_7']) |
+      ternary('--exclude=*docker*', '') }}"
     delegate_to: "{{ item }}"
     with_items: "{{ hostnames_for_reboot }}"
 

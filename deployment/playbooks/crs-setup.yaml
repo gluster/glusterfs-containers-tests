@@ -83,6 +83,7 @@
       name: glusterfs-{{ glusterfs_name }}
       content:
         allowVolumeExpansion: true
+    when: openshift_vers not in ['v3_6', 'v3_7']
 
 - name: Get IP address of the node with router
   hosts: single_master

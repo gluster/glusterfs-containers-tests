@@ -441,14 +441,16 @@ class OCPOnVMWare(object):
         if self.web_console_install:
             playbook_vars_dict['openshift_web_console_install'] = (
                 self.web_console_install)
-        if self.openshift_use_crio:
-            playbook_vars_dict['openshift_use_crio'] = self.openshift_use_crio
-            playbook_vars_dict['openshift_use_crio_only'] = (
-                self.openshift_use_crio)
-            playbook_vars_dict['openshift_crio_enable_docker_gc'] = (
-                self.openshift_use_crio)
-        else:
-            playbook_vars_dict['openshift_use_crio'] = 'false'
+        if self.openshift_vers == 'v3_11':
+            if self.openshift_use_crio:
+                playbook_vars_dict['openshift_use_crio'] = (
+                    self.openshift_use_crio)
+                playbook_vars_dict['openshift_use_crio_only'] = (
+                    self.openshift_use_crio)
+                playbook_vars_dict['openshift_crio_enable_docker_gc'] = (
+                    self.openshift_use_crio)
+            else:
+                playbook_vars_dict['openshift_use_crio'] = 'false'
         if self.openshift_vers in ('v3_6', 'v3_7'):
             playbook_vars_dict['docker_version'] = '1.12.6'
 

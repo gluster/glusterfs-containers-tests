@@ -111,3 +111,13 @@
   become: no
   roles:
   - yum-update-and-reboot
+
+- hosts: single_master
+  gather_facts: no
+  tasks:
+  - name: Make sure oc client is responsive
+    command: oc status
+    retries: 120
+    delay: 5
+    register: oc_status_result
+    until: oc_status_result is succeeded

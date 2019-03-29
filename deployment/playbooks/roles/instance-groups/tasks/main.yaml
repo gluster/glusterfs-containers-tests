@@ -19,16 +19,16 @@
 - name: Add masters to requisite groups
   add_host:
     name: "{{ hostvars[item].inventory_hostname }}"
-    groups: allnodes, masters, etcd, nodes, cluster_hosts, master
+    groups: allnodes, masters, etcd, nodes, cluster_hosts, master, OSEv3
     openshift_node_group_name: "node-config-master{{
-      (openshift_use_crio | bool) | ternary('-crio', '') }}"
+      (openshift_use_crio | default(false) | bool) | ternary('-crio', '') }}"
   with_items: "{{ groups[cluster_id + '-master'] }}"
   when:
     - "openshift_vers not in ['v3_6', 'v3_7', 'v3_9', 'v3_10']"
 - name: Add masters to requisite groups
   add_host:
     name: "{{ hostvars[item].inventory_hostname }}"
-    groups: allnodes, masters, etcd, nodes, cluster_hosts, master
+    groups: allnodes, masters, etcd, nodes, cluster_hosts, master, OSEv3
     openshift_node_group_name: "node-config-master"
     openshift_node_labels:
       role: master
@@ -42,7 +42,7 @@
     name: "{{ hostvars[item].inventory_hostname }}"
     groups: single_master
     openshift_node_group_name: "node-config-master{{
-      (openshift_use_crio | bool) | ternary('-crio', '') }}"
+      (openshift_use_crio | default(false) | bool) | ternary('-crio', '') }}"
   with_items: "{{ groups[cluster_id + '-master'][0] }}"
   when:
     - "openshift_vers not in ['v3_6', 'v3_7', 'v3_9', 'v3_10']"
@@ -61,16 +61,16 @@
 - name: Add compute instances to host group
   add_host:
     name: "{{ hostvars[item].inventory_hostname }}"
-    groups: allnodes, nodes, cluster_hosts, schedulable_nodes, compute
+    groups: allnodes, nodes, cluster_hosts, schedulable_nodes, compute, OSEv3
     openshift_node_group_name: "node-config-compute{{
-      (openshift_use_crio | bool) | ternary('-crio', '') }}"
+      (openshift_use_crio | default(false) | bool) | ternary('-crio', '') }}"
   with_items: "{{ groups[cluster_id + '-compute'] }}"
   when:
     - "openshift_vers not in ['v3_6', 'v3_7', 'v3_9', 'v3_10']"
 - name: Add compute instances to host group
   add_host:
     name: "{{ hostvars[item].inventory_hostname }}"
-    groups: allnodes, nodes, cluster_hosts, schedulable_nodes, compute
+    groups: allnodes, nodes, cluster_hosts, schedulable_nodes, compute, OSEv3
     openshift_node_group_name: "node-config-compute"
     openshift_node_labels:
       role: compute
@@ -85,7 +85,7 @@
     name: "{{ hostvars[item].inventory_hostname }}"
     groups: allnodes, new_nodes
     openshift_node_group_name: "node-config-compute{{
-      (openshift_use_crio | bool) | ternary('-crio', '') }}"
+      (openshift_use_crio | default(false) | bool) | ternary('-crio', '') }}"
   with_items: "{{ groups.tag_provision_node | default([]) }}"
   when:
     - add_node is defined
@@ -107,15 +107,15 @@
 - name: Add cns instances to allnodes
   add_host:
     name: "{{ hostvars[item].inventory_hostname }}"
-    groups: allnodes
+    groups: allnodes, OSEv3
     openshift_node_group_name: "node-config-storage{{
-      (openshift_use_crio | bool) | ternary('-crio', '') }}"
+      (openshift_use_crio | default(false) | bool) | ternary('-crio', '') }}"
   with_items: "{{ groups[cluster_id + '-storage'] | default([]) }}"
 
 - name: Add crs instances to allnodes
   add_host:
     name: "{{ hostvars[item].inventory_hostname }}"
-    groups: allnodes
+    groups: allnodes, OSEv3
     openshift_node_group_name: "node-config-storage"
   with_items: "{{ groups[cluster_id + '-crs'] | default([]) }}"
 
@@ -124,7 +124,7 @@
     name: "{{ hostvars[item].inventory_hostname }}"
     groups: nodes, cluster_hosts, schedulable_nodes, storage
     openshift_node_group_name: "node-config-storage{{
-      (openshift_use_crio | bool) | ternary('-crio', '') }}"
+      (openshift_use_crio | default(false) | bool) | ternary('-crio', '') }}"
   with_items: "{{ groups[cluster_id + '-storage'] }}"
   when:
     - "'cns' in container_storage and add_node is defined and 'storage' in node_type"

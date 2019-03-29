@@ -3,7 +3,7 @@
   file:
     path: /etc/sysconfig/docker-storage
     state: absent
-  when: not (openshift_use_crio | bool)
+  when: not (openshift_use_crio | default(false) | bool)
 
 - block:
     - name: create the docker-storage config file
@@ -16,7 +16,7 @@
   when:
     - ansible_distribution_version | version_compare('7.4', '>=')
     - ansible_distribution == "RedHat"
-    - not (openshift_use_crio | bool)
+    - not (openshift_use_crio | default(false) | bool)
 
 - block:
     - name: create the docker-storage-setup config file
@@ -29,11 +29,11 @@
   when:
     - ansible_distribution_version | version_compare('7.4', '<')
     - ansible_distribution == "RedHat"
-    - not (openshift_use_crio | bool)
+    - not (openshift_use_crio | default(false) | bool)
 
 - name: start docker
   service:
     name: docker
     state: started
     enabled: true
-  when: not (openshift_use_crio | bool)
+  when: not (openshift_use_crio | default(false) | bool)
