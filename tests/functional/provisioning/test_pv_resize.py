@@ -166,6 +166,23 @@ class TestPvResizeClass(BaseClass):
         available_size_gb = int(min(nodes.values()) / (1024**2))
         return available_size_gb
 
+    def _write_file(self, pod_name, filename, filesize, mnt_path):
+        # write file
+        cmd = ('dd if=/dev/zero of={}/{} bs={} count=1'.format(
+            mnt_path, filename, filesize))
+        ret, _, err = oc_rsh(self.node, pod_name, cmd)
+        self.assertFalse(ret, 'Failed to write file due to err {}'.format(err))
+        wait_for_pod_be_ready(self.node, pod_name)
+
+    def _get_mount_size(self, pod_name, mnt_path):
+        cmd = ("df -h | grep {} | tail -1 | awk '{{print $4}}'".format(
+            mnt_path))
+        ret, out, err = oc_rsh(self.node, pod_name, cmd)
+        self.assertFalse(ret, 'Failed to get size due to err {} in {}'.format(
+            err, mnt_path))
+
+        return out
+
     def _pv_resize(self, exceed_free_space):
         dir_path = "/mnt"
         pvc_size_gb = 1
@@ -372,3 +389,78 @@ class TestPvResizeClass(BaseClass):
                 self.ocp_master_node[0], pvc_name, available_size_gb + 1)
         resize_pvc(self.ocp_master_node[0], pvc_name, available_size_gb)
         verify_pvc_size(self.ocp_master_node[0], pvc_name, available_size_gb)
+
+    @pytest.mark.tier1
+    def test_pv_resize_device_disabled(self):
+        """Validate resize after disabling all devices except one"""
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # expand volume size and path volume is mounted
+        expand_size, dir_path = 7, "/mnt"
+
+        # Get nodes info
+        heketi_node_id_list = heketi_ops.heketi_node_list(
+            h_node, h_url)
+        if len(heketi_node_id_list) < 3:
+            self.skipTest(
+                "At-least 3 gluster nodes are required to execute test case")
+
+        self.create_storage_class(allow_volume_expansion=True)
+        pvc_name = self.create_and_wait_for_pvc(pvc_size=2)
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, pvc_name)
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
+
+        self._write_file(pod_name, "file1", "1G", dir_path)
+
+        with self.assertRaises(AssertionError):
+            self._write_file(pod_name, "file2", "3G", dir_path)
+
+        # Prepare first 3 nodes and then disable other devices.
+        for node_id in heketi_node_id_list[:3]:
+            node_info = heketi_ops.heketi_node_info(
+                h_node, h_url, node_id, json=True)
+            self.assertTrue(node_info, "Failed to get node info")
+            devices = node_info.get("devices", None)
+            self.assertTrue(
+                devices, "Node {} does not have devices".format(node_id))
+            if devices[0]["state"].strip().lower() != "online":
+                self.skipTest(
+                    "Skipping test as it expects to first device to"
+                    " be enabled")
+            for device in devices[1:]:
+                heketi_ops.heketi_device_disable(
+                    h_node, h_url, device["id"])
+                self.addCleanup(
+                    heketi_ops.heketi_device_enable,
+                    h_node, h_url, device["id"])
+
+        usedsize_before_resize = self._get_mount_size(pod_name, dir_path)
+
+        # Resize pvc
+        resize_pvc(self.node, pvc_name, expand_size)
+        verify_pvc_size(self.node, pvc_name, expand_size)
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, pvc_name)
+        self.assertFalse(len(vol_info['bricks']['brick']) % 3)
+
+        for node_id in heketi_node_id_list[:3]:
+            for device in devices[1:]:
+                heketi_ops.heketi_device_enable(
+                    h_node, h_url, device["id"])
+
+        self._write_file(pod_name, "file3", "3G", dir_path)
+
+        usedsize_after_resize = self._get_mount_size(pod_name, dir_path)
+        self.assertGreater(
+            int(usedsize_before_resize.strip('%')),
+            int(usedsize_after_resize.strip('%')),
+            "Mount size {} should be greater than {}".format(
+                usedsize_before_resize, usedsize_after_resize))
+
+        self._write_file(pod_name, "file4", "1024", dir_path)
+
+        # Validate dist-rep volume with 6 bricks after pv resize
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, pvc_name)
+        self.assertEqual(
+            6, len(vol_info['bricks']['brick']),
+            "Expected bricks count is 6, but actual brick count is {}".format(
+                len(vol_info['bricks']['brick'])))
