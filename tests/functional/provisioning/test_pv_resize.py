@@ -6,12 +6,14 @@ from openshiftstoragelibs.openshift_storage_libs import enable_pvc_resize
 from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs.openshift_ops import (
-    resize_pvc,
+    get_gluster_vol_info_by_pvc_name,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
     oc_create_app_dc_with_io,
     oc_delete,
+    oc_get_custom_resource,
     oc_rsh,
+    resize_pvc,
     scale_dc_pod_amount_and_wait,
     verify_pv_size,
     verify_pvc_size,
@@ -19,6 +21,7 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence)
 from openshiftstoragelibs.openshift_version import get_openshift_version
+from openshiftstoragelibs import waiter
 
 
 @ddt.ddt
@@ -232,3 +235,70 @@ class TestPvResizeClass(BaseClass):
         ret, out, err = oc_rsh(node, pod_name, cmd)
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, node))
+
+    def test_pv_resize_when_heketi_down(self):
+        """Create a PVC and try to expand it when heketi is down, It should
+        fail. After heketi is up, expand PVC should work.
+        """
+        self.create_storage_class(allow_volume_expansion=True)
+        pvc_name = self.create_and_wait_for_pvc()
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
+
+        pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+        custom = (r':metadata.annotations.'
+                  r'"gluster\.kubernetes\.io\/heketi-volume-id"')
+        vol_id = oc_get_custom_resource(self.node, 'pv', custom, pv_name)[0]
+
+        h_vol_info = heketi_ops.heketi_volume_info(
+            self.heketi_client_node, self.heketi_server_url, vol_id, json=True)
+
+        # Bring the heketi POD down
+        scale_dc_pod_amount_and_wait(
+            self.node, self.heketi_dc_name, pod_amount=0)
+        self.addCleanup(
+            scale_dc_pod_amount_and_wait, self.node,
+            self.heketi_dc_name, pod_amount=1)
+
+        cmd = 'dd if=/dev/urandom of=/mnt/%s bs=614400k count=1'
+        ret, out, err = oc_rsh(self.node, pod_name, cmd % 'file1')
+        self.assertFalse(ret, 'Not able to write file with err: %s' % err)
+        wait_for_pod_be_ready(self.node, pod_name, 10, 5)
+
+        resize_pvc(self.node, pvc_name, 2)
+        wait_for_events(
+            self.node, pvc_name, obj_type='PersistentVolumeClaim',
+            event_type='Warning', event_reason='VolumeResizeFailed')
+
+        # Verify volume was not expanded
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, pvc_name)
+        self.assertEqual(vol_info['gluster_vol_id'], h_vol_info['name'])
+        self.assertEqual(
+            len(vol_info['bricks']['brick']), len(h_vol_info['bricks']))
+
+        # Bring the heketi POD up
+        scale_dc_pod_amount_and_wait(
+            self.node, self.heketi_dc_name, pod_amount=1)
+
+        # Verify volume expansion
+        verify_pvc_size(self.node, pvc_name, 2)
+        vol_info = get_gluster_vol_info_by_pvc_name(self.node, pvc_name)
+        self.assertFalse(len(vol_info['bricks']['brick']) % 3)
+        self.assertLess(
+            len(h_vol_info['bricks']), len(vol_info['bricks']['brick']))
+
+        # Wait for remount after expansion
+        for w in waiter.Waiter(timeout=30, interval=5):
+            ret, out, err = oc_rsh(
+                self.node, pod_name,
+                "df -Ph /mnt | awk '{print $2}' | tail -1")
+            self.assertFalse(ret, 'Failed with err: %s and Output: %s' % (
+                err, out))
+            if out.strip() == '2.0G':
+                break
+
+        # Write data making sure we have more space than it was
+        ret, out, err = oc_rsh(self.node, pod_name, cmd % 'file2')
+        self.assertFalse(ret, 'Not able to write file with err: %s' % err)
+
+        # Verify pod is running
+        wait_for_pod_be_ready(self.node, pod_name, 10, 5)
