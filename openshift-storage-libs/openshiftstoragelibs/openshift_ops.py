@@ -1005,7 +1005,7 @@ def resize_pvc(hostname, pvc_name, size):
     '''
     cmd = ("oc patch pvc %s "
            "-p='{\"spec\": {\"resources\": {\"requests\": "
-           "{\"storage\": \"%dGi\"}}}}'" % (pvc_name, size))
+           "{\"storage\": \"%sGi\"}}}}'" % (pvc_name, size))
     out = command.cmd_run(cmd, hostname=hostname)
     g.log.info("successfully edited storage capacity"
                "of pvc %s . out- %s" % (pvc_name, out))

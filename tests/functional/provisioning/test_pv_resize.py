@@ -44,9 +44,14 @@ class TestPvResizeClass(BaseClass):
             g.log.error(msg)
             raise self.skipTest(msg)
 
-    @ddt.data(False, True)
-    def test_pv_resize_with_prefix_for_name(self,
-                                            create_vol_name_prefix=False):
+    @ddt.data(
+        (True, True),
+        (False, True),
+        (False, False),
+        )
+    @ddt.unpack
+    def test_pv_resize_with_prefix_for_name_and_size(
+            self, create_vol_name_prefix=False, valid_size=True):
         """Validate PV resize with and without name prefix"""
         dir_path = "/mnt/"
         node = self.ocp_client[0]
@@ -76,20 +81,29 @@ class TestPvResizeClass(BaseClass):
         ret, out, err = oc_rsh(node, pod_name, cmd)
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, node))
-        cmd = ("dd if=/dev/urandom of=%sfile2 "
-               "bs=100K count=10000") % dir_path
-        with self.assertRaises(AssertionError):
-            ret, out, err = oc_rsh(node, pod_name, cmd)
-            msg = ("Command '%s' was expected to fail on '%s' node. "
-                   "But it returned following: ret is '%s', err is '%s' "
-                   "and out is '%s'" % (cmd, node, ret, err, out))
-            raise ExecutionError(msg)
-
-        pvc_size = 2
-        resize_pvc(node, pvc_name, pvc_size)
-        verify_pvc_size(node, pvc_name, pvc_size)
         pv_name = get_pv_name_from_pvc(node, pvc_name)
-        verify_pv_size(node, pv_name, pvc_size)
+
+        # If resize size is invalid then size should not change
+        if valid_size:
+            cmd = ("dd if=/dev/urandom of=%sfile2 "
+                   "bs=100K count=10000") % dir_path
+            with self.assertRaises(AssertionError):
+                ret, out, err = oc_rsh(node, pod_name, cmd)
+                msg = ("Command '%s' was expected to fail on '%s' node. "
+                       "But it returned following: ret is '%s', err is '%s' "
+                       "and out is '%s'" % (cmd, node, ret, err, out))
+                raise ExecutionError(msg)
+            pvc_size = 2
+            resize_pvc(node, pvc_name, pvc_size)
+            verify_pvc_size(node, pvc_name, pvc_size)
+            verify_pv_size(node, pv_name, pvc_size)
+        else:
+            invalid_pvc_size = 'ten'
+            with self.assertRaises(AssertionError):
+                resize_pvc(node, pvc_name, invalid_pvc_size)
+            verify_pvc_size(node, pvc_name, 1)
+            verify_pv_size(node, pv_name, 1)
+
         oc_delete(node, 'pod', pod_name)
         wait_for_resource_absence(node, 'pod', pod_name)
         pod_name = get_pod_name_from_dc(node, dc_name)
