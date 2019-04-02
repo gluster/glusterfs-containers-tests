@@ -40,8 +40,7 @@ class TestPvResizeClass(BaseClass):
     def setUp(self):
         super(TestPvResizeClass, self).setUp()
         if getattr(self, "skip_me", False):
-            msg = ("pv resize is not available in openshift "
-                   "version %s " % self.version)
+            msg = ("pv resize is not available in openshift older than v3.9")
             g.log.error(msg)
             raise self.skipTest(msg)
 

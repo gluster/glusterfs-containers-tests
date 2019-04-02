@@ -20,6 +20,7 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence,
 )
+from openshiftstoragelibs.openshift_version import get_openshift_version
 
 
 @ddt.ddt
@@ -247,6 +248,11 @@ class TestStorageClassCases(BaseClass):
 
     def test_create_and_verify_pvc_with_volume_name_prefix(self):
         """create and verify pvc with volname prefix on an app pod"""
+        if get_openshift_version() < "3.9":
+            self.skipTest(
+                "'volumenameprefix' option for Heketi is not supported"
+                " in OCP older than 3.9")
+
         sc_name = self.create_storage_class(create_vol_name_prefix=True)
         pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
         namespace = (self.sc.get(

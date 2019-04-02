@@ -31,7 +31,7 @@ import six
 from openshiftstoragelibs import exceptions
 
 
-OPENSHIFT_VERSION_RE = r"(?:v?)(\d+)(?:\.)(\d+)(?:\.(\d+))?$"
+OPENSHIFT_VERSION_RE = r"(?:v?)(\d+)(?:\.)(\d+)(?:\.(\d+))?.*"
 OPENSHIFT_VERSION = None
 
 

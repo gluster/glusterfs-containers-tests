@@ -28,6 +28,7 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence,
 )
+from openshiftstoragelibs.openshift_version import get_openshift_version
 
 
 class BaseClass(unittest.TestCase):
@@ -214,8 +215,11 @@ class BaseClass(unittest.TestCase):
             for pvc_name in pvc_names:
                 verify_pvc_status_is_bound(node, pvc_name, timeout, wait_step)
         finally:
-            reclaim_policy = oc_get_custom_resource(
-                node, 'sc', ':.reclaimPolicy', sc_name)[0]
+            if get_openshift_version() < "3.9":
+                reclaim_policy = "Delete"
+            else:
+                reclaim_policy = oc_get_custom_resource(
+                    node, 'sc', ':.reclaimPolicy', sc_name)[0]
 
             for pvc_name in pvc_names:
                 if reclaim_policy == 'Retain':

@@ -15,6 +15,7 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence,
 )
+from openshiftstoragelibs.openshift_version import get_openshift_version
 
 
 @ddt.ddt
@@ -23,6 +24,10 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
     def setUp(self):
         super(TestArbiterVolumeCreateExpandDelete, self).setUp()
         self.node = self.ocp_master_node[0]
+        if get_openshift_version() < "3.9":
+            self.skipTest("Arbiter feature cannot be used on OCP older "
+                          "than 3.9, because 'volumeoptions' for Heketi "
+                          "is not supported there.")
         version = heketi_version.get_heketi_version(self.heketi_client_node)
         if version < '6.0.0-11':
             self.skipTest("heketi-client package %s does not support arbiter "

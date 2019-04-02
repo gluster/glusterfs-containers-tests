@@ -32,6 +32,7 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence,
 )
+from openshiftstoragelibs.openshift_version import get_openshift_version
 from openshiftstoragelibs.waiter import Waiter
 
 
@@ -315,6 +316,10 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
     def test_dynamic_provisioning_glusterblock_reclaim_policy_retain(self):
         """Validate retain policy for gluster-block after PVC deletion"""
+
+        if get_openshift_version() < "3.9":
+            self.skipTest(
+                "'Reclaim' feature is not supported in OCP older than 3.9")
 
         self.create_storage_class(reclaim_policy='Retain')
         self.create_and_wait_for_pvc()

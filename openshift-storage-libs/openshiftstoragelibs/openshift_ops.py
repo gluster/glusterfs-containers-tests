@@ -1298,9 +1298,29 @@ def get_events(hostname,
         field_selector.append('reason=%s' % event_reason)
     if event_type:
         field_selector.append('type=%s' % event_type)
-    cmd = "oc get events -o yaml --field-selector %s" % ",".join(
-        field_selector or "''")
-    return yaml.load(command.cmd_run(cmd, hostname=hostname))['items']
+    cmd = "oc get events -o yaml"
+    if openshift_version.get_openshift_version() >= '3.9':
+        cmd.append(" --field-selector %s" % ",".join(field_selector or "''"))
+    objects = yaml.load(command.cmd_run(cmd, hostname=hostname))['items']
+    if openshift_version.get_openshift_version() >= '3.9':
+        return objects
+
+    # Backup approach for OCP3.6 and OCP3.7 which do not have
+    # '--field-selector' feature.
+    filtered_objects = []
+    for o in objects:
+        if obj_name and o["involvedObject"]["name"] != obj_name:
+            continue
+        if obj_namespace and o["involvedObject"]["namespace"] != obj_namespace:
+            continue
+        if obj_type and o["involvedObject"]["kind"] != obj_type:
+            continue
+        if event_reason and o["reason"] != event_reason:
+            continue
+        if event_type and o["type"] != event_type:
+            continue
+        filtered_objects.append(o)
+    return filtered_objects
 
 
 def wait_for_events(hostname,

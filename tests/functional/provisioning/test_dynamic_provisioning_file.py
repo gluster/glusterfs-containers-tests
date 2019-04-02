@@ -28,6 +28,7 @@ from openshiftstoragelibs.openshift_ops import (
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
     wait_for_resource_absence)
+from openshiftstoragelibs.openshift_version import get_openshift_version
 from openshiftstoragelibs.waiter import Waiter
 
 
@@ -110,6 +111,11 @@ class TestDynamicProvisioningP0(BaseClass):
     def test_dynamic_provisioning_glusterfile_volname_prefix(self):
         """Validate dynamic provisioning for gluster file with vol name prefix
         """
+        if get_openshift_version() < "3.9":
+            self.skipTest(
+                "'volumenameprefix' option for Heketi is not supported"
+                " in OCP older than 3.9")
+
         g.log.info("test_dynamic_provisioning_glusterfile volname prefix")
         self.dynamic_provisioning_glusterfile(True)
 
@@ -398,6 +404,10 @@ class TestDynamicProvisioningP0(BaseClass):
     def test_dynamic_provisioning_glusterfile_reclaim_policy_retain(self):
         """Validate retain policy for glusterfs after deletion of pvc"""
 
+        if get_openshift_version() < "3.9":
+            self.skipTest(
+                "'Reclaim' feature is not supported in OCP older than 3.9")
+
         self.create_storage_class(reclaim_policy='Retain')
         self.create_and_wait_for_pvc()
 
@@ -441,6 +451,11 @@ class TestDynamicProvisioningP0(BaseClass):
 
     def test_usage_of_default_storage_class(self):
         """Validate PVs creation for SC with default custom volname prefix"""
+
+        if get_openshift_version() < "3.9":
+            self.skipTest(
+                "'volumenameprefix' option for Heketi is not supported"
+                " in OCP older than 3.9")
 
         # Unset 'default' option from all the existing Storage Classes
         unset_sc_annotation_cmd = (
