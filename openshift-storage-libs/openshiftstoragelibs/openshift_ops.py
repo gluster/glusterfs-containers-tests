@@ -1532,3 +1532,42 @@ def oc_get_schedulable_nodes(ocp_client):
     out = command.cmd_run(cmd, ocp_client)
 
     return out.split('\n') if out else out
+
+
+def get_default_block_hosting_volume_size(hostname, heketi_dc_name):
+    """Get the default size of block hosting volume.
+
+    Args:
+        hostname (str): Node where we want to run our commands.
+        heketi_dc_name (str): Name of heketi DC.
+
+    Raises:
+        exceptions.ExecutionError: if command fails.
+
+    Returns:
+        integer: if successful
+    """
+    heketi_pod = get_pod_name_from_dc(
+        hostname, heketi_dc_name, timeout=10)
+    cmd = 'cat /etc/heketi/heketi.json'
+    ret, out, err = oc_rsh(hostname, heketi_pod, cmd)
+    if ret or not out:
+        msg = ("Failed to get the default size of block hosting volume with"
+               " err: '%s' and output: '%s'" % (err, out))
+        g.log.error(msg)
+        raise exceptions.ExecutionError(msg)
+
+    try:
+        out = json.loads(out)
+    except ValueError:
+        msg = "Not able to load data into json format \n data: %s" % out
+        g.log.error(msg)
+        raise exceptions.ExecutionError(msg)
+
+    if ('glusterfs' in out.keys() and
+            'block_hosting_volume_size' in out['glusterfs'].keys()):
+        return int(out['glusterfs']['block_hosting_volume_size'])
+    msg = ("Not able to get the value of "
+           "out['glusterfs']['block_hosting_volume_size'] from out:\n" % out)
+    g.log.error(msg)
+    raise exceptions.ExecutionError(msg)

@@ -1,3 +1,5 @@
+import math
+
 from glusto.core import Glusto as g
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
@@ -10,12 +12,18 @@ from openshiftstoragelibs.openshift_storage_libs import (
 from openshiftstoragelibs.command import cmd_run
 from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs.heketi_ops import (
+    heketi_blockvolume_create,
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
-    heketi_blockvolume_list
+    heketi_blockvolume_list,
+    heketi_node_info,
+    heketi_node_list,
+    heketi_volume_create,
+    heketi_volume_delete,
 )
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
+    get_default_block_hosting_volume_size,
     get_gluster_pod_names_by_pvc_name,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
@@ -29,6 +37,7 @@ from openshiftstoragelibs.openshift_ops import (
     oc_rsh,
     scale_dc_pod_amount_and_wait,
     verify_pvc_status_is_bound,
+    wait_for_events,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
 )
@@ -500,3 +509,121 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             oc_adm_manage_node, self.node, '--schedulable=true', nodes=o_nodes)
 
         self.initiator_side_failures()
+
+    def verify_free_space(self, free_space):
+        # verify free space on nodes otherwise skip test case
+        node_list = heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
+        self.assertTrue(node_list)
+
+        free_nodes = 0
+        for node in node_list:
+            node_info = heketi_node_info(
+                self.heketi_client_node, self.heketi_server_url, node,
+                json=True)
+
+            if node_info['state'] != 'online':
+                continue
+
+            free_size = 0
+            self.assertTrue(node_info['devices'])
+
+            for device in node_info['devices']:
+                if device['state'] != 'online':
+                    continue
+                # convert size kb into gb
+                device_f_size = device['storage']['free'] / 1048576
+                free_size += device_f_size
+
+                if free_size > free_space:
+                    free_nodes += 1
+                    break
+
+            if free_nodes >= 3:
+                break
+
+        if free_nodes < 3:
+            self.skipTest("skip test case because required free space is "
+                          "not available for creating BHV of size %s /n"
+                          "only %s free space is available"
+                          % (free_space, free_size))
+
+    def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_neg(
+            self):
+        """Verify that block volume creation fails when we create block
+        volume of size greater than the default size of BHV.
+        Verify that block volume creation succeed when we create BHV
+        of size greater than the default size of BHV.
+        """
+
+        default_bhv_size = get_default_block_hosting_volume_size(
+            self.node, self.heketi_dc_name)
+        reserve_size = default_bhv_size * 0.02
+        reserve_size = int(math.ceil(reserve_size))
+
+        self.verify_free_space(default_bhv_size + reserve_size + 2)
+
+        with self.assertRaises(ExecutionError):
+            # create a block vol greater than default BHV size
+            bvol_info = heketi_blockvolume_create(
+                self.heketi_client_node, self.heketi_server_url,
+                (default_bhv_size + 1), json=True)
+            self.addCleanup(
+                heketi_blockvolume_delete, self.heketi_client_node,
+                self.heketi_server_url, bvol_info['id'])
+
+        sc_name = self.create_storage_class()
+
+        # create a block pvc greater than default BHV size
+        pvc_name = oc_create_pvc(
+            self.node, sc_name, pvc_size=(default_bhv_size + 1))
+        self.addCleanup(
+            wait_for_resource_absence, self.node, 'pvc', pvc_name)
+        self.addCleanup(
+            oc_delete, self.node, 'pvc', pvc_name, raise_on_absence=False)
+
+        wait_for_events(
+            self.node, pvc_name, obj_type='PersistentVolumeClaim',
+            event_type='Warning', event_reason='ProvisioningFailed')
+
+        # create block hosting volume greater than default BHV size
+        vol_info = heketi_volume_create(
+            self.heketi_client_node, self.heketi_server_url,
+            (default_bhv_size + reserve_size + 2), block=True,
+            json=True)
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_info['id'])
+
+        # Cleanup PVC before block hosting volume to avoid failures
+        self.addCleanup(
+            wait_for_resource_absence, self.node, 'pvc', pvc_name)
+        self.addCleanup(
+            oc_delete, self.node, 'pvc', pvc_name, raise_on_absence=False)
+
+        verify_pvc_status_is_bound(self.node, pvc_name)
+
+    def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_pos(
+            self):
+        """Verify that block volume creation succeed when we create BHV
+        of size greater than the default size of BHV.
+        """
+
+        default_bhv_size = get_default_block_hosting_volume_size(
+            self.node, self.heketi_dc_name)
+        reserve_size = default_bhv_size * 0.02
+        reserve_size = int(math.ceil(reserve_size))
+
+        self.verify_free_space(default_bhv_size + reserve_size + 2)
+
+        # create block hosting volume greater than default BHV size
+        vol_info = heketi_volume_create(
+            self.heketi_client_node, self.heketi_server_url,
+            (default_bhv_size + reserve_size + 2), block=True,
+            json=True)
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_info['id'])
+
+        # create a block pvc greater than default BHV size
+        self.create_and_wait_for_pvc(pvc_size=(default_bhv_size + 1))
