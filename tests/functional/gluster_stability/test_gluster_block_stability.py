@@ -1,15 +1,21 @@
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs.command import cmd_run
 from openshiftstoragelibs.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
     get_pod_name_from_dc,
     oc_adm_manage_node,
     oc_delete,
     oc_get_schedulable_nodes,
+    oc_rsh,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
+    wait_for_service_status_on_gluster_pod_or_node,
 )
 from openshiftstoragelibs.openshift_storage_libs import (
+    get_active_and_enabled_devices_from_mpath,
+    get_iscsi_block_devices_by_path,
     get_iscsi_session,
+    get_mpath_name_from_device_name,
 )
 
 
@@ -112,3 +118,57 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             oc_adm_manage_node, self.node, '--schedulable=true', nodes=o_nodes)
 
         self.initiator_side_failures()
+
+    def test_target_side_failures_gluster_blockd_kill_when_ios_going_on(self):
+        """Run I/Os on block volume while gluster-blockd is stoped"""
+        self.create_and_wait_for_pvc()
+
+        # Create app pod
+        dc_name, pod_name = self.create_dc_with_pvc(self.pvc_name)
+
+        iqn, hacount, node = self.verify_iscsi_sessions_and_multipath(
+            self.pvc_name, dc_name)
+
+        cmd_run_io = 'dd if=/dev/urandom of=/mnt/%s bs=4k count=10000'
+
+        # Get the paths
+        devices = get_iscsi_block_devices_by_path(node, iqn)
+        mpath = get_mpath_name_from_device_name(node, list(devices.keys())[0])
+        mpath_dev = get_active_and_enabled_devices_from_mpath(node, mpath)
+        paths = mpath_dev['active'] + mpath_dev['enabled']
+
+        for path in paths:
+            node_ip = devices[path]
+
+            # Stop gluster-blockd service
+            cmd_run_on_gluster_pod_or_node(
+                self.node, 'systemctl stop gluster-blockd', node_ip)
+            self.addCleanup(
+                cmd_run_on_gluster_pod_or_node, self.node,
+                'systemctl start gluster-blockd', node_ip)
+
+            wait_for_pod_be_ready(self.node, pod_name, 6, 3)
+
+            # Verify tcmu-runner, gluster-block-target service is running
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'tcmu-runner', 'active', 'running', node_ip)
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'gluster-block-target', 'active', 'exited', node_ip)
+
+            self.verify_all_paths_are_up_in_multipath(mpath, hacount, node)
+
+            # Run I/O
+            oc_rsh(self.node, pod_name, cmd_run_io % 'file1')
+
+            # Start service and verify status
+            cmd_run_on_gluster_pod_or_node(
+                self.node, 'systemctl start gluster-blockd', node_ip)
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'gluster-blockd', 'active', 'running', node_ip)
+
+            # Run I/O
+            oc_rsh(self.node, pod_name, cmd_run_io % 'file2')
+
+        # Verify that active path is same as before
+        mpath_dev_new = get_active_and_enabled_devices_from_mpath(node, mpath)
+        self.assertEqual(mpath_dev['active'][0], mpath_dev_new['active'][0])

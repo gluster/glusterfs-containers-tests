@@ -37,6 +37,7 @@ from openshiftstoragelibs.openshift_storage_libs import (
     validate_multipath_pod,
 )
 from openshiftstoragelibs.openshift_version import get_openshift_version
+from openshiftstoragelibs.waiter import Waiter
 
 
 class BaseClass(unittest.TestCase):
@@ -379,3 +380,17 @@ class GlusterBlockBaseClass(BaseClass):
             self.node, pod_name, hacount, mpath=list(mpaths)[0])
 
         return iqn, hacount, node
+
+    def verify_all_paths_are_up_in_multipath(
+            self, mpath_name, hacount, node, timeout=30, interval=5):
+        for w in Waiter(timeout, interval):
+            out = command.cmd_run('multipath -ll %s' % mpath_name, node)
+            count = 0
+            for line in out.split('\n'):
+                if 'active ready running' in line:
+                    count += 1
+            if hacount == count:
+                break
+        self.assertEqual(hacount, count)
+        for state in ['failed', 'faulty', 'undef']:
+            self.assertNotIn(state, out)
