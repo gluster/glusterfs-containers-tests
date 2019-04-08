@@ -12,6 +12,7 @@ from openshiftstoragelibs.openshift_storage_libs import (
 from openshiftstoragelibs.command import cmd_run
 from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs.heketi_ops import (
+    get_block_hosting_volume_list,
     heketi_blockvolume_create,
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
@@ -20,6 +21,8 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_node_list,
     heketi_volume_create,
     heketi_volume_delete,
+    heketi_volume_expand,
+    heketi_volume_info,
 )
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
@@ -627,3 +630,80 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
         # create a block pvc greater than default BHV size
         self.create_and_wait_for_pvc(pvc_size=(default_bhv_size + 1))
+
+    def test_expansion_of_block_hosting_volume_using_heketi(self):
+        """Verify that after expanding block hosting volume we are able to
+        consume the expanded space"""
+
+        h_node = self.heketi_client_node
+        h_url = self.heketi_server_url
+        bvols_in_bhv = set([])
+        bvols_pv = set([])
+
+        BHVS = get_block_hosting_volume_list(h_node, h_url)
+
+        free_BHVS_count = 0
+        for vol in BHVS.keys():
+            info = heketi_volume_info(h_node, h_url, vol, json=True)
+            if info['blockinfo']['freesize'] > 0:
+                free_BHVS_count += 1
+            if free_BHVS_count > 1:
+                self.skipTest("Skip test case because there is more than one"
+                              " Block Hosting Volume with free space")
+
+        # create block volume of 1gb
+        bvol_info = heketi_blockvolume_create(h_node, h_url, 1, json=True)
+
+        expand_size = 20
+        try:
+            self.verify_free_space(expand_size)
+            bhv = bvol_info['blockhostingvolume']
+            vol_info = heketi_volume_info(h_node, h_url, bhv, json=True)
+            bvols_in_bhv.update(vol_info['blockinfo']['blockvolume'])
+        finally:
+            # cleanup BHV if there is only one block volume inside it
+            if len(bvols_in_bhv) == 1:
+                self.addCleanup(
+                    heketi_volume_delete, h_node, h_url, bhv, json=True)
+            self.addCleanup(
+                heketi_blockvolume_delete, h_node, h_url, bvol_info['id'])
+
+        size = vol_info['size']
+        free_size = vol_info['blockinfo']['freesize']
+        bvol_count = int(free_size / expand_size)
+        bricks = vol_info['bricks']
+
+        # create pvs to fill the BHV
+        pvcs = self.create_and_wait_for_pvcs(
+            pvc_size=(expand_size if bvol_count else free_size),
+            pvc_amount=(bvol_count or 1), timeout=300)
+
+        vol_expand = True
+
+        for i in range(2):
+            # get the vol ids from pvcs
+            for pvc in pvcs:
+                pv = get_pv_name_from_pvc(self.node, pvc)
+                custom = r':.metadata.annotations."gluster\.org\/volume-id"'
+                bvol_id = oc_get_custom_resource(self.node, 'pv', custom, pv)
+                bvols_pv.add(bvol_id[0])
+
+            vol_info = heketi_volume_info(h_node, h_url, bhv, json=True)
+            bvols = vol_info['blockinfo']['blockvolume']
+            bvols_in_bhv.update(bvols)
+            self.assertEqual(bvols_pv, (bvols_in_bhv & bvols_pv))
+
+            # Expand BHV and verify bricks and size of BHV
+            if vol_expand:
+                vol_expand = False
+                heketi_volume_expand(
+                    h_node, h_url, bhv, expand_size, json=True)
+                vol_info = heketi_volume_info(h_node, h_url, bhv, json=True)
+
+                self.assertEqual(size + expand_size, vol_info['size'])
+                self.assertFalse(len(vol_info['bricks']) % 3)
+                self.assertLess(len(bricks), len(vol_info['bricks']))
+
+                # create more PVCs in expanded BHV
+                pvcs = self.create_and_wait_for_pvcs(
+                    pvc_size=(expand_size - 1), pvc_amount=1)

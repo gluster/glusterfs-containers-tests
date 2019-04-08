@@ -5,12 +5,15 @@ except ImportError:
     # py2
     import json
 
+import re
+
 from glusto.core import Glusto as g
 
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_version
 from openshiftstoragelibs.utils import parse_prometheus_data
 
+HEKETI_BHV = re.compile(r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(\S+)\s\[block\]")
 HEKETI_COMMAND_TIMEOUT = g.config.get("common", {}).get(
     "heketi_command_timeout", 120)
 TIMEOUT_PREFIX = "timeout %s " % HEKETI_COMMAND_TIMEOUT
@@ -1551,3 +1554,34 @@ def heketi_examine_gluster(heketi_client_node, heketi_server_url):
         raise exceptions.ExecutionError(msg)
 
     return json.loads(out)
+
+
+def get_block_hosting_volume_list(
+        heketi_client_node, heketi_server_url, **kwargs):
+    """Get heketi block hosting volume list.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        dict: block hosting volume list
+
+    Raises:
+        exceptions.ExecutionError: if command fails.
+    """
+
+    out = heketi_volume_list(
+        heketi_client_node, heketi_server_url, **kwargs)
+
+    BHV = {}
+
+    for volume in HEKETI_BHV.findall(out.strip()):
+        BHV[volume[0]] = {'Cluster': volume[1], 'Name': volume[2]}
+
+    return BHV
