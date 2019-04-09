@@ -181,6 +181,7 @@ class TestStorageClassCases(BaseClass):
         {"secretnamespace": "fakenamespace"},
         {"restuser": "fakeuser"},
         {"volumenameprefix": "dept_qe"},
+        {"clusterids": "123456789abcdefg"},
         )
     def test_sc_glusterfile_incorrect_parameter(self, parameter={}):
         """Validate glusterfile storage with different incorrect parameters"""
@@ -191,6 +192,7 @@ class TestStorageClassCases(BaseClass):
         {"restsecretname": "fakerestsecretname",
          "restsecretnamespace": "fakerestnamespace"},
         {"restuser": "fakeuser"},
+        {"clusterids": "123456789abcdefg"},
         )
     def test_sc_glusterblock_incorrect_parameter(self, parameter={}):
         """Validate glusterblock storage with different incorrect parameters"""
