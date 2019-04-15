@@ -11,11 +11,11 @@ except ImportError:
     # py2
     import json
 import re
-import types
 
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
 import mock
+import six
 import yaml
 
 from openshiftstoragelibs import command
@@ -201,7 +201,7 @@ def oc_rsh(ocp_node, pod_name, command, log_level=None):
         A tuple consisting of the command return code, stdout, and stderr.
     """
     prefix = ['oc', 'rsh', pod_name]
-    if isinstance(command, types.StringTypes):
+    if isinstance(command, six.string_types):
         cmd = ' '.join(prefix + [command])
     else:
         cmd = prefix + command

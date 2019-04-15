@@ -47,9 +47,9 @@ lifetime of a function that addresses both hosts and pods.
 
 from collections import namedtuple
 from functools import partial, wraps
-import types
 
 from glusto.core import Glusto as g
+import six
 
 from openshiftstoragelibs import openshift_ops
 
@@ -95,7 +95,7 @@ def run(target, command, log_level=None, orig_run=g.run):
 
     if isinstance(target, Pod):
         prefix = ['oc', 'rsh', target.podname]
-        if isinstance(command, types.StringTypes):
+        if isinstance(command, six.string_types):
             cmd = ' '.join(prefix + [command])
         else:
             cmd = prefix + command
