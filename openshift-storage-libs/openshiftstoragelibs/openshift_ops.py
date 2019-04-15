@@ -1300,7 +1300,7 @@ def get_events(hostname,
         field_selector.append('type=%s' % event_type)
     cmd = "oc get events -o yaml"
     if openshift_version.get_openshift_version() >= '3.9':
-        cmd.append(" --field-selector %s" % ",".join(field_selector or "''"))
+        cmd += " --field-selector %s" % ",".join(field_selector or "''")
     objects = yaml.load(command.cmd_run(cmd, hostname=hostname))['items']
     if openshift_version.get_openshift_version() >= '3.9':
         return objects
