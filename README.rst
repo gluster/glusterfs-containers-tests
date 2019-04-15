@@ -71,7 +71,7 @@ Executing the test cases
 
         $ tests/glusterfs-containers-tests-config.yaml
 
-* To run test cases in a virtual environment:
+* To run test cases in a virtual environment using py2:
 
     .. code-block::
 
@@ -105,6 +105,16 @@ Executing the test cases
             $ tox -e functional -- glusto -c \
                 tests/glusterfs-containers-tests-config.yaml \
                 '--pytest=-v -rsx tests'
+
+* To run test cases in a virtual environment using py3:
+
+    .. code-block::
+
+        $ python3 -m tox -e functional3 -- glusto -c <config_file> \
+            '--pytest=-v -rsx <test_file_path_or_dir>'
+
+  Note, that "tox" and other python packages should be installed
+  using pip3 - separate package installer than the one used for py2 (pip).
 
 Writing tests in `glusterfs-containers-tests`
 *********************************************
