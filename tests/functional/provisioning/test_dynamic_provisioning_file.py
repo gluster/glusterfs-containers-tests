@@ -380,6 +380,10 @@ class TestDynamicProvisioningP0(BaseClass):
 
     def test_pvc_deletion_while_pod_is_running(self):
         """Validate PVC deletion while pod is running"""
+        if get_openshift_version() <= "3.9":
+            self.skipTest(
+                "PVC deletion while pod is running is not supported"
+                " in OCP older than 3.9")
 
         # Create DC with POD and attached PVC to it
         sc_name = self.create_storage_class()
