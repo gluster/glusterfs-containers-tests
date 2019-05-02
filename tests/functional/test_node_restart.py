@@ -1,17 +1,16 @@
-import time
 from unittest import skip
 
 from glusto.core import Glusto as g
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.exceptions import ExecutionError
+from openshiftstoragelibs.node_ops import node_reboot_by_command
 from openshiftstoragelibs.openshift_ops import (
     check_service_status_on_pod,
     get_ocp_gluster_pod_details,
     oc_rsh,
     wait_for_pod_be_ready,
 )
-from openshiftstoragelibs.waiter import Waiter
 
 
 class TestNodeRestart(BaseClass):
@@ -68,76 +67,30 @@ class TestNodeRestart(BaseClass):
             )
             self.assertEqual(ret, 0, err_msg % (second_cmd, err))
 
-    def _wait_for_gluster_pod_to_be_ready(self):
-        for gluster_pod in self.gluster_pod_list:
-            for w in Waiter(timeout=600, interval=10):
-                try:
-                    success = wait_for_pod_be_ready(
-                        self.oc_node, gluster_pod, timeout=1, wait_step=1
-                    )
-                    if success:
-                        break
-                except ExecutionError as e:
-                    g.log.info("exception %s while validating gluster "
-                               "pod %s" % (e, gluster_pod))
-
-            if w.expired:
-                error_msg = ("exceeded timeout 600 sec, pod '%s' is "
-                             "not in 'running' state" % gluster_pod)
-                g.log.error(error_msg)
-                raise ExecutionError(error_msg)
-
-    def _node_reboot(self):
-        storage_hostname = (g.config["gluster_servers"]
-                            [self.gluster_servers[0]]["storage"])
-
-        cmd = "sleep 3; /sbin/shutdown -r now 'Reboot triggered by Glusto'"
-        ret, out, err = g.run(storage_hostname, cmd)
-
-        self.addCleanup(self._wait_for_gluster_pod_to_be_ready)
-
-        if ret != 255:
-            err_msg = "failed to reboot host %s error: %s" % (
-                storage_hostname, err)
-            g.log.error(err_msg)
-            raise AssertionError(err_msg)
-
-        try:
-            g.ssh_close_connection(storage_hostname)
-        except Exception as e:
-            g.log.error("failed to close connection with host %s"
-                        " with error: %s" % (storage_hostname, e))
-            raise
-
-        # added sleep as node will restart after 3 sec
-        time.sleep(3)
-
-        for w in Waiter(timeout=600, interval=10):
-            try:
-                if g.rpyc_get_connection(storage_hostname, user="root"):
-                    g.rpyc_close_connection(storage_hostname, user="root")
-                    break
-            except Exception as err:
-                g.log.info("exception while getting connection: '%s'" % err)
-
-        if w.expired:
-            error_msg = ("exceeded timeout 600 sec, node '%s' is "
-                         "not reachable" % storage_hostname)
-            g.log.error(error_msg)
-            raise ExecutionError(error_msg)
+    def reboot_gluster_node_and_wait_for_services(self):
+        gluster_node_ip = (
+            g.config["gluster_servers"][self.gluster_servers[0]]["storage"])
+        gluster_pod = filter(
+            lambda pod: (pod["pod_host_ip"] == gluster_node_ip),
+            get_ocp_gluster_pod_details(self.oc_node))
+        if not gluster_pod:
+            raise ExecutionError(
+                "Gluster pod Host IP '%s' not matched." % gluster_node_ip)
+        gluster_pod = gluster_pod[0]["pod_name"]
+        self.addCleanup(
+            wait_for_pod_be_ready, self.oc_node, gluster_pod)
+        node_reboot_by_command(gluster_node_ip, timeout=600, wait_step=10)
 
         # wait for the gluster pod to be in 'Running' state
-        self._wait_for_gluster_pod_to_be_ready()
+        wait_for_pod_be_ready(self.oc_node, gluster_pod)
 
         # glusterd and gluster-blockd service should be up and running
-        service_names = ("glusterd", "gluster-blockd", "tcmu-runner")
-        for gluster_pod in self.gluster_pod_list:
-            for service in service_names:
-                g.log.info("gluster_pod - '%s' : gluster_service '%s'" % (
-                    gluster_pod, service))
-                check_service_status_on_pod(
-                    self.oc_node, gluster_pod, service, "active", "running"
-                )
+        services = (
+            ("glusterd", "running"), ("gluster-blockd", "running"),
+            ("tcmu-runner", "running"), ("gluster-block-target", "exited"))
+        for service, state in services:
+            check_service_status_on_pod(
+                self.oc_node, gluster_pod, service, "active", state)
 
     @skip("Blocked by BZ-1652913")
     def test_node_restart_check_volume(self):
@@ -145,7 +98,8 @@ class TestNodeRestart(BaseClass):
         fstab_cmd = "grep '%s' /var/lib/heketi/fstab"
         self._check_fstab_and_df_entries(df_cmd, fstab_cmd)
 
-        self._node_reboot()
+        # reboot gluster node
+        self.reboot_gluster_node_and_wait_for_services()
 
         fstab_cmd = ("grep '/var/lib/heketi' /var/lib/heketi/fstab "
                      "| cut -f2 -d ' '")
