@@ -106,18 +106,27 @@
       name: dnsmasq
       state: restarted
 
-- name: Get IPv4 address of the main master node
-  hosts: single_master
+- hosts: single_master
   tasks:
-  - command: "python -c \"import yaml ;
+  - name: Get IPv4 address of the main master node
+    command: "python -c \"import yaml ;
         config = yaml.load(open('/etc/origin/master/master-config.yaml', 'r'));
         print(config['kubernetesMasterConfig']['masterIP'])
     \""
     register: master_ipv4
   - set_fact:
       master_ipv4: "{{ master_ipv4.stdout_lines[0] }}"
-  - command: "oc patch svc heketi-storage
-                  --namespace storage
+  - name: Read Heketi dc name
+    shell: "oc get dc -n storage | grep heketi | awk '{ print $1}'"
+    register: heketi_dc_name_raw
+  - name: Read Heketi svc name
+    shell: "oc get svc -n storage | grep -e heketi | grep -v heketi-db | awk '{ print $1}'"
+    register: heketi_svc_name_raw
+  - name: Save Heketi DC and SVC names in separate vars
+    set_fact:
+      heketi_dc_name: "{{ heketi_dc_name_raw.stdout.strip() }}"
+      heketi_svc_name: "{{ heketi_svc_name_raw.stdout.strip() }}"
+  - command: "oc patch svc {{ heketi_svc_name }} --namespace storage
                   -p '{\"spec\":{\"externalIPs\":[\"{{ master_ipv4 }}\"]}}'"
     run_once: true
 
@@ -136,9 +145,9 @@
       - key: openshift.storage_project_name
         value: "storage"
       - key: openshift.heketi_config.heketi_dc_name
-        value: "heketi-storage"
+        value: "{{ hostvars[groups['single_master'][0]].heketi_dc_name }}"
       - key: openshift.heketi_config.heketi_service_name
-        value: "heketi-storage"
+        value: "{{ hostvars[groups['single_master'][0]].heketi_svc_name }}"
       - key: openshift.heketi_config.heketi_client_node
         value: "{{ master_ipv4 }}"
       - key: openshift.heketi_config.heketi_server_url
