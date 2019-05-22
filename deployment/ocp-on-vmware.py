@@ -112,7 +112,7 @@ class OCPOnVMWare(object):
             url += '/Packages/'
         resp = requests.get(url)
         if resp.ok:
-            v = self.docker_image_tag.split('v')[-1].strip()
+            v = self.docker_image_tag.split('v')[-1].strip().split('-')[0]
             return (('atomic-openshift-%s' % v) in resp.text)
         raise Exception(
             "Failed to pull list of packages from '%s' url." % url)
