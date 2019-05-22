@@ -3,18 +3,28 @@ from unittest import skip
 import ddt
 from glusto.core import Glusto as g
 
+from openshiftstoragelibs.heketi_ops import (
+    heketi_blockvolume_info,
+)
 from openshiftstoragelibs.baseclass import BaseClass
-from openshiftstoragelibs.openshift_storage_libs import validate_multipath_pod
+from openshiftstoragelibs.openshift_storage_libs import (
+    get_iscsi_block_devices_by_path,
+    get_mpath_name_from_device_name,
+    validate_multipath_pod,
+)
 from openshiftstoragelibs.heketi_ops import verify_volume_name_prefix
 from openshiftstoragelibs.openshift_ops import (
     get_amount_of_gluster_nodes,
     get_gluster_blockvol_info_by_pvc_name,
     get_pod_name_from_dc,
+    get_pv_name_from_pvc,
     oc_create_app_dc_with_io,
     oc_create_pvc,
     oc_create_sc,
     oc_create_secret,
     oc_delete,
+    oc_get_custom_resource,
+    oc_get_pods,
     scale_dc_pod_amount_and_wait,
     wait_for_events,
     wait_for_pod_be_ready,
@@ -138,11 +148,31 @@ class TestStorageClassCases(BaseClass):
             self.ocp_master_node[0], pod_name, timeout=120, wait_step=3
         )
 
-        # validates multipath for pod created with hacount
-        self.assertTrue(
-            validate_multipath_pod(self.ocp_master_node[0], pod_name, hacount),
-            "multipath validation failed"
-        )
+        # Get pod info
+        pod_info = oc_get_pods(
+            self.ocp_master_node[0], selector='deploymentconfig=%s' % dc_name)
+        node = pod_info[pod_name]['node']
+
+        # Find iqn from volume info
+        pv_name = get_pv_name_from_pvc(self.ocp_master_node[0], self.pvc_name)
+        custom = [r':.metadata.annotations."gluster\.org\/volume\-id"']
+        vol_id = oc_get_custom_resource(
+            self.ocp_master_node[0], 'pv', custom, pv_name)[0]
+        vol_info = heketi_blockvolume_info(
+            self.heketi_client_node, self.heketi_server_url, vol_id, json=True)
+        iqn = vol_info['blockvolume']['iqn']
+
+        # Get the paths info from the node
+        devices = get_iscsi_block_devices_by_path(node, iqn).keys()
+        self.assertEqual(hacount, len(devices))
+
+        # Validate mpath
+        mpaths = set()
+        for device in devices:
+            mpaths.add(get_mpath_name_from_device_name(node, device))
+        self.assertEqual(1, len(mpaths))
+        validate_multipath_pod(
+            self.ocp_master_node[0], pod_name, hacount, list(mpaths)[0])
 
     @ddt.data(
         {"volumetype": "dist-rep:3"},

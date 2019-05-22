@@ -12,54 +12,36 @@ from openshiftstoragelibs.openshift_version import get_openshift_version
 MASTER_CONFIG_FILEPATH = "/etc/origin/master/master-config.yaml"
 
 
-def validate_multipath_pod(hostname, podname, hacount, mpath=""):
-    '''
-     This function validates multipath for given app-pod
+def validate_multipath_pod(hostname, podname, hacount, mpath):
+    """Validate multipath for given app-pod.
+
      Args:
          hostname (str): ocp master node name
          podname (str): app-pod name for which we need to validate
                         multipath. ex : nginx1
          hacount (int): multipath count or HA count. ex: 3
+         mpath (str): multipath value to check
      Returns:
-         bool: True if successful,
-               otherwise False
-    '''
-    cmd = "oc get pods -o wide | grep %s | awk '{print $7}'" % podname
-    ret, out, err = g.run(hostname, cmd, "root")
-    if ret != 0 or out == "":
-        g.log.error("failed to exectute cmd %s on %s, err %s"
-                    % (cmd, hostname, out))
-        return False
-    pod_nodename = out.strip()
-    active_node_count = 1
-    enable_node_count = hacount - 1
-    cmd = "multipath -ll %s | grep 'status=active' | wc -l" % mpath
-    ret, out, err = g.run(pod_nodename, cmd, "root")
-    if ret != 0 or out == "":
-        g.log.error("failed to exectute cmd %s on %s, err %s"
-                    % (cmd, pod_nodename, out))
-        return False
-    active_count = int(out.strip())
-    if active_node_count != active_count:
-        g.log.error("active node count on %s for %s is %s and not 1"
-                    % (pod_nodename, podname, active_count))
-        return False
-    cmd = "multipath -ll %s | grep 'status=enabled' | wc -l" % mpath
-    ret, out, err = g.run(pod_nodename, cmd, "root")
-    if ret != 0 or out == "":
-        g.log.error("failed to exectute cmd %s on %s, err %s"
-                    % (cmd, pod_nodename, out))
-        return False
-    enable_count = int(out.strip())
-    if enable_node_count != enable_count:
-        g.log.error("passive node count on %s for %s is %s "
-                    "and not %s" % (
-                        pod_nodename, podname, enable_count,
-                        enable_node_count))
-        return False
+         bool: True if successful, otherwise raises exception
+    """
 
-    g.log.info("validation of multipath for %s is successfull"
-               % podname)
+    cmd = "oc get pods -o wide | grep %s | awk '{print $7}'" % podname
+    pod_nodename = cmd_run(cmd, hostname)
+
+    active_node_count, enable_node_count = (1, hacount - 1)
+    cmd = "multipath -ll %s | grep 'status=active' | wc -l" % mpath
+    active_count = int(cmd_run(cmd, pod_nodename))
+    assert active_node_count == active_count, (
+        "Active node count on %s for %s is %s and not 1" % (
+            pod_nodename, podname, active_count))
+
+    cmd = "multipath -ll %s | grep 'status=enabled' | wc -l" % mpath
+    enable_count = int(cmd_run(cmd, pod_nodename))
+    assert enable_node_count == enable_count, (
+        "Passive node count on %s for %s is %s and not %s" % (
+            pod_nodename, podname, enable_count, enable_node_count))
+
+    g.log.info("Validation of multipath for %s is successfull" % podname)
     return True
 
 
