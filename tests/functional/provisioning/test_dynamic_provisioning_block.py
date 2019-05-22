@@ -206,14 +206,16 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
     def test_glusterblock_logs_presence_verification(self):
         """Validate presence of glusterblock provisioner POD and it's status"""
-        gb_prov_cmd = ("oc get pods --all-namespaces "
-                       "-l glusterfs=block-%s-provisioner-pod "
-                       "-o=custom-columns=:.metadata.name,:.status.phase" % (
-                           self.storage_project_name))
-        ret, out, err = g.run(self.ocp_client[0], gb_prov_cmd, "root")
 
-        self.assertEqual(ret, 0, "Failed to get Glusterblock provisioner POD.")
-        gb_prov_name, gb_prov_status = out.split()
+        # Get glusterblock provisioner dc name
+        cmd = ("oc get dc | awk '{ print $1 }' | "
+               "grep -e glusterblock -e provisioner")
+        dc_name = cmd_run(cmd, self.ocp_master_node[0], True)
+
+        # Get glusterblock provisioner pod name and it's status
+        gb_prov_name, gb_prov_status = oc_get_custom_resource(
+            self.node, 'pod', custom=':.metadata.name,:.status.phase',
+            selector='deploymentconfig=%s' % dc_name)[0]
         self.assertEqual(gb_prov_status, 'Running')
 
         # Create Secret, SC and PVC

@@ -1,4 +1,5 @@
 from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import command
 from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_create,
     heketi_blockvolume_delete)
@@ -13,8 +14,12 @@ from openshiftstoragelibs.openshift_ops import (
 class TestRestartGlusterBlockPod(BaseClass):
 
     def test_restart_gluster_block_provisioner_pod(self):
-        """Restart gluster-block provisioner pod
-        """
+        """Restart gluster-block provisioner pod."""
+
+        # Get glusterblock provisioner dc name
+        cmd = ("oc get dc | awk '{ print $1 }' | "
+               "grep -e glusterblock -e provisioner")
+        dc_name = command.cmd_run(cmd, self.ocp_master_node[0], True)
 
         # create heketi block volume
         vol_info = heketi_blockvolume_create(self.heketi_client_node,
@@ -26,7 +31,6 @@ class TestRestartGlusterBlockPod(BaseClass):
                         self.heketi_server_url, vol_info['id'])
 
         # restart gluster-block-provisioner-pod
-        dc_name = "glusterblock-%s-provisioner-dc" % self.storage_project_name
         pod_name = get_pod_name_from_dc(self.ocp_master_node[0], dc_name)
         oc_delete(self.ocp_master_node[0], 'pod', pod_name)
         wait_for_resource_absence(self.ocp_master_node[0], 'pod', pod_name)
