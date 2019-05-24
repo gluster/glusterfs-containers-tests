@@ -78,9 +78,13 @@ class TestPvResizeClass(BaseClass):
                              cmd, node))
         cmd = ("dd if=/dev/urandom of=%sfile2 "
                "bs=100K count=10000") % dir_path
-        ret, out, err = oc_rsh(node, pod_name, cmd)
-        self.assertNotEqual(ret, 0, " This IO did not fail as expected "
-                            "command %s on %s" % (cmd, node))
+        with self.assertRaises(AssertionError):
+            ret, out, err = oc_rsh(node, pod_name, cmd)
+            msg = ("Command '%s' was expected to fail on '%s' node. "
+                   "But it returned following: ret is '%s', err is '%s' "
+                   "and out is '%s'" % (cmd, node, ret, err, out))
+            raise ExecutionError(msg)
+
         pvc_size = 2
         resize_pvc(node, pvc_name, pvc_size)
         verify_pvc_size(node, pvc_name, pvc_size)
@@ -224,7 +228,7 @@ class TestPvResizeClass(BaseClass):
         self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
                              cmd, node))
         pvc_resize = 2
-        with self.assertRaises(ExecutionError):
+        with self.assertRaises(AssertionError):
             resize_pvc(node, pvc_name, pvc_resize)
         verify_pvc_size(node, pvc_name, pv_size)
         pv_name = get_pv_name_from_pvc(node, pvc_name)

@@ -17,9 +17,11 @@ def cmd_run(cmd, hostname, raise_on_error=True):
             "tls handshake timeout" in err.lower()):
         g.ssh_close_connection(hostname)
         ret, out, err = g.run(hostname, cmd, "root")
+    msg = ("Failed to execute command '%s' on '%s' node. Got non-zero "
+           "return code '%s'. Err: %s" % (cmd, hostname, ret, err))
+    if int(ret) != 0:
+        g.log.error(msg)
     if raise_on_error:
-        msg = ("Failed to execute command '%s' on '%s' node. Got non-zero "
-               "return code '%s'. Err: %s" % (cmd, hostname, ret, err))
         assert int(ret) == 0, msg
 
     out = out.strip() if out else out

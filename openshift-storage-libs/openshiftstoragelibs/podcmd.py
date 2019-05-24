@@ -58,7 +58,7 @@ from openshiftstoragelibs import openshift_ops
 Pod = namedtuple('Pod', 'node podname')
 
 
-def run(target, command, log_level=None, orig_run=g.run):
+def run(target, command, user=None, log_level=None, orig_run=g.run):
     """Function that runs a command on a host or in a pod via a host.
     Wraps glusto's run function.
 
@@ -73,8 +73,8 @@ def run(target, command, log_level=None, orig_run=g.run):
             If 'target' is of the 'Pod' type,
             then command will run on the specified POD.
         command (str|list): Command to run.
-        log_level (str|None): log level to be passed on to glusto's
-            run method
+        user (str|None): user to be passed on to glusto's run method
+        log_level (str|None): log level to be passed on to glusto's run method
         orig_run (function): The default implementation of the
             run method. Will be used when target is not a pod.
 
@@ -102,9 +102,9 @@ def run(target, command, log_level=None, orig_run=g.run):
 
         # unpack the tuple to make sure our return value exactly matches
         # our docstring
-        return g.run(target.node, cmd, log_level=log_level)
+        return g.run(target.node, cmd, user=user, log_level=log_level)
     else:
-        return orig_run(target, command, log_level=log_level)
+        return orig_run(target, command, user=user, log_level=log_level)
 
 
 class GlustoPod(object):

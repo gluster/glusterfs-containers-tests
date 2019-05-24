@@ -50,10 +50,7 @@ def oc_get_pods(ocp_node, selector=None):
     cmd = "oc get -o wide --no-headers=true pods"
     if selector:
         cmd += " --selector %s" % selector
-    ret, out, err = g.run(ocp_node, cmd)
-    if ret != 0:
-        g.log.error("Failed to get ocp pods on node %s" % ocp_node)
-        raise AssertionError('failed to get pods: %r' % (err,))
+    out = command.cmd_run(cmd, hostname=ocp_node)
     return _parse_wide_pods_output(out)
 
 
@@ -71,6 +68,8 @@ def _parse_wide_pods_output(output):
     #
     # TODO: Add unit tests for this parser
     pods_info = {}
+    if not output.endswith('\n'):
+        output = output + '\n'
     for each_pod_info in PODS_WIDE_RE.findall(output):
         pods_info[each_pod_info[0]] = {
             'ready': each_pod_info[1],
@@ -95,10 +94,7 @@ def oc_get_pods_full(ocp_node):
     """
 
     cmd = "oc get -o yaml pods"
-    ret, out, err = g.run(ocp_node, cmd)
-    if ret != 0:
-        g.log.error("Failed to get ocp pods on node %s" % ocp_node)
-        raise AssertionError('failed to get pods: %r' % (err,))
+    out = command.cmd_run(cmd, hostname=ocp_node)
     return yaml.load(out)
 
 
@@ -157,59 +153,28 @@ def switch_oc_project(ocp_node, project_name):
     """
 
     cmd = "oc project %s" % project_name
-    ret, _, _ = g.run(ocp_node, cmd)
-    if ret != 0:
-        g.log.error("Failed to switch to project %s" % project_name)
-        return False
+    command.cmd_run(cmd, hostname=ocp_node)
     return True
 
 
-def oc_rsync(ocp_node, pod_name, src_dir_path, dest_dir_path):
-    """Sync file from 'src_dir_path' path on ocp_node to
-       'dest_dir_path' path on 'pod_name' using 'oc rsync' command.
-
-    Args:
-        ocp_node (str): Node on which oc rsync command will be executed
-        pod_name (str): Name of the pod on which source directory to be
-                        mounted
-        src_dir_path (path): Source path from which directory to be mounted
-        dest_dir_path (path): destination path to which directory to be
-                              mounted
-    """
-    ret, out, err = g.run(ocp_node, ['oc',
-                                     'rsync',
-                                     src_dir_path,
-                                     '%s:%s' % (pod_name, dest_dir_path)])
-    if ret != 0:
-        error_msg = 'failed to sync directory in pod: %r; %r' % (out, err)
-        g.log.error(error_msg)
-        raise AssertionError(error_msg)
-
-
-def oc_rsh(ocp_node, pod_name, command, log_level=None):
+def oc_rsh(ocp_node, pod_name, cmd):
     """Run a command in the ocp pod using `oc rsh`.
 
     Args:
         ocp_node (str): Node on which oc rsh command will be executed.
         pod_name (str): Name of the pod on which the command will
             be executed.
-        command (str|list): command to run.
-        log_level (str|None): log level to be passed to glusto's run
-            method.
-
+        cmd (str|list): command to run.
     Returns:
         A tuple consisting of the command return code, stdout, and stderr.
     """
     prefix = ['oc', 'rsh', pod_name]
-    if isinstance(command, six.string_types):
-        cmd = ' '.join(prefix + [command])
+    if isinstance(cmd, six.string_types):
+        cmd = ' '.join(prefix + [cmd])
     else:
-        cmd = prefix + command
-
-    # unpack the tuple to make sure our return value exactly matches
-    # our docstring
-    ret, stdout, stderr = g.run(ocp_node, cmd, log_level=log_level)
-    return (ret, stdout, stderr)
+        cmd = prefix + cmd
+    stdout = command.cmd_run(cmd, hostname=ocp_node)
+    return (0, stdout, '')
 
 
 def oc_create(ocp_node, value, value_type='file'):
@@ -227,11 +192,7 @@ def oc_create(ocp_node, value, value_type='file'):
         cmd = ['oc', 'create', '-f', value]
     else:
         cmd = ['echo', '\'%s\'' % value, '|', 'oc', 'create', '-f', '-']
-    ret, out, err = g.run(ocp_node, cmd)
-    if ret != 0:
-        msg = 'Failed to create resource: %r; %r' % (out, err)
-        g.log.error(msg)
-        raise AssertionError(msg)
+    command.cmd_run(cmd, hostname=ocp_node)
     g.log.info('Created resource from %s.' % value_type)
 
 
@@ -246,14 +207,9 @@ def oc_process(ocp_node, params, filename):
     Raises:
         AssertionError: Raised when resource fails to create.
     """
-
-    ret, out, err = g.run(ocp_node, ['oc', 'process', '-f', filename, params])
-    if ret != 0:
-        error_msg = 'failed to create process: %r; %r' % (out, err)
-        g.log.error(error_msg)
-        raise AssertionError(error_msg)
+    cmd = ['oc', 'process', '-f', filename, params]
+    out = command.cmd_run(cmd, hostname=ocp_node)
     g.log.info('Created resource from file (%s)', filename)
-
     return out
 
 
@@ -479,16 +435,11 @@ def oc_delete(ocp_node, rtype, name, raise_on_absence=True):
     if openshift_version.get_openshift_version() >= '3.11':
         cmd.append('--wait=false')
 
-    ret, out, err = g.run(ocp_node, cmd)
-    if ret != 0:
-        g.log.error('Failed to delete resource: %s, %s: %r; %r',
-                    rtype, name, out, err)
-        raise AssertionError('failed to delete resource: %r; %r' % (out, err))
+    command.cmd_run(cmd, hostname=ocp_node)
     g.log.info('Deleted resource: %r %r', rtype, name)
 
 
-def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None,
-                           raise_on_error=True):
+def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None):
     """Get an OCP resource by custom column names.
 
     Args:
@@ -498,14 +449,10 @@ def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None,
         name (str|None): Name of the resource to fetch.
         selector (str|list|None): Column Name or list of column
                                   names select to.
-        raise_on_error (bool): If set to true a failure to fetch
-            resource inforation will raise an error, otherwise
-            an empty dict will be returned.
     Returns:
         list: List containting data about the resource custom column
     Raises:
-        AssertionError: Raised when unable to get resource and
-            `raise_on_error` is true.
+        AssertionError: Raised when unable to get resource
     Example:
         Get all "pvc" with "metadata.name" parameter values:
             pvc_details = oc_get_custom_resource(
@@ -524,13 +471,7 @@ def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None,
     if name:
         cmd.append(name)
 
-    ret, out, err = g.run(ocp_node, cmd)
-    if ret != 0:
-        g.log.error('Failed to get %s: %s: %r', rtype, name, err)
-        if raise_on_error:
-            raise AssertionError('failed to get %s: %s: %r'
-                                 % (rtype, name, err))
-        return []
+    out = command.cmd_run(cmd, hostname=ocp_node)
 
     if name:
         return list(filter(None, map(str.strip, (out.strip()).split(' '))))
@@ -561,14 +502,9 @@ def oc_get_yaml(ocp_node, rtype, name=None, raise_on_error=True):
     cmd = ['oc', 'get', '-oyaml', rtype]
     if name is not None:
         cmd.append(name)
-    ret, out, err = g.run(ocp_node, cmd)
-    if ret != 0:
-        g.log.error('Failed to get %s: %s: %r', rtype, name, err)
-        if raise_on_error:
-            raise AssertionError('failed to get %s: %s: %r'
-                                 % (rtype, name, err))
-        return {}
-    return yaml.load(out)
+    out = command.cmd_run(
+        cmd, hostname=ocp_node, raise_on_error=raise_on_error)
+    return yaml.load(out) if out else {}
 
 
 def oc_get_pvc(ocp_node, name):
@@ -606,34 +542,10 @@ def oc_get_all_pvs(ocp_node):
     return oc_get_yaml(ocp_node, 'pv', None)
 
 
-def create_namespace(hostname, namespace):
-    '''
-     This function creates namespace
-     Args:
-         hostname (str): hostname on which we need to
-                         create namespace
-         namespace (str): project name
-     Returns:
-         bool: True if successful and if already exists,
-               otherwise False
-    '''
-    cmd = "oc new-project %s" % namespace
-    ret, out, err = g.run(hostname, cmd, "root")
-    if ret == 0:
-        g.log.info("new namespace %s successfully created" % namespace)
-        return True
-    output = out.strip().split("\n")[0]
-    if "already exists" in output:
-        g.log.info("namespace %s already exists" % namespace)
-        return True
-    g.log.error("failed to create namespace %s" % namespace)
-    return False
-
-
 def wait_for_resource_absence(ocp_node, rtype, name,
                               interval=5, timeout=600):
     _waiter = waiter.Waiter(timeout=timeout, interval=interval)
-    resource, pv_name = None, None
+    resource, pv_name, _pv_name = None, None, None
     for w in _waiter:
         try:
             resource = oc_get_yaml(ocp_node, rtype, name, raise_on_error=True)
@@ -643,12 +555,13 @@ def wait_for_resource_absence(ocp_node, rtype, name,
         cmd = "oc get pv -o=custom-columns=:.spec.claimRef.name | grep %s" % (
             name)
         for w in _waiter:
-            ret, out, err = g.run(ocp_node, cmd, "root")
-            _pv_name = out.strip()
-            if _pv_name and not pv_name:
-                pv_name = _pv_name
-            if ret != 0:
+            try:
+                _pv_name = command.cmd_run(cmd, hostname=ocp_node)
+            except AssertionError:
                 break
+            finally:
+                if _pv_name and not pv_name:
+                    pv_name = _pv_name
     if w.expired:
         # Gather more info for ease of debugging
         try:
@@ -935,13 +848,8 @@ def wait_for_pod_be_ready(hostname, pod_name,
         cmd = ("oc get pods %s -o=custom-columns="
                ":.status.containerStatuses[0].ready,"
                ":.status.phase") % pod_name
-        ret, out, err = g.run(hostname, cmd, "root")
-        if ret != 0:
-            msg = "Failed to execute cmd: %s\nout: %s\nerr: %s" % (
-                cmd, out, err)
-            g.log.error(msg)
-            raise exceptions.ExecutionError(msg)
-        output = out.strip().split()
+        out = command.cmd_run(cmd, hostname=hostname)
+        output = out.split()
 
         # command to find if pod is ready
         if output[0] == "true" and output[1] == "Running":
@@ -1022,12 +930,9 @@ def get_pvc_status(hostname, pvc_name):
                otherwise False, error message.
     '''
     cmd = "oc get pvc | grep %s | awk '{print $2}'" % pvc_name
-    ret, out, err = g.run(hostname, cmd, "root")
-    if ret != 0:
-        g.log.error("failed to execute cmd %s" % cmd)
-        return False, err
-    output = out.strip().split("\n")[0].strip()
-    return True, output
+    out = command.cmd_run(cmd, hostname=hostname)
+    output = out.split("\n")[0].strip()
+    return output
 
 
 def verify_pvc_status_is_bound(hostname, pvc_name, timeout=120, wait_step=3):
@@ -1045,12 +950,7 @@ def verify_pvc_status_is_bound(hostname, pvc_name, timeout=120, wait_step=3):
     """
     pvc_not_found_counter = 0
     for w in waiter.Waiter(timeout, wait_step):
-        ret, output = get_pvc_status(hostname, pvc_name)
-        if ret is not True:
-            msg = ("Failed to execute 'get' command for '%s' PVC. "
-                   "Got following responce: %s" % (pvc_name, output))
-            g.log.error(msg)
-            raise exceptions.ExecutionError(msg)
+        output = get_pvc_status(hostname, pvc_name)
         if output == "":
             g.log.info("PVC '%s' not found, sleeping for %s "
                        "sec." % (pvc_name, wait_step))
@@ -1103,16 +1003,10 @@ def resize_pvc(hostname, pvc_name, size):
          bool: True, if successful
                otherwise raise Exception
     '''
-    cmd = ("oc patch  pvc %s "
+    cmd = ("oc patch pvc %s "
            "-p='{\"spec\": {\"resources\": {\"requests\": "
            "{\"storage\": \"%dGi\"}}}}'" % (pvc_name, size))
-    ret, out, err = g.run(hostname, cmd, "root")
-    if ret != 0:
-        error_msg = ("failed to execute cmd %s "
-                     "out- %s err %s" % (cmd, out, err))
-        g.log.error(error_msg)
-        raise exceptions.ExecutionError(error_msg)
-
+    out = command.cmd_run(cmd, hostname=hostname)
     g.log.info("successfully edited storage capacity"
                "of pvc %s . out- %s" % (pvc_name, out))
     return True
