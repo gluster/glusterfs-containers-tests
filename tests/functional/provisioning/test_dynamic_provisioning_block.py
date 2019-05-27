@@ -1,4 +1,5 @@
 import math
+from unittest import skip
 
 from glusto.core import Glusto as g
 
@@ -553,6 +554,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                           "only %s free space is available"
                           % (free_space, free_size))
 
+    @skip("Blocked by BZ-1714292")
     def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_neg(
             self):
         """Verify that block volume creation fails when we create block
@@ -608,6 +610,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
         verify_pvc_status_is_bound(self.node, pvc_name)
 
+    @skip("Blocked by BZ-1714292")
     def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_pos(
             self):
         """Verify that block volume creation succeed when we create BHV
@@ -633,6 +636,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # create a block pvc greater than default BHV size
         self.create_and_wait_for_pvc(pvc_size=(default_bhv_size + 1))
 
+    @skip("Blocked by BZ-1714292")
     def test_expansion_of_block_hosting_volume_using_heketi(self):
         """Verify that after expanding block hosting volume we are able to
         consume the expanded space"""
