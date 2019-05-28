@@ -631,7 +631,7 @@ def create_namespace(hostname, namespace):
 
 
 def wait_for_resource_absence(ocp_node, rtype, name,
-                              interval=5, timeout=300):
+                              interval=5, timeout=600):
     _waiter = waiter.Waiter(timeout=timeout, interval=interval)
     resource, pv_name = None, None
     for w in _waiter:

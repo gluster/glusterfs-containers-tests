@@ -7,6 +7,7 @@ from openshiftstoragelibs.exceptions import (
     NotSupportedException,
 )
 from openshiftstoragelibs.openshift_version import get_openshift_version
+from openshiftstoragelibs import waiter
 
 
 MASTER_CONFIG_FILEPATH = "/etc/origin/master/master-config.yaml"
@@ -115,7 +116,16 @@ def enable_pvc_resize(master_node):
         g.log.error(err_msg)
         raise ExecutionError(err_msg)
 
-    return True
+    # Wait for API service to be ready after the restart
+    for w in waiter.Waiter(timeout=120, interval=1):
+        try:
+            cmd_run("oc get nodes", master_node)
+            return True
+        except AssertionError:
+            continue
+    err_msg = "Exceeded 120s timeout waiting for OCP API to start responding."
+    g.log.error(err_msg)
+    raise ExecutionError(err_msg)
 
 
 def get_iscsi_session(node, iqn=None, raise_on_error=True):
