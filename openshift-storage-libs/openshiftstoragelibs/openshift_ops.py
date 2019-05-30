@@ -34,6 +34,9 @@ PODS_WIDE_RE = re.compile(
 SERVICE_STATUS = "systemctl status %s"
 SERVICE_RESTART = "systemctl restart %s"
 SERVICE_STATUS_REGEX = r"Active: (.*) \((.*)\) since .*;.*"
+PGREP_SERVICE = "pgrep %s"
+KILL_SERVICE = "kill -9 %s"
+IS_ACTIVE_SERVICE = "systemctl is-active %s"
 
 
 def oc_get_pods(ocp_node, selector=None):
@@ -1485,6 +1488,33 @@ def restart_service_on_gluster_pod_or_node(ocp_client, service, gluster_node):
     """
     cmd_run_on_gluster_pod_or_node(
         ocp_client, SERVICE_RESTART % service, gluster_node)
+
+
+def kill_service_on_gluster_pod_or_node(ocp_client, service, gluster_node):
+    """Kill service on Gluster pod or node.
+
+    Args:
+        ocp_client (str): host on which we want to run 'oc' commands.
+        service (str): service which needs to be killed
+        gluster_node (str): Gluster node IPv4 which stores either Gluster POD
+            or Gluster services directly.
+    Raises:
+        AssertionError: In case killing of a service fails.
+    """
+    # Get the pid of the service which needs to be killed
+    get_service_pids = cmd_run_on_gluster_pod_or_node(
+        ocp_client, PGREP_SERVICE % service, gluster_node=gluster_node)
+    service_pids = " ".join(get_service_pids.split("\n"))
+    cmd_run_on_gluster_pod_or_node(
+        ocp_client, KILL_SERVICE % service_pids, gluster_node=gluster_node)
+
+    # Check the status of service
+    try:
+        cmd_run_on_gluster_pod_or_node(
+            ocp_client, IS_ACTIVE_SERVICE % service, gluster_node=gluster_node)
+    except exceptions.ExecutionError as err:
+        if "command terminated with exit code 3" not in str(err):
+            raise
 
 
 def oc_adm_manage_node(

@@ -27,6 +27,8 @@ from openshiftstoragelibs.openshift_ops import (
     get_ocp_gluster_pod_details,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
+    get_pvc_status,
+    kill_service_on_gluster_pod_or_node,
     oc_adm_manage_node,
     oc_create_pvc,
     oc_delete,
@@ -34,12 +36,15 @@ from openshiftstoragelibs.openshift_ops import (
     oc_get_pv,
     oc_get_schedulable_nodes,
     oc_rsh,
+    restart_service_on_gluster_pod_or_node,
     scale_dcs_pod_amount_and_wait,
     verify_pvc_status_is_bound,
     wait_for_events,
     wait_for_ocp_node_be_ready,
     wait_for_pod_be_ready,
+    wait_for_pvcs_be_bound,
     wait_for_resource_absence,
+    wait_for_resources_absence,
     wait_for_service_status_on_gluster_pod_or_node,
 )
 from openshiftstoragelibs.openshift_storage_libs import (
@@ -873,3 +878,87 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             msg = ("Expected size %s of file '%s' is not present "
                    "in out '%s'" % (file_size, _file, out))
             self.assertIn(six.text_type(file_size), out, msg)
+
+    def test_tcmu_runner_failure_while_creating_and_deleting_pvc(self):
+        """Kill the tcmu-runner service while creating and deleting PVC's"""
+
+        self.prefix = "auto-block-test-%s" % utils.get_random_str()
+
+        # Create DC and pod with created PVC.
+        sc_name = self.create_storage_class(
+            hacount=len(self.gluster_servers), vol_name_prefix=self.prefix)
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
+
+        # Validate iscsi and multipath
+        self.verify_iscsi_sessions_and_multipath(pvc_name, dc_name)
+
+        # Create 8 PVC's and add to list
+        pvc_names_for_creations, pv_names_for_deletions = [], []
+        pvc_names_for_deletions = self.create_and_wait_for_pvcs(
+            pvc_amount=8, sc_name=sc_name)
+
+        # Get their pv names and add to list
+        for pvc_name in pvc_names_for_deletions:
+            pv_names_for_deletions.append(
+                get_pv_name_from_pvc(self.node, pvc_name))
+
+        # Delete PVC's without wait which were created earlier
+        for delete_pvc_name in pvc_names_for_deletions:
+            oc_delete(self.node, 'pvc', delete_pvc_name)
+
+            # Create PVC's without wait at the same time and add to list
+            create_pvc_name = oc_create_pvc(self.node, sc_name=sc_name)
+            pvc_names_for_creations.append(create_pvc_name)
+            self.addCleanup(
+                wait_for_resource_absence, self.node, 'pvc', create_pvc_name)
+        pvc_names = " ".join(pvc_names_for_creations)
+        self.addCleanup(oc_delete, self.node, "pvc", pvc_names)
+
+        # Kill Tcmu-runner service
+        services = ("tcmu-runner", "gluster-block-target", "gluster-blockd")
+        kill_service_on_gluster_pod_or_node(
+            self.node, "tcmu-runner", self.gluster_servers[0])
+        self.addCleanup(
+            cmd_run_on_gluster_pod_or_node,
+            self.node, "systemctl restart  %s" % " ".join(services),
+            gluster_node=self.gluster_servers[0])
+
+        # Get the names of PV's which are in Released state after PVC deletion
+        pending_creations, pending_deletions = [], []
+        for pv_name in pv_names_for_deletions:
+            # Check "Released" status for PV and add it to the list
+            try:
+                pv_status = oc_get_custom_resource(
+                    self.node, "pv", ":.status.phase", pv_name)[0]
+                if pv_status == 'Released':
+                    pending_deletions.append(pv_name)
+            except AssertionError:
+                pass
+
+        # Check which PVC's are in pending state and add to pending list
+        for pvc_name_in_creations in pvc_names_for_creations:
+            if get_pvc_status(self.node, pvc_name_in_creations) == 'Pending':
+                pending_creations.append(pvc_name_in_creations)
+
+        # Restart the services
+        for service in services:
+            state = (
+                'exited' if service == 'gluster-block-target' else 'running')
+            restart_service_on_gluster_pod_or_node(
+                self.node, service, self.gluster_servers[0])
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, service, 'active', state, self.gluster_servers[0])
+
+        # Wait for PV's absence and PVC's getting bound
+        wait_for_resources_absence(self.node, 'pv', pending_deletions)
+        wait_for_pvcs_be_bound(self.node, pending_creations, timeout=300)
+
+        # Validate volumes in heketi blockvolume list
+        heketi_volumes = heketi_blockvolume_list(
+            self.heketi_client_node, self.heketi_server_url)
+        volume_count = heketi_volumes.count(self.prefix)
+        msg = (
+            'Wrong volume count in heketi blockvolume list %s and expected '
+            'volume count is 9 ' % volume_count)
+        self.assertEqual(9, volume_count, msg)
