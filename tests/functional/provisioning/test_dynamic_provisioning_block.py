@@ -380,20 +380,16 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         oc_delete(self.node, 'pv', pv_name)
         wait_for_resource_absence(self.node, 'pv', pv_name)
 
-    def initiator_side_failures(self):
-
-        # get storage ips of glusterfs pods
+    def verify_iscsi_and_multipath(self, pvc_name, dc_name):
+        # Get storage ips of glusterfs pods
         keys = self.gluster_servers
         gluster_ips = []
         for key in keys:
             gluster_ips.append(self.gluster_servers_info[key]['storage'])
         gluster_ips.sort()
 
-        self.create_storage_class()
-        self.create_and_wait_for_pvc()
-
-        # find iqn and hacount from volume info
-        pv_name = get_pv_name_from_pvc(self.node, self.pvc_name)
+        # Find iqn and hacount from volume info
+        pv_name = get_pv_name_from_pvc(self.node, pvc_name)
         custom = [r':.metadata.annotations."gluster\.org\/volume\-id"']
         vol_id = oc_get_custom_resource(self.node, 'pv', custom, pv_name)[0]
         vol_info = heketi_blockvolume_info(
@@ -401,85 +397,89 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         iqn = vol_info['blockvolume']['iqn']
         hacount = int(self.sc['hacount'])
 
-        # create app pod
+        # Find node on which pod is running
+        pod_name = get_pod_name_from_dc(self.node, dc_name)
+        pod_info = oc_get_pods(
+            self.node, selector='deploymentconfig=%s' % dc_name)
+        node = pod_info[pod_name]['node']
+
+        # Get the iscsi sessions info from the node
+        iscsi = get_iscsi_session(node, iqn)
+        self.assertEqual(hacount, len(iscsi))
+        iscsi.sort()
+        self.assertEqual(set(iscsi), (set(gluster_ips) & set(iscsi)))
+
+        # Get the paths info from the node
+        devices = get_iscsi_block_devices_by_path(node, iqn).keys()
+        self.assertEqual(hacount, len(devices))
+
+        # Get mpath names and verify that only one mpath is there
+        mpaths = set()
+        for device in devices:
+            mpaths.add(get_mpath_name_from_device_name(node, device))
+        self.assertEqual(1, len(mpaths))
+
+        validate_multipath_pod(
+            self.node, pod_name, hacount, mpath=list(mpaths)[0])
+
+        return iqn, hacount, node
+
+    def initiator_side_failures(self):
+        self.create_storage_class()
+        self.create_and_wait_for_pvc()
+
+        # Create app pod
         dc_name, pod_name = self.create_dc_with_pvc(self.pvc_name)
 
-        # When we have to verify iscsi login  devices & mpaths, we run it twice
-        for i in range(2):
+        iqn, _, node = self.verify_iscsi_and_multipath(self.pvc_name, dc_name)
 
-            # get node hostname from pod info
-            pod_info = oc_get_pods(
-                self.node, selector='deploymentconfig=%s' % dc_name)
-            node = pod_info[pod_name]['node']
+        # Make node unschedulabe where pod is running
+        oc_adm_manage_node(
+            self.node, '--schedulable=false', nodes=[node])
 
-            # get the iscsi sessions info from the node
-            iscsi = get_iscsi_session(node, iqn)
-            self.assertEqual(hacount, len(iscsi))
-            iscsi.sort()
-            self.assertEqual(set(iscsi), (set(gluster_ips) & set(iscsi)))
+        # Make node schedulabe where pod is running
+        self.addCleanup(
+            oc_adm_manage_node, self.node, '--schedulable=true',
+            nodes=[node])
 
-            # get the paths info from the node
-            devices = get_iscsi_block_devices_by_path(node, iqn).keys()
-            self.assertEqual(hacount, len(devices))
+        # Delete pod so it get respun on any other node
+        oc_delete(self.node, 'pod', pod_name)
+        wait_for_resource_absence(self.node, 'pod', pod_name)
 
-            # get mpath names and verify that only one mpath is there
-            mpaths = set()
-            for device in devices:
-                mpaths.add(get_mpath_name_from_device_name(node, device))
-            self.assertEqual(1, len(mpaths))
+        # Wait for pod to come up
+        pod_name = get_pod_name_from_dc(self.node, dc_name)
+        wait_for_pod_be_ready(self.node, pod_name)
 
-            validate_multipath_pod(
-                self.node, pod_name, hacount, mpath=list(mpaths)[0])
+        # Get the iscsi session from the previous node to verify logout
+        iscsi = get_iscsi_session(node, iqn, raise_on_error=False)
+        self.assertFalse(iscsi)
 
-            # When we have to verify iscsi session logout, we run only once
-            if i == 1:
-                break
-
-            # make node unschedulabe where pod is running
-            oc_adm_manage_node(
-                self.node, '--schedulable=false', nodes=[node])
-
-            # make node schedulabe where pod is running
-            self.addCleanup(
-                oc_adm_manage_node, self.node, '--schedulable=true',
-                nodes=[node])
-
-            # delete pod so it get respun on any other node
-            oc_delete(self.node, 'pod', pod_name)
-            wait_for_resource_absence(self.node, 'pod', pod_name)
-
-            # wait for pod to come up
-            pod_name = get_pod_name_from_dc(self.node, dc_name)
-            wait_for_pod_be_ready(self.node, pod_name)
-
-            # get the iscsi session from the previous node to verify logout
-            iscsi = get_iscsi_session(node, iqn, raise_on_error=False)
-            self.assertFalse(iscsi)
+        self.verify_iscsi_and_multipath(self.pvc_name, dc_name)
 
     def test_initiator_side_failures_initiator_and_target_on_different_node(
             self):
 
         nodes = oc_get_schedulable_nodes(self.node)
 
-        # get list of all gluster nodes
+        # Get list of all gluster nodes
         cmd = ("oc get pods --no-headers -l glusterfs-node=pod "
                "-o=custom-columns=:.spec.nodeName")
         g_nodes = cmd_run(cmd, self.node)
         g_nodes = g_nodes.split('\n') if g_nodes else g_nodes
 
-        # skip test case if required schedulable node count not met
+        # Skip test case if required schedulable node count not met
         if len(set(nodes) - set(g_nodes)) < 2:
             self.skipTest("skipping test case because it needs at least two"
                           " nodes schedulable")
 
-        # make containerized Gluster nodes unschedulable
+        # Make containerized Gluster nodes unschedulable
         if g_nodes:
-            # make gluster nodes unschedulable
+            # Make gluster nodes unschedulable
             oc_adm_manage_node(
                 self.node, '--schedulable=false',
                 nodes=g_nodes)
 
-            # make gluster nodes schedulable
+            # Make gluster nodes schedulable
             self.addCleanup(
                 oc_adm_manage_node, self.node, '--schedulable=true',
                 nodes=g_nodes)
@@ -491,26 +491,26 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
         nodes = oc_get_schedulable_nodes(self.node)
 
-        # get list of all gluster nodes
+        # Get list of all gluster nodes
         cmd = ("oc get pods --no-headers -l glusterfs-node=pod "
                "-o=custom-columns=:.spec.nodeName")
         g_nodes = cmd_run(cmd, self.node)
         g_nodes = g_nodes.split('\n') if g_nodes else g_nodes
 
-        # get the list of nodes other than gluster
+        # Get the list of nodes other than gluster
         o_nodes = list((set(nodes) - set(g_nodes)))
 
-        # skip the test case if it is crs setup
+        # Skip the test case if it is crs setup
         if not g_nodes:
             self.skipTest("skipping test case because it is not a "
                           "containerized gluster setup. "
                           "This test case is for containerized gluster only.")
 
-        # make other nodes unschedulable
+        # Make other nodes unschedulable
         oc_adm_manage_node(
             self.node, '--schedulable=false', nodes=o_nodes)
 
-        # make other nodes schedulable
+        # Make other nodes schedulable
         self.addCleanup(
             oc_adm_manage_node, self.node, '--schedulable=true', nodes=o_nodes)
 
