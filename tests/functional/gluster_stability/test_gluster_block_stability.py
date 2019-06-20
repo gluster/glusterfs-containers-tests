@@ -17,6 +17,7 @@ from openshiftstoragelibs.openshift_storage_libs import (
     get_iscsi_session,
     get_mpath_name_from_device_name,
 )
+from openshiftstoragelibs.waiter import Waiter
 
 
 class TestGlusterBlockStability(GlusterBlockBaseClass):
@@ -172,3 +173,93 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         # Verify that active path is same as before
         mpath_dev_new = get_active_and_enabled_devices_from_mpath(node, mpath)
         self.assertEqual(mpath_dev['active'][0], mpath_dev_new['active'][0])
+
+    def test_target_side_failures_tcmu_runner_kill_when_ios_going_on(self):
+        """Run I/Os on block volume while tcmu-runner is stoped"""
+        self.create_and_wait_for_pvc()
+
+        # Create app pod
+        dc_name, pod_name = self.create_dc_with_pvc(self.pvc_name)
+
+        iqn, hacount, node = self.verify_iscsi_sessions_and_multipath(
+            self.pvc_name, dc_name)
+
+        # Run I/O
+        cmd_run_io = 'dd if=/dev/urandom of=/mnt/%s bs=4k count=10000'
+
+        devices = get_iscsi_block_devices_by_path(node, iqn)
+        mpath = get_mpath_name_from_device_name(node, list(devices.keys())[0])
+        mpath_dev = get_active_and_enabled_devices_from_mpath(node, mpath)
+
+        paths = mpath_dev['active'] + mpath_dev['enabled']
+
+        for path in paths:
+            node_ip = devices[path]
+
+            # Stop tcmu-runner service
+            cmd_run_on_gluster_pod_or_node(
+                self.node, 'systemctl stop tcmu-runner', node_ip)
+            start_svc = ('systemctl start gluster-blockd gluster-block-target '
+                         'tcmu-runner')
+            self.addCleanup(
+                cmd_run_on_gluster_pod_or_node, self.node, start_svc, node_ip)
+
+            wait_for_pod_be_ready(self.node, pod_name, 6, 3)
+
+            # Verify gluster-blockd gluster-block-target service is not running
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'gluster-blockd', 'inactive', 'dead', node_ip,
+                raise_on_error=False)
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'gluster-block-target', 'failed',
+                'Result: exit-code', node_ip, raise_on_error=False)
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'tcmu-runner', 'inactive', 'dead', node_ip,
+                raise_on_error=False)
+
+            # Wait for path to be failed
+            for w in Waiter(120, 5):
+                out = cmd_run('multipath -ll %s | grep %s' % (
+                    mpath, path), node)
+                if 'failed faulty running' in out:
+                    break
+            if w.expired:
+                self.assertIn(
+                    'failed faulty running', out, 'path %s of mpath %s is '
+                    'still up and running. It should not be running '
+                    'because tcmu-runner is down' % (path, mpath))
+
+            # Run I/O
+            wait_for_pod_be_ready(self.node, pod_name, 6, 3)
+            oc_rsh(self.node, pod_name, cmd_run_io % 'file2')
+
+            # Start services
+            cmd_run_on_gluster_pod_or_node(self.node, start_svc, node_ip)
+
+            # Verify services are running
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'tcmu-runner', 'active', 'running', node_ip)
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'gluster-block-target', 'active', 'exited', node_ip)
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'gluster-blockd', 'active', 'running', node_ip)
+
+            # Wait for path to come up
+            self.verify_all_paths_are_up_in_multipath(mpath, hacount, node)
+
+            # Run I/O
+            wait_for_pod_be_ready(self.node, pod_name, 6, 3)
+            oc_rsh(self.node, pod_name, cmd_run_io % 'file3')
+
+        # Verify it returns to the original active path
+        for w in Waiter(120, 5):
+            mpath_dev_new = get_active_and_enabled_devices_from_mpath(
+                node, mpath)
+            if mpath_dev['active'][0] == mpath_dev_new['active'][0]:
+                break
+        if w.expired:
+            self.assertEqual(
+                mpath_dev['active'][0], mpath_dev_new['active'][0])
+
+        # Verify that all the paths are up
+        self.verify_all_paths_are_up_in_multipath(mpath, hacount, node)

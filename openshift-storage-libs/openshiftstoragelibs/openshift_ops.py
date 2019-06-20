@@ -696,7 +696,8 @@ def get_gluster_pod_names_by_pvc_name(ocp_node, pvc_name):
     return data
 
 
-def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node=None):
+def cmd_run_on_gluster_pod_or_node(
+        ocp_client_node, cmd, gluster_node=None, raise_on_error=True):
     """Run shell command on either Gluster PODs or Gluster nodes.
 
     Args:
@@ -727,7 +728,9 @@ def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node=None):
         for gluster_pod_name in gluster_pod_names:
             try:
                 pod_cmd = "oc exec %s -- %s" % (gluster_pod_name, cmd)
-                return command.cmd_run(pod_cmd, hostname=ocp_client_node)
+                return command.cmd_run(
+                    pod_cmd, hostname=ocp_client_node,
+                    raise_on_error=raise_on_error)
             except Exception as e:
                 err = ("Failed to run '%s' command on '%s' Gluster POD. "
                        "Error: %s\n" % (cmd, gluster_pod_name, e))
@@ -742,7 +745,8 @@ def cmd_run_on_gluster_pod_or_node(ocp_client_node, cmd, gluster_node=None):
         g_hosts = list(g.config.get("gluster_servers", {}).keys())
     for g_host in g_hosts:
         try:
-            return command.cmd_run(cmd, hostname=g_host)
+            return command.cmd_run(
+                cmd, hostname=g_host, raise_on_error=raise_on_error)
         except Exception as e:
             err = ("Failed to run '%s' command on '%s' Gluster node. "
                    "Error: %s\n" % (cmd, g_host, e))
@@ -1336,7 +1340,7 @@ def check_service_status_on_pod(
 
 def wait_for_service_status_on_gluster_pod_or_node(
         ocp_client, service, status, state, gluster_node,
-        timeout=180, wait_step=3):
+        raise_on_error=True, timeout=180, wait_step=3):
     """Wait for a service specific status on a Gluster POD or node.
 
     Args:
@@ -1358,7 +1362,8 @@ def wait_for_service_status_on_gluster_pod_or_node(
 
     for w in waiter.Waiter(timeout, wait_step):
         out = cmd_run_on_gluster_pod_or_node(
-            ocp_client, SERVICE_STATUS % service, gluster_node)
+            ocp_client, SERVICE_STATUS % service, gluster_node,
+            raise_on_error=raise_on_error)
         for line in out.splitlines():
             status_match = re.search(SERVICE_STATUS_REGEX, line)
             if (status_match and status_match.group(1) == status and
