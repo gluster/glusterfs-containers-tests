@@ -209,7 +209,7 @@ def get_active_and_enabled_devices_from_mpath(node, mpath):
     """
 
     cmd = ("set -o pipefail && ((multipath -ll %s | grep -A 1 status=%s)"
-           " | cut -d ':' -f 4 | awk '{print $2}')")
+           r" | grep -v '\-\-' | cut -d ':' -f 4 | awk '{print $2}')")
 
     active = cmd_run(cmd % (mpath, 'active'), node).split('\n')[1::2]
     enabled = cmd_run(cmd % (mpath, 'enabled'), node).split('\n')[1::2]
