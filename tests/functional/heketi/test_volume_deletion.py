@@ -53,17 +53,11 @@ class TestVolumeDeleteTestCases(BaseClass):
             "Free space is not reclaimed after deletion of %s" % volume_id)
 
     def test_delete_heketidb_volume(self):
-        """
-        Method to test heketidb volume deletion via heketi-cli
-        """
-        heketidbexists = False
-        msg = "Error: Cannot delete volume containing the Heketi database"
-
+        """Method to test heketidb volume deletion via heketi-cli."""
         for i in range(0, 2):
             volume_info = heketi_ops.heketi_volume_create(
                 self.heketi_client_node, self.heketi_server_url,
                 10, json=True)
-
             self.addCleanup(
                 heketi_ops.heketi_volume_delete, self.heketi_client_node,
                 self.heketi_server_url, volume_info["id"])
@@ -72,8 +66,8 @@ class TestVolumeDeleteTestCases(BaseClass):
             self.heketi_client_node,
             self.heketi_server_url, json=True)
 
-        if volume_list_info["volumes"] == []:
-            raise ExecutionError("Heketi volume list empty")
+        self.assertTrue(
+            volume_list_info["volumes"], "Heketi volume list empty.")
 
         for volume_id in volume_list_info["volumes"]:
             volume_info = heketi_ops.heketi_volume_info(
@@ -81,18 +75,10 @@ class TestVolumeDeleteTestCases(BaseClass):
                 volume_id, json=True)
 
             if volume_info["name"] == "heketidbstorage":
-                heketidbexists = True
-                delete_ret, delete_output, delete_error = (
-                    heketi_ops.heketi_volume_delete(
-                        self.heketi_client_node,
-                        self.heketi_server_url, volume_id,
-                        raw_cli_output=True))
-
-                self.assertNotEqual(delete_ret, 0, "Return code not 0")
-                self.assertEqual(
-                    delete_error.strip(), msg,
-                    "Invalid reason for heketidb deletion failure")
-
-        if not heketidbexists:
-            raise ExecutionError(
-                "Warning: heketidbstorage doesn't exist in list of volumes")
+                self.assertRaises(
+                    AssertionError,
+                    heketi_ops.heketi_volume_delete,
+                    self.heketi_client_node, self.heketi_server_url, volume_id)
+                return
+        raise ExecutionError(
+            "Warning: heketidbstorage doesn't exist in list of volumes")

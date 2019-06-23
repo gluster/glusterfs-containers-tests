@@ -5,7 +5,6 @@ from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 
 from openshiftstoragelibs.baseclass import BaseClass
-from openshiftstoragelibs import exceptions
 from openshiftstoragelibs.heketi_ops import (
     heketi_device_disable,
     heketi_device_enable,
@@ -102,7 +101,7 @@ class TestHeketiVolume(BaseClass):
                 "Trying to create distributed '%s'Gb volume." % vol_size_gb)
             heketi_vol = heketi_volume_create(
                 self.heketi_client_node, heketi_url, vol_size_gb, json=True)
-        except exceptions.ExecutionError as e:
+        except AssertionError as e:
             # NOTE: rare situation when we need to decrease size of a volume.
             #       and we expect this vol to be distributed.
             g.log.info("Failed to create distributed '%s'Gb volume. "

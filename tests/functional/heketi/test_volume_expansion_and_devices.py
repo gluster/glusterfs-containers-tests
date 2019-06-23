@@ -5,7 +5,6 @@ from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops, rebalance_ops
 
 from openshiftstoragelibs.baseclass import BaseClass
-from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs import (
     heketi_ops,
     podcmd,
@@ -404,7 +403,7 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
 
         # Try to expand volume with not enough device space
         self.assertRaises(
-            ExecutionError, heketi_ops.heketi_volume_expand,
+            AssertionError, heketi_ops.heketi_volume_expand,
             h_node, h_server_url, volume_id, expand_size)
 
         # Enable new devices to be able to expand our volume

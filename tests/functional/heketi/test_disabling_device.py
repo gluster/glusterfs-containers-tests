@@ -2,7 +2,6 @@ from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_info
 
 from openshiftstoragelibs import baseclass
-from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import podcmd
 
@@ -77,9 +76,10 @@ class TestDisableHeketiDevice(baseclass.BaseClass):
             self.assertTrue(out, "Failed to get device info %s" % device_id)
             g.log.info("Successfully retrieved device info %s" % device_id)
             name = out["name"]
-            if out["state"].lower().strip() != "offline":
-                raise exceptions.ExecutionError(
-                    "Device %s is not in offline state." % name)
+            self.assertEqual(
+                out["state"].lower().strip(), "offline",
+                "Device %s is not in offline state." % name
+            )
             g.log.info("Device %s is now offine" % name)
 
             # Try to create heketi volume
@@ -88,7 +88,7 @@ class TestDisableHeketiDevice(baseclass.BaseClass):
                 out = heketi_ops.heketi_volume_create(
                     self.heketi_client_node, self.heketi_server_url, 1,
                     json=True)
-            except exceptions.ExecutionError:
+            except AssertionError:
                 g.log.info("Volume was not created as expected.")
             else:
                 self.addCleanup(
@@ -111,9 +111,10 @@ class TestDisableHeketiDevice(baseclass.BaseClass):
         self.assertTrue(out, ("Failed to get device info %s" % device_id))
         g.log.info("Successfully retrieved device info %s" % device_id)
         name = out["name"]
-        if out["state"] != "online":
-            raise exceptions.ExecutionError(
-                "Device %s is not in online state." % name)
+        self.assertEqual(
+            out["state"], "online",
+            "Device %s is not in online state." % name
+        )
 
         # Create heketi volume of size
         out = heketi_ops.heketi_volume_create(

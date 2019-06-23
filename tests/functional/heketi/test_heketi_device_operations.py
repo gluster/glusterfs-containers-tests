@@ -1,15 +1,7 @@
-try:
-    # py2/3
-    import simplejson as json
-except ImportError:
-    # py2
-    import json
-
 import ddt
 from glusto.core import Glusto as g
 
 from openshiftstoragelibs.baseclass import BaseClass
-from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs.heketi_ops import (
     heketi_device_add,
     heketi_device_delete,
@@ -150,17 +142,15 @@ class TestHeketiDeviceOperations(BaseClass):
         self.addCleanup(heketi_device_enable, self.heketi_client_node,
                         self.heketi_server_url, online_device_id)
 
-        ret, out, err = heketi_volume_create(
-            self.heketi_client_node, self.heketi_server_url,
-            vol_size, json=True, raw_cli_output=True)
-        if ret == 0:
+        with self.assertRaises(AssertionError):
+            out = heketi_volume_create(
+                self.heketi_client_node, self.heketi_server_url,
+                vol_size, json=True)
             self.addCleanup(
                 heketi_volume_delete, self.heketi_client_node,
-                self.heketi_server_url, json.loads(out)["id"])
-        self.assertNotEqual(ret, 0,
-                            ("Volume creation did not fail. ret- %s "
-                             "out- %s err- %s" % (ret, out, err)))
-        g.log.info("Volume creation failed as expected, err- %s", err)
+                self.heketi_server_url, out["id"])
+            self.assertFalse(True, "Volume creation didn't fail: %s" % out)
+        g.log.info("Volume creation failed as expected")
 
         # Enable back the device which was previously disabled
         g.log.info("Going to enable device id %s", online_device_id)
@@ -267,18 +257,16 @@ class TestHeketiDeviceOperations(BaseClass):
             self.skipTest(skip_msg)
 
         g.log.info("Removing device id %s" % lowest_device_id)
-        ret, out, err = heketi_device_remove(
-            self.heketi_client_node, self.heketi_server_url,
-            lowest_device_id, raw_cli_output=True)
-        if ret == 0:
+        with self.assertRaises(AssertionError):
+            out = heketi_device_remove(
+                self.heketi_client_node, self.heketi_server_url,
+                lowest_device_id)
             self.addCleanup(heketi_device_enable, self.heketi_client_node,
                             self.heketi_server_url, lowest_device_id)
             self.addCleanup(heketi_device_disable, self.heketi_client_node,
                             self.heketi_server_url, lowest_device_id)
-        self.assertNotEqual(ret, 0, (
-            "Device removal did not fail. ret: %s, out: %s, err: %s." % (
-                ret, out, err)))
-        g.log.info("Device removal failed as expected, err- %s", err)
+            self.assertFalse(True, "Device removal didn't fail: %s" % out)
+        g.log.info("Device removal failed as expected")
 
         # Need to disable device before removing
         heketi_device_disable(
@@ -414,7 +402,7 @@ class TestHeketiDeviceOperations(BaseClass):
             heketi_device_enable, heketi_node, heketi_url, device_id)
         try:
             self.assertRaises(
-                ExecutionError, heketi_device_remove,
+                AssertionError, heketi_device_remove,
                 heketi_node, heketi_url, device_id)
         except Exception:
             self.addCleanup(

@@ -2,7 +2,6 @@ from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
 
 from openshiftstoragelibs.baseclass import BaseClass
-from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import podcmd
 
@@ -137,7 +136,7 @@ class TestVolumeCreationTestCases(BaseClass):
         try:
             vol_fail = heketi_ops.heketi_volume_create(
                 node, server_url, min_space_gb, json=True)
-        except exceptions.ExecutionError:
+        except AssertionError:
             g.log.info("Volume was not created as expected.")
         else:
             self.addCleanup(

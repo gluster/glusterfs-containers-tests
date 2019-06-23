@@ -3,7 +3,6 @@ from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 import six
 
 from openshiftstoragelibs.baseclass import BaseClass
-from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_create,
     heketi_blockvolume_delete,
@@ -137,7 +136,7 @@ class TestHeketiVolume(BaseClass):
                    " which contains volumes and/or nodes:"
                    " Expected to fail")
         self.assertRaises(
-            ExecutionError,
+            AssertionError,
             heketi_cluster_delete,
             self.heketi_client_node, self.heketi_server_url, cluster_id,
         )
@@ -192,7 +191,7 @@ class TestHeketiVolume(BaseClass):
         g.log.info("Trying to delete the node which contains devices in it. "
                    "Expecting failure.")
         self.assertRaises(
-            ExecutionError,
+            AssertionError,
             heketi_node_delete,
             self.heketi_client_node, heketi_url, node_id)
 
@@ -245,7 +244,7 @@ class TestHeketiVolume(BaseClass):
             blockvol2 = heketi_blockvolume_create(
                 self.heketi_client_node, self.heketi_server_url,
                 too_big_vol_size, json=True)
-        except ExecutionError:
+        except AssertionError:
             return
 
         if blockvol2 and blockvol2.get('id'):

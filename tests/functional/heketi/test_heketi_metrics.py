@@ -1,5 +1,4 @@
 from openshiftstoragelibs.baseclass import BaseClass
-from openshiftstoragelibs import exceptions
 from openshiftstoragelibs.heketi_ops import (
     get_heketi_metrics,
     heketi_cluster_info,
@@ -183,7 +182,7 @@ class TestHeketiMetrics(BaseClass):
             self.heketi_dc_name, pod_amount=1)
 
         # verify that metrics is not accessable when heketi pod is down
-        with self.assertRaises(exceptions.ExecutionError):
+        with self.assertRaises(AssertionError):
             get_heketi_metrics(
                 self.heketi_client_node,
                 self.heketi_server_url,

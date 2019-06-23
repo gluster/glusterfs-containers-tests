@@ -1,11 +1,4 @@
 """Test cases to disable and enable node in heketi."""
-try:
-    # py2/3
-    import simplejson as json
-except ImportError:
-    # py2
-    import json
-
 from glusto.core import Glusto as g
 
 from openshiftstoragelibs.baseclass import BaseClass
@@ -126,19 +119,16 @@ class TestHeketiNodeState(BaseClass):
         self.addCleanup(self.enable_node, node_id)
 
         # try to create a volume, volume creation should fail
-        ret, out, err = heketi_volume_create(
-            self.heketi_client_node, self.heketi_server_url,
-            vol_size, raw_cli_output=True)
-        if ret == 0:
-            out_json = json.loads(out)
+        with self.assertRaises(AssertionError):
+            out = heketi_volume_create(
+                self.heketi_client_node, self.heketi_server_url, vol_size)
             self.addCleanup(
                 heketi_volume_delete, self.heketi_client_node,
-                self.heketi_server_url, out_json["id"])
-        self.assertNotEqual(ret, 0,
-                            ("Volume creation did not fail ret- %s "
-                             "out- %s err- %s" % (ret, out, err)))
+                self.heketi_server_url, out["id"])
+            self.assertFalse(True, "Volume creation didn't fail: %s" % out)
 
-        g.log.info("Volume creation failed as expected, err- %s", err)
+        g.log.info("Volume creation failed as expected.")
+
         # enable node
         self.enable_node(node_id)
 
