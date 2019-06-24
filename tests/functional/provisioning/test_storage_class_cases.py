@@ -295,3 +295,11 @@ class TestStorageClassCases(BaseClass):
             self.sc.get("volumenameprefix", "autotest"),
             namespace, pvc_name, self.heketi_server_url)
         self.create_dc_with_pvc(pvc_name)
+        pv_name = get_pv_name_from_pvc(self.ocp_master_node[0], pvc_name)
+        endpoint = oc_get_custom_resource(
+            self.ocp_master_node[0], "pv", ":spec.glusterfs.endpoints",
+            name=pv_name)
+        self.assertTrue(
+             endpoint,
+             "Failed to read Endpoints of %s on  %s " % (
+                 pv_name, self.ocp_master_node[0]))
