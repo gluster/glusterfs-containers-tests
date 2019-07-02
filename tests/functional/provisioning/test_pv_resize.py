@@ -1,3 +1,5 @@
+from unittest import skip
+
 import ddt
 from glusto.core import Glusto as g
 
@@ -114,10 +116,8 @@ class TestPvResizeClass(BaseClass):
         self.assertEqual(
             ret, 0, "Failed to execute command %s on %s" % (cmd, node))
 
-    def _pv_resize(self, exceed_free_space):
-        dir_path = "/mnt"
-        pvc_size_gb, min_free_space_gb = 1, 3
-
+    def _available_disk_free_space(self):
+        min_free_space_gb = 3
         # Get available free space disabling redundant devices and nodes
         heketi_url = self.heketi_server_url
         node_id_list = heketi_ops.heketi_node_list(
@@ -159,6 +159,13 @@ class TestPvResizeClass(BaseClass):
 
         # Calculate maximum available size for PVC
         available_size_gb = int(min(nodes.values()) / (1024**2))
+        return available_size_gb
+
+    def _pv_resize(self, exceed_free_space):
+        dir_path = "/mnt"
+        pvc_size_gb = 1
+
+        available_size_gb = self._available_disk_free_space()
 
         # Create PVC
         self.create_storage_class(allow_volume_expansion=True)
@@ -319,3 +326,29 @@ class TestPvResizeClass(BaseClass):
 
         # Verify pod is running
         wait_for_pod_be_ready(self.node, pod_name, 10, 5)
+
+    @skip("Blocked by BZ-1547069")
+    def test_pvc_resize_size_greater_than_available_space(self):
+        """Re-size PVC to greater value than available volume size and then
+        expand volume to support maximum size.
+        """
+        sc_name = self.create_storage_class(
+            create_vol_name_prefix=True, allow_volume_expansion=True)
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name, pvc_size=1)
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
+
+        # Verify the size of volume mounted
+        cmd_on_pod = "df -Ph /mnt | tail -1 | awk '{print $2}'"
+        _, stdout, _ = oc_rsh(self.node, pod_name, cmd_on_pod)
+        self.assertGreaterEqual(
+            int(stdout.strip('.0M\n')), 1000,
+            "Size of %s not equal to 1G" % pvc_name)
+        self.assertLessEqual(
+            int(stdout.strip('.0M\n')), 1024,
+            "Size of %s not equal to 1G" % pvc_name)
+        available_size_gb = self._available_disk_free_space()
+        with self.assertRaises(AssertionError):
+            resize_pvc(
+                self.ocp_master_node[0], pvc_name, available_size_gb + 1)
+        resize_pvc(self.ocp_master_node[0], pvc_name, available_size_gb)
+        verify_pvc_size(self.ocp_master_node[0], pvc_name, available_size_gb)
