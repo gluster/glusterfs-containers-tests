@@ -288,9 +288,9 @@ class GlusterStabilityTestSetup(BaseClass):
         # checks if all glusterfs services are in running state
         for g_node in g_nodes:
             for service in (SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET):
-                status = "exited" if service == SERVICE_TARGET else "running"
+                state = "exited" if service == SERVICE_TARGET else "running"
                 self.assertTrue(wait_for_service_status_on_gluster_pod_or_node(
-                    self.oc_node, service, status, g_node))
+                    self.oc_node, service, 'active', state, g_node))
 
         # validates pvc, pv, heketi block and gluster block count after
         # service restarts
@@ -312,9 +312,9 @@ class GlusterStabilityTestSetup(BaseClass):
         # checks if all glusterfs services are in running state
         for g_node in g_nodes:
             for service in (SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET):
-                status = "exited" if service == SERVICE_TARGET else "running"
+                state = "exited" if service == SERVICE_TARGET else "running"
                 self.assertTrue(wait_for_service_status_on_gluster_pod_or_node(
-                    self.oc_node, service, status, g_node))
+                    self.oc_node, service, 'active', state, g_node))
 
         # validates pvc, pv, heketi block and gluster block count after
         # service restarts

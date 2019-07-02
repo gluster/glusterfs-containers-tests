@@ -134,7 +134,7 @@ class TestNodeRestart(BaseClass):
                 g.log.info("gluster_pod - '%s' : gluster_service '%s'" % (
                     gluster_pod, service))
                 check_service_status_on_pod(
-                    self.oc_node, gluster_pod, service, "running"
+                    self.oc_node, gluster_pod, service, "active", "running"
                 )
 
     @skip("Blocked by BZ-1652913")

@@ -32,7 +32,7 @@ PODS_WIDE_RE = re.compile(
     r'(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+).*\n')
 SERVICE_STATUS = "systemctl status %s"
 SERVICE_RESTART = "systemctl restart %s"
-SERVICE_STATUS_REGEX = r"Active: active \((.*)\) since .*;.*"
+SERVICE_STATUS_REGEX = r"Active: (.*) \((.*)\) since .*;.*"
 
 
 def oc_get_pods(ocp_node, selector=None):
@@ -1296,7 +1296,7 @@ def match_pv_and_heketi_block_volumes(
 
 
 def check_service_status_on_pod(
-        ocp_client, podname, service, status, timeout=180, wait_step=3):
+        ocp_client, podname, service, status, state, timeout=180, wait_step=3):
     """Check a service state on a pod.
 
     Args:
@@ -1304,6 +1304,9 @@ def check_service_status_on_pod(
         podname (str): pod name on which service needs to be checked
         service (str): service which needs to be checked
         status (str): status to be checked
+            e.g. 'active', 'inactive', 'failed'
+        state (str): state to be checked
+            e.g. 'running', 'exited', 'dead'
         timeout (int): seconds to wait before service starts having
                        specified 'status'
         wait_step (int): interval in seconds to wait before checking
@@ -1322,7 +1325,8 @@ def check_service_status_on_pod(
 
         for line in out.splitlines():
             status_match = re.search(SERVICE_STATUS_REGEX, line)
-            if status_match and status_match.group(1) == status:
+            if (status_match and status_match.group(1) == status and
+                    status_match.group(2) == state):
                 return True
 
     if w.expired:
@@ -1331,13 +1335,17 @@ def check_service_status_on_pod(
 
 
 def wait_for_service_status_on_gluster_pod_or_node(
-        ocp_client, service, status, gluster_node, timeout=180, wait_step=3):
+        ocp_client, service, status, state, gluster_node,
+        timeout=180, wait_step=3):
     """Wait for a service specific status on a Gluster POD or node.
 
     Args:
         ocp_client (str): hostname on which we want to check service
         service (str): target service to be checked
         status (str): service status which we wait for
+            e.g. 'active', 'inactive', 'failed'
+        state (str): service state which we wait for
+            e.g. 'running', 'exited', 'dead'
         gluster_node (str): Gluster node IPv4 which stores either Gluster POD
             or Gluster services directly.
         timeout (int): seconds to wait before service starts having
@@ -1353,7 +1361,8 @@ def wait_for_service_status_on_gluster_pod_or_node(
             ocp_client, SERVICE_STATUS % service, gluster_node)
         for line in out.splitlines():
             status_match = re.search(SERVICE_STATUS_REGEX, line)
-            if status_match and status_match.group(1) == status:
+            if (status_match and status_match.group(1) == status and
+                    status_match.group(2) == state):
                 return True
     if w.expired:
         g.log.error(err_msg)
