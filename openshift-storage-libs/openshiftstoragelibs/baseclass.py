@@ -11,6 +11,7 @@ from openshiftstoragelibs.exceptions import (
 from openshiftstoragelibs.heketi_ops import (
     hello_heketi,
     heketi_blockvolume_delete,
+    heketi_blockvolume_info,
     heketi_volume_delete,
 )
 from openshiftstoragelibs.openshift_ops import (
@@ -22,11 +23,18 @@ from openshiftstoragelibs.openshift_ops import (
     oc_create_secret,
     oc_delete,
     oc_get_custom_resource,
+    oc_get_pods,
     scale_dc_pod_amount_and_wait,
     switch_oc_project,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
+)
+from openshiftstoragelibs.openshift_storage_libs import (
+    get_iscsi_block_devices_by_path,
+    get_iscsi_session,
+    get_mpath_name_from_device_name,
+    validate_multipath_pod,
 )
 from openshiftstoragelibs.openshift_version import get_openshift_version
 
@@ -327,3 +335,47 @@ class GlusterBlockBaseClass(BaseClass):
         super(GlusterBlockBaseClass, cls).setUpClass()
         cls.sc = cls.storage_classes.get(
             'storage_class2', cls.storage_classes.get('block_storage_class'))
+
+    def verify_iscsi_sessions_and_multipath(self, pvc_name, dc_name):
+        # Get storage ips of glusterfs pods
+        keys = self.gluster_servers
+        gluster_ips = []
+        for key in keys:
+            gluster_ips.append(self.gluster_servers_info[key]['storage'])
+        gluster_ips.sort()
+
+        # Find iqn and hacount from volume info
+        pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+        custom = [r':.metadata.annotations."gluster\.org\/volume\-id"']
+        vol_id = oc_get_custom_resource(self.node, 'pv', custom, pv_name)[0]
+        vol_info = heketi_blockvolume_info(
+            self.heketi_client_node, self.heketi_server_url, vol_id, json=True)
+        iqn = vol_info['blockvolume']['iqn']
+        hacount = int(self.sc['hacount'])
+
+        # Find node on which pod is running
+        pod_name = get_pod_name_from_dc(self.node, dc_name)
+        pod_info = oc_get_pods(
+            self.node, selector='deploymentconfig=%s' % dc_name)
+        node = pod_info[pod_name]['node']
+
+        # Get the iscsi sessions info from the node
+        iscsi = get_iscsi_session(node, iqn)
+        self.assertEqual(hacount, len(iscsi))
+        iscsi.sort()
+        self.assertEqual(set(iscsi), (set(gluster_ips) & set(iscsi)))
+
+        # Get the paths info from the node
+        devices = get_iscsi_block_devices_by_path(node, iqn).keys()
+        self.assertEqual(hacount, len(devices))
+
+        # Get mpath names and verify that only one mpath is there
+        mpaths = set()
+        for device in devices:
+            mpaths.add(get_mpath_name_from_device_name(node, device))
+        self.assertEqual(1, len(mpaths))
+
+        validate_multipath_pod(
+            self.node, pod_name, hacount, mpath=list(mpaths)[0])
+
+        return iqn, hacount, node
