@@ -12,10 +12,14 @@ from glusto.core import Glusto as g
 import six
 
 from openshiftstoragelibs import command
+from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_version
 from openshiftstoragelibs.utils import parse_prometheus_data
+from openshiftstoragelibs import waiter
+
 
 HEKETI_BHV = re.compile(r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(\S+)\s\[block\]")
+HEKETI_OPERATIONS = re.compile(r"Id:(\S+)\s+Type:(\S+)\s+Status:(\S+)")
 HEKETI_COMMAND_TIMEOUT = g.config.get("common", {}).get(
     "heketi_command_timeout", 120)
 TIMEOUT_PREFIX = "timeout %s " % HEKETI_COMMAND_TIMEOUT
@@ -1446,3 +1450,96 @@ def get_total_free_space(heketi_client_node, heketi_server_url):
             total_device_free_space += (device["storage"]["free"])
         device_free_spaces.append(total_device_free_space / 1024 ** 2)
     return int(sum(device_free_spaces)), len(device_free_spaces)
+
+
+def heketi_server_operations_list(
+        heketi_client_node, heketi_server_url, **kwargs):
+    """Executes heketi server operations list command.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+
+    Returns:
+        list: list of server operations pending
+
+    Raises:
+        exceptions.ExecutionError: if command fails.
+    """
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '8.0.0-10':
+        msg = (
+            "heketi-client package %s does not support operations "
+            "list functionality" % version.v_str)
+        g.log.error(msg)
+        raise NotImplementedError(msg)
+
+    heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+
+    cmd = "heketi-cli -s %s %s %s server operations list" % (
+        heketi_server_url, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
+    out = heketi_cmd_run(heketi_client_node, cmd)
+    if out:
+        operations = []
+        for operation in HEKETI_OPERATIONS.findall(out.strip()):
+            operations.append({
+                'id': operation[0],
+                'type': operation[1],
+                'status': operation[2]
+            })
+        return operations
+    else:
+        g.log.info("No any pendig heketi server operation")
+        return []
+
+
+def heketi_server_operation_cleanup(
+        heketi_client_node, heketi_server_url, operation_id=None,
+        timeout=120, wait_time=5, **kwargs):
+    """Executes heketi server operations cleanup command and wait until
+    cleanup operations get completed for given timeout.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+        operation_id (str): Operation Id needs to be cleaned.
+
+    Raises:
+        exceptions.ExecutionError: If cleanup not completed in given timeout.
+    """
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '8.0.0-10':
+        msg = (
+            "heketi-client package %s does not support operations "
+            "cleanup functionality" % version.v_str)
+        g.log.error(msg)
+        raise NotImplementedError(msg)
+
+    heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+    cmd = "heketi-cli -s %s %s %s server operations cleanup" % (
+        heketi_server_url, admin_key, user)
+    if operation_id:
+        cmd += " %s" % operation_id
+
+    cmd = TIMEOUT_PREFIX + cmd
+    heketi_cmd_run(heketi_client_node, cmd)
+    for w in waiter.Waiter(timeout=timeout, interval=wait_time):
+        cleanup_operations = heketi_server_operations_list(
+            heketi_client_node, heketi_server_url, **kwargs)
+
+        cleanup_operation = [
+            operation["id"]
+            for operation in cleanup_operations
+            if operation["id"] == operation_id]
+        if not cleanup_operation:
+            break
+
+    if w.expired:
+        err_msg = (
+            "Heketi server cleanup operation still pending even "
+            "after %s second" % timeout)
+        g.log.error(err_msg)
+        raise exceptions.ExecutionError(err_msg)

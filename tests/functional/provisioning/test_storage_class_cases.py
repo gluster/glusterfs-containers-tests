@@ -1,5 +1,3 @@
-from unittest import skip
-
 import ddt
 from glusto.core import Glusto as g
 
@@ -261,7 +259,6 @@ class TestStorageClassCases(BaseClass):
         )
         self.validate_multipath_info(hacount)
 
-    @skip("Blocked by BZ-1644685")
     def test_gluster_block_provisioning_with_invalid_ha_count(self):
         """Validate gluster-block provisioning with any invalid 'hacount'
            value
@@ -278,12 +275,20 @@ class TestStorageClassCases(BaseClass):
                 "is not supported in OCS 3.9")
 
         # get hacount as no of gluster pods + 1 to fail the pvc creation
-        hacount = get_amount_of_gluster_nodes(self.ocp_master_node[0]) + 1
+        gluster_pod_count = get_amount_of_gluster_nodes(
+            self.ocp_master_node[0])
+        hacount = gluster_pod_count + 1
 
         # create storage class and pvc with given parameters
         self.create_sc_with_parameter(
-            'glusterblock', parameter={'hacount': str(hacount)}
+            'glusterblock', success=True, parameter={'hacount': str(hacount)}
         )
+
+        # validate HA parameter with gluster block volume
+        self.validate_gluster_block_volume_info(
+            self.assertEqual, 'HA', gluster_pod_count
+        )
+        self.validate_multipath_info(gluster_pod_count)
 
     @ddt.data('true', 'false', '')
     def test_gluster_block_chapauthenabled_parameter(self, chapauthenabled):

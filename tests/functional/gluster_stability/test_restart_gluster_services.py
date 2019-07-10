@@ -15,7 +15,11 @@ from openshiftstoragelibs.gluster_ops import (
     restart_gluster_vol_brick_processes,
     wait_to_heal_complete,
 )
-from openshiftstoragelibs.heketi_ops import heketi_blockvolume_list
+from openshiftstoragelibs.heketi_ops import (
+    heketi_blockvolume_list,
+    heketi_server_operation_cleanup,
+    heketi_server_operations_list,
+)
 from openshiftstoragelibs.openshift_ops import (
     get_pv_name_from_pvc,
     match_pv_and_heketi_block_volumes,
@@ -139,6 +143,17 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
     def validate_volumes_and_blocks(self):
         """Validates PVC and block volumes generated through heketi and OCS
         """
+        heketi_operations = heketi_server_operations_list(
+            self.heketi_client_node, self.heketi_server_url,
+            secret=self.heketi_cli_key, user=self.heketi_cli_user)
+
+        for heketi_operation in heketi_operations:
+            if heketi_operation["status"] == "failed":
+                heketi_server_operation_cleanup(
+                    self.heketi_client_node, self.heketi_server_url,
+                    heketi_operation["id"], secret=self.heketi_cli_key,
+                    user=self.heketi_cli_user
+                )
 
         # verify pvc status is in "Bound" for all the pvc
         for pvc in self.pvc_list:
@@ -204,9 +219,21 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
 
         wait_to_heal_complete()
 
+    @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
     @ddt.data(SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET)
     def test_restart_services_provision_volume_and_run_io(self, service):
         """Restart gluster service then validate volumes"""
+        skip_msg = (
+            "Skipping this test case due to bugs "
+            "BZ-1634745, BZ-1635736, BZ-1636477, BZ-1641668")
+
+        # TODO(vamahaja): Add check for CRS version
+        if not self.is_containerized_gluster():
+            self.skipTest(skip_msg + " and not implemented CRS version check")
+
+        if get_openshift_storage_version() < "3.11.2":
+            self.skipTest(skip_msg)
+
         self.deploy_and_verify_resouces()
 
         block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(

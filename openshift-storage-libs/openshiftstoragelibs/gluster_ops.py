@@ -96,7 +96,7 @@ def restart_gluster_vol_brick_processes(ocp_client_node, file_vol,
 
     # Get Gluster vol brick PIDs
     gluster_volume_status = get_gluster_vol_status(file_vol)
-    pids = ()
+    pids = []
     for gluster_node in gluster_nodes:
         pid = None
         for g_node, g_node_data in gluster_volume_status.items():
