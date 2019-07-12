@@ -274,10 +274,25 @@ class BaseClass(unittest.TestCase):
     def get_block_provisioner_for_sc(self):
         return get_block_provisioner(self.ocp_client[0])
 
-    def create_and_wait_for_pvcs(self, pvc_size=1,
-                                 pvc_name_prefix="autotests-pvc",
-                                 pvc_amount=1, sc_name=None,
-                                 timeout=120, wait_step=3):
+    def create_and_wait_for_pvcs(
+            self, pvc_size=1, pvc_name_prefix="autotests-pvc", pvc_amount=1,
+            sc_name=None, timeout=120, wait_step=3, skip_waiting=False):
+        """Create multiple PVC's not waiting for it
+
+        Args:
+            pvc_size (int): size of PVC, default value is 1
+            pvc_name_prefix (str): volume prefix for each PVC, default value is
+                                   'autotests-pvc'
+            pvc_amount (int): number of PVC's, default value is 1
+            sc_name (str): storage class to create PVC, default value is None,
+                           which will cause automatic creation of sc.
+            timeout (int): timeout time for waiting for PVC's to get bound
+            wait_step (int): waiting time between each try of PVC status check
+            skip_waiting (bool): boolean value which defines whether
+                                 we need to wait for PVC creation or not.
+        Returns:
+            List: list of PVC names
+        """
         node = self.ocp_client[0]
 
         # Create storage class if not specified
@@ -299,7 +314,8 @@ class BaseClass(unittest.TestCase):
 
         # Wait for PVCs to be in bound state
         try:
-            wait_for_pvcs_be_bound(node, pvc_names, timeout, wait_step)
+            if not skip_waiting:
+                wait_for_pvcs_be_bound(node, pvc_names, timeout, wait_step)
         finally:
             if get_openshift_version() < "3.9":
                 reclaim_policy = "Delete"
@@ -310,6 +326,8 @@ class BaseClass(unittest.TestCase):
             for pvc_name in pvc_names:
                 if reclaim_policy == 'Retain':
                     pv_name = get_pv_name_from_pvc(node, pvc_name)
+                    if not pv_name and skip_waiting:
+                        continue
                     self.addCleanup(oc_delete, node, 'pv', pv_name,
                                     raise_on_absence=False)
                     custom = (r':.metadata.annotations."gluster\.kubernetes'
@@ -328,7 +346,6 @@ class BaseClass(unittest.TestCase):
                                         raise_on_error=False)
                 self.addCleanup(oc_delete, node, 'pvc', pvc_name,
                                 raise_on_absence=False)
-
         return pvc_names
 
     def create_and_wait_for_pvc(self, pvc_size=1,
@@ -337,6 +354,13 @@ class BaseClass(unittest.TestCase):
             pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix, sc_name=sc_name
         )[0]
         return self.pvc_name
+
+    def create_pvcs_not_waiting(
+            self, pvc_size=1, pvc_name_prefix="autotests-pvc",
+            pvc_amount=1, sc_name=None):
+        return self.create_and_wait_for_pvcs(
+            pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix,
+            pvc_amount=pvc_amount, sc_name=sc_name, skip_waiting=True)
 
     def create_dcs_with_pvc(self, pvc_names, timeout=600, wait_step=5):
         """Create bunch of DCs with app PODs which use unique PVCs.

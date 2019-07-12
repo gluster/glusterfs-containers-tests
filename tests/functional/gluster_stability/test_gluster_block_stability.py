@@ -26,6 +26,8 @@ from openshiftstoragelibs.heketi_ops import (
 )
 from openshiftstoragelibs.node_ops import (
     find_vm_name_by_ip_or_hostname,
+    node_add_iptables_rules,
+    node_delete_iptables_rules,
     node_reboot_by_command,
     power_off_vm_by_name,
     power_on_vm_by_name,
@@ -1052,3 +1054,37 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         heketi_blockvolume_delete(
             self.heketi_client_node, self.heketi_server_url,
             block_volume["id"])
+
+    def test_create_block_pvcs_with_network_failure(self):
+        """Block port 24010 while creating PVC's, run I/O's and verify
+           multipath"""
+        chain = 'OS_FIREWALL_ALLOW'
+        rules = '-p tcp -m state --state NEW -m tcp --dport 24010 -j ACCEPT'
+        sc_name = self.create_storage_class(hacount=len(self.gluster_servers))
+        self.create_and_wait_for_pvc(sc_name=sc_name)
+
+        # Create app pod, validate multipath and run I/O
+        dc_name, pod_name = self.create_dc_with_pvc(self.pvc_name)
+        self.verify_iscsi_sessions_and_multipath(self.pvc_name, dc_name)
+        cmd_run_io = 'dd if=/dev/urandom of=/mnt/%s bs=4k count=10000'
+        oc_rsh(self.node, pod_name, cmd_run_io % 'file1')
+
+        # Create 5 PVC's, simultaneously close the port and run I/O
+        pvc_names_for_creations = self.create_pvcs_not_waiting(
+            pvc_amount=5, sc_name=sc_name)
+        try:
+            node_delete_iptables_rules(self.gluster_servers[0], chain, rules)
+            oc_rsh(self.node, pod_name, cmd_run_io % 'file2')
+        finally:
+            # Open the closed port
+            node_add_iptables_rules(self.gluster_servers[0], chain, rules)
+
+        # Wait for PVC's to get bound
+        wait_for_pvcs_be_bound(self.node, pvc_names_for_creations)
+
+        # Create app pods and validate multipath
+        self.verify_iscsi_sessions_and_multipath(self.pvc_name, dc_name)
+        dc_and_pod_names = self.create_dcs_with_pvc(pvc_names_for_creations)
+        for pvc_name, dc_with_pod in dc_and_pod_names.items():
+            self.verify_iscsi_sessions_and_multipath(pvc_name, dc_with_pod[0])
+            oc_rsh(self.node, dc_with_pod[1], cmd_run_io % 'file3')
