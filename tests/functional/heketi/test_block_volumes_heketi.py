@@ -1,3 +1,5 @@
+from glustolibs.gluster.volume_ops import get_volume_info
+
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
     get_total_free_space,
@@ -12,6 +14,7 @@ from openshiftstoragelibs.heketi_ops import (
 from openshiftstoragelibs.openshift_ops import (
     get_default_block_hosting_volume_size
 )
+from openshiftstoragelibs import podcmd
 
 
 class TestBlockVolumeOps(BaseClass):
@@ -136,3 +139,59 @@ class TestBlockVolumeOps(BaseClass):
             block_hosting_vol_id, json=True)
         self.assertIn(
             block_vol_info["id"], bhv_info["blockinfo"]["blockvolume"])
+
+    @podcmd.GlustoPod()
+    def test_validate_gluster_voloptions_blockhostvolume(self):
+        """Validate gluster volume options which are set for
+           block hosting volume"""
+        options_to_validate = (
+            ('performance.quick-read', 'off'),
+            ('performance.read-ahead', 'off'),
+            ('performance.io-cache', 'off'),
+            ('performance.stat-prefetch', 'off'),
+            ('performance.open-behind', 'off'),
+            ('performance.readdir-ahead', 'off'),
+            ('performance.strict-o-direct', 'on'),
+            ('network.remote-dio', 'disable'),
+            ('cluster.eager-lock', 'enable'),
+            ('cluster.quorum-type', 'auto'),
+            ('cluster.data-self-heal-algorithm', 'full'),
+            ('cluster.locking-scheme', 'granular'),
+            ('cluster.shd-max-threads', '8'),
+            ('cluster.shd-wait-qlength', '10000'),
+            ('features.shard', 'on'),
+            ('features.shard-block-size', '64MB'),
+            ('user.cifs', 'off'),
+            ('server.allow-insecure', 'on'),
+        )
+        free_space, nodenum = get_total_free_space(
+            self.heketi_client_node,
+            self.heketi_server_url)
+        if nodenum < 3:
+            self.skipTest("Skip the test case since number of"
+                          "online nodes is less than 3.")
+        free_space_available = int(free_space / nodenum)
+        default_bhv_size = get_default_block_hosting_volume_size(
+            self.heketi_client_node, self.heketi_dc_name)
+        if free_space_available < default_bhv_size:
+            self.skipTest("Skip the test case since free_space_available %s"
+                          "is less than the default_bhv_size %s ."
+                          % (free_space_available, default_bhv_size))
+        block_host_create_info = heketi_volume_create(
+                self.heketi_client_node,
+                self.heketi_server_url, default_bhv_size,
+                json=True, block=True)
+        self.addCleanup(heketi_volume_delete,
+                        self.heketi_client_node,
+                        self.heketi_server_url,
+                        block_host_create_info["id"],
+                        raise_on_error=True)
+        bhv_name = block_host_create_info["name"]
+        vol_info = get_volume_info('auto_get_gluster_endpoint',
+                                   volname=bhv_name)
+        self.assertTrue(vol_info, "Failed to get volume info %s" % bhv_name)
+        self.assertIn("options", vol_info[bhv_name].keys())
+        for k, v in options_to_validate:
+            self.assertIn(k, vol_info[bhv_name]["options"].keys())
+            self.assertEqual(v, vol_info[bhv_name]
+                             ["options"][k])
