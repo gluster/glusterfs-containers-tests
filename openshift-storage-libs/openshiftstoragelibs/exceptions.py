@@ -21,3 +21,11 @@ class NotSupportedException(Exception):
 
     For example, pv resize is not supported in OCP version < 3.9
     '''
+
+
+class CloudProviderError(Exception):
+    '''
+    Custom exception thrown when operation failed in cloud provider libraries.
+
+    For example, unable to find a vm in vsphere client.
+    '''

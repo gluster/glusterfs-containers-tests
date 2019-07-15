@@ -59,3 +59,13 @@ openshift:
 common:
     stop_on_first_failure: False
     heketi_command_timeout: 120
+
+cloud_provider:
+    name: '<fake-cloud-provider-name eg. vmware>'
+    vmware:
+        hostname: '<fake-hostname>'
+        username: '<fake-username>'
+        password: '<fake-password>'
+        port: 443
+    aws: # To be done in future
+    libvirt: # To be done in future

@@ -1,10 +1,23 @@
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs.command import cmd_run
+from openshiftstoragelibs.exceptions import ConfigError
+from openshiftstoragelibs.heketi_ops import (
+    heketi_node_info,
+    heketi_node_list,
+)
+from openshiftstoragelibs.node_ops import (
+    find_vm_name_by_ip_or_hostname,
+    power_off_vm_by_name,
+    power_on_vm_by_name,
+)
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
+    get_ocp_gluster_pod_details,
     get_pod_name_from_dc,
+    get_pv_name_from_pvc,
     oc_adm_manage_node,
     oc_delete,
+    oc_get_custom_resource,
     oc_get_schedulable_nodes,
     oc_rsh,
     wait_for_pod_be_ready,
@@ -263,3 +276,70 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
         # Verify that all the paths are up
         self.verify_all_paths_are_up_in_multipath(mpath, hacount, node)
+
+    def test_initiator_side_failure_restart_pod_when_target_node_is_down(self):
+        """Restart app pod when one gluster node is down"""
+        # Skip test if does not meets requirements
+        try:
+            vm_name = find_vm_name_by_ip_or_hostname(self.node)
+        except (NotImplementedError, ConfigError) as e:
+            self.skipTest(e)
+
+        # Get heketi node list
+        h_nodes_ids = heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
+
+        # Get the ips and hostname of gluster nodes from heketi
+        h_nodes = {}
+        for node in h_nodes_ids:
+            info = heketi_node_info(
+                self.heketi_client_node, self.heketi_server_url, node,
+                json=True)
+            h_nodes[info['hostnames']['storage'][0]] = (
+                info['hostnames']['manage'][0])
+
+        pvc_name = self.create_and_wait_for_pvc()
+        pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+
+        # Create app pod
+        dc_name, pod_name = self.create_dc_with_pvc(self.pvc_name)
+
+        iqn, hacount, p_node = self.verify_iscsi_sessions_and_multipath(
+            self.pvc_name, dc_name)
+
+        # Get list of containerized gluster nodes
+        g_nodes = get_ocp_gluster_pod_details(self.node)
+
+        # Get target portals for the PVC
+        targets = oc_get_custom_resource(
+            self.node, 'pv', ':.spec.iscsi.portals,:.spec.iscsi.targetPortal',
+            name=pv_name)
+        targets = [item.strip('[').strip(
+            ']') for item in targets if isinstance(item, str)]
+
+        # Select hostname for powering off
+        if h_nodes[targets[0]] == p_node:
+            vm_hostname = h_nodes[targets[1]]
+        else:
+            vm_hostname = h_nodes[targets[0]]
+
+        # Find VM Name for powering it off
+        vm_name = find_vm_name_by_ip_or_hostname(vm_hostname)
+
+        # Unschedulable Node if containerised glusterfs
+        if g_nodes:
+            oc_adm_manage_node(self.node, '--schedulable=false', [vm_hostname])
+            self.addCleanup(
+                oc_adm_manage_node, self.node, '--schedulable', [vm_hostname])
+
+        # Power off gluster node
+        power_off_vm_by_name(vm_name)
+        self.addCleanup(power_on_vm_by_name, vm_name)
+
+        # Delete pod so it get respun
+        oc_delete(self.node, 'pod', pod_name)
+        wait_for_resource_absence(self.node, 'pod', pod_name)
+
+        # Wait for pod to come up when 1 target node is down
+        pod_name = get_pod_name_from_dc(self.node, dc_name)
+        wait_for_pod_be_ready(self.node, pod_name, timeout=120, wait_step=5)
