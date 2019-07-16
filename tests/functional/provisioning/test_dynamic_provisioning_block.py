@@ -176,7 +176,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         oc_delete(self.node, 'pod', gluster_pod_data["pod_name"])
         cmd = ("oc get pods -o wide | grep glusterfs | grep %s | "
                "grep -v Terminating | awk '{print $1}'") % (
-                   gluster_pod_data["host_name"])
+                   gluster_pod_data["pod_hostname"])
         for w in Waiter(600, 15):
             out = self.cmd_run(cmd)
             new_gluster_pod_name = out.strip().split("\n")[0].strip()

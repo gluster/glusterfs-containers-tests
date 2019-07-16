@@ -87,9 +87,10 @@ def run(target, command, user=None, log_level=None, orig_run=g.run):
 
     if target == 'auto_get_gluster_endpoint':
         ocp_client_node = list(g.config['ocp_servers']['client'].keys())[0]
-        gluster_pods = openshift_ops.get_ocp_gluster_pod_names(ocp_client_node)
+        gluster_pods = openshift_ops.get_ocp_gluster_pod_details(
+            ocp_client_node)
         if gluster_pods:
-            target = Pod(ocp_client_node, gluster_pods[0])
+            target = Pod(ocp_client_node, gluster_pods[0]["pod_name"])
         else:
             target = list(g.config.get("gluster_servers", {}).keys())[0]
 

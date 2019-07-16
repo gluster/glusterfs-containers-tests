@@ -98,22 +98,42 @@ def oc_get_pods_full(ocp_node):
     return yaml.load(out)
 
 
-def get_ocp_gluster_pod_names(ocp_node):
+def get_ocp_gluster_pod_details(ocp_node):
     """Gets the gluster pod names in the current project.
 
     Args:
         ocp_node (str): Node in which ocp command will be executed.
 
     Returns:
-        list : list of gluster pod names in the current project.
-            Empty list, if there are no gluster pods.
-
-    Example:
-        get_ocp_gluster_pod_names(ocp_node)
+        list: List of dicts, which consist of following key-value pairs:
+            pod_name=<pod_name_value>,
+            pod_host_ip=<host_ip_value>
+            pod_ip=<pod_ip_vlaue>
+            pod_hostname=<host_name_value>
+            pod_status=<pod_status_value>
+            pod_restarts=<pod_restart_value>
     """
 
-    pod_names = list(oc_get_pods(ocp_node).keys())
-    return [pod for pod in pod_names if pod.startswith('glusterfs-')]
+    pod_columns = [
+        ".:metadata.name", ".:status.hostIP", ".:status.podIP",
+        ".:spec.nodeName", ".:status.phase",
+        ".:status.containerStatuses[0].restartCount"]
+    pod_selector = "glusterfs-node=pod"
+
+    gluster_pods = oc_get_custom_resource(
+        ocp_node, "pod", pod_columns, selector=pod_selector)
+
+    gluster_pod_details = map(
+        lambda pod: {
+            "pod_name": pod[0],
+            "pod_host_ip": pod[1],
+            "pod_ip": pod[2],
+            "pod_hostname": pod[3],
+            "pod_status": pod[4],
+            "pod_restarts": pod[5]},
+        gluster_pods)
+
+    return gluster_pod_details
 
 
 def get_amount_of_gluster_nodes(ocp_node):
@@ -125,7 +145,7 @@ def get_amount_of_gluster_nodes(ocp_node):
         Integer value as amount of either GLuster PODs or Gluster nodes.
     """
     # Containerized Gluster
-    gluster_pods = get_ocp_gluster_pod_names(ocp_node)
+    gluster_pods = get_ocp_gluster_pod_details(ocp_node)
     if gluster_pods:
         return len(gluster_pods)
 
@@ -611,30 +631,25 @@ def scale_dc_pod_amount_and_wait(hostname, dc_name,
     return pod_names
 
 
-def get_gluster_pod_names_by_pvc_name(ocp_node, pvc_name):
-    """Get Gluster POD names, whose nodes store bricks for specified PVC.
+def get_gluster_host_ips_by_pvc_name(ocp_node, pvc_name):
+    """Get Gluster Host IPs, whose nodes store bricks for specified PVC.
 
     Args:
         ocp_node (str): Node to execute OCP commands on.
-        pvc_name (str): Name of a PVC to get related Gluster PODs.
+        pvc_name (str): Name of a PVC to get related Gluster Hosts.
     Returns:
-        list: List of dicts, which consist of following 3 key-value pairs:
-            pod_name=<pod_name_value>,
-            host_name=<host_name_value>,
-            host_ip=<host_ip_value>
+        list: List of gluster host IPs.
     """
     # Check storage provisioner
-    sp_cmd = (
-        r'oc get pvc %s --no-headers -o=custom-columns='
-        r':.metadata.annotations."volume\.beta\.kubernetes\.io\/'
-        r'storage\-provisioner"' % pvc_name)
-    sp_raw = command.cmd_run(sp_cmd, hostname=ocp_node)
-    sp = sp_raw.strip()
+    column = (
+        r':.metadata.annotations.'
+        r'"volume\.beta\.kubernetes\.io\/storage-provisioner"')
+    sp = oc_get_custom_resource(ocp_node, "pvc", column, name=pvc_name)[0]
 
     # Get node IPs
     if sp == "kubernetes.io/glusterfs":
         pv_info = get_gluster_vol_info_by_pvc_name(ocp_node, pvc_name)
-        gluster_pod_nodes_ips = [
+        gluster_host_ips = [
             brick["name"].split(":")[0]
             for brick in pv_info["bricks"]["brick"]
         ]
@@ -649,51 +664,43 @@ def get_gluster_pod_names_by_pvc_name(ocp_node, pvc_name):
             get_gluster_pod_node_ip_cmd, hostname=ocp_node)
         node_ips_raw = node_ips_raw.replace(
             "[", " ").replace("]", " ").replace(",", " ")
-        gluster_pod_nodes_ips = [
+        gluster_host_ips = [
             s.strip() for s in node_ips_raw.split(" ") if s.strip()
         ]
     else:
         assert False, "Unexpected storage provisioner: %s" % sp
 
-    # Get node names
-    get_node_names_cmd = (
-        "oc get node -o wide | grep -e '%s ' | awk '{print $1}'" % (
-            " ' -e '".join(gluster_pod_nodes_ips)))
-    gluster_pod_node_names = command.cmd_run(
-        get_node_names_cmd, hostname=ocp_node)
-    gluster_pod_node_names = [
-        node_name.strip()
-        for node_name in gluster_pod_node_names.split("\n")
-        if node_name.strip()
-    ]
-    node_count = len(gluster_pod_node_names)
-    err_msg = "Expected more than one node hosting Gluster PODs. Got '%s'." % (
-        node_count)
-    assert (node_count > 1), err_msg
+    return gluster_host_ips
+
+
+def get_gluster_pod_names_by_pvc_name(
+        ocp_node, pvc_name, raise_on_error=True):
+    """Get Gluster POD names, whose nodes store bricks for specified PVC.
+
+    Args:
+        ocp_node (str): Node to execute OCP commands on.
+        pvc_name (str): Name of a PVC to get related Gluster PODs.
+    Returns:
+        list: List of dicts of gluster pods details.
+    """
+    gluster_host_ips = get_gluster_host_ips_by_pvc_name(ocp_node, pvc_name)
 
     # Get Gluster POD names which are located on the filtered nodes
-    get_pod_name_cmd = (
-        "oc get pods --all-namespaces "
-        "-o=custom-columns=:.metadata.name,:.spec.nodeName,:.status.hostIP | "
-        "grep 'glusterfs-' | grep -e '%s '" % "' -e '".join(
-            gluster_pod_node_names)
-    )
-    out = command.cmd_run(
-        get_pod_name_cmd, hostname=ocp_node)
-    data = []
-    for line in out.split("\n"):
-        pod_name, host_name, host_ip = [
-            el.strip() for el in line.split(" ") if el.strip()]
-        data.append({
-            "pod_name": pod_name,
-            "host_name": host_name,
-            "host_ip": host_ip,
-        })
-    pod_count = len(data)
-    err_msg = "Expected 3 or more Gluster PODs to be found. Actual is '%s'" % (
-        pod_count)
-    assert (pod_count > 2), err_msg
-    return data
+    gluster_pods = get_ocp_gluster_pod_details(ocp_node)
+    if gluster_pods:
+        matched_gluster_pods = filter(
+            lambda pod: (pod["pod_host_ip"] in gluster_host_ips), gluster_pods)
+        pod_count = len(matched_gluster_pods)
+        err_msg = (
+            "Expected 3 or more Gluster PODs to be found. "
+            "Actual is '%s'" % (pod_count))
+        assert (pod_count > 2), err_msg
+        return matched_gluster_pods
+    elif raise_on_error:
+        raise exceptions.ExecutionError(
+            "Haven't found Gluster PODs on the cluster.")
+    else:
+        return None
 
 
 def cmd_run_on_gluster_pod_or_node(

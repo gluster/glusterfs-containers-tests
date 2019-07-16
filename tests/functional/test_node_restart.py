@@ -7,7 +7,7 @@ from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs.openshift_ops import (
     check_service_status_on_pod,
-    get_ocp_gluster_pod_names,
+    get_ocp_gluster_pod_details,
     oc_rsh,
     wait_for_pod_be_ready,
 )
@@ -20,7 +20,9 @@ class TestNodeRestart(BaseClass):
         super(TestNodeRestart, self).setUp()
         self.oc_node = self.ocp_master_node[0]
 
-        self.gluster_pod_list = get_ocp_gluster_pod_names(self.oc_node)
+        self.gluster_pod_list = [
+            pod["pod_name"]
+            for pod in get_ocp_gluster_pod_details(self.oc_node)]
         if not self.gluster_pod_list:
             self.skipTest("Standalone Gluster is not supported by this test.")
         self.gluster_pod_name = self.gluster_pod_list[0]
