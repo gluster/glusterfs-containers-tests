@@ -44,7 +44,7 @@
     when: item.strip() != ''
 
   - name: Read namespace of a Heketi deployment config
-    shell: "oc get dc --all-namespaces | grep heketi | awk '{ print $1}'"
+    shell: "oc get dc --all-namespaces | grep -e heketi | grep -v registry | awk '{ print $1}'"
     register: heketi_namespace_raw
   - name: Save namespace name in a separate var
     set_fact:
