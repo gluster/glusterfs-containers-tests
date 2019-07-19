@@ -1,4 +1,5 @@
 import re
+from unittest import skip
 
 import six
 
@@ -9,6 +10,7 @@ from openshiftstoragelibs.exceptions import (
     ExecutionError,
 )
 from openshiftstoragelibs.heketi_ops import (
+    get_total_free_space,
     heketi_blockvolume_info,
     heketi_blockvolume_list,
     heketi_node_info,
@@ -793,3 +795,81 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         h_vol_list = heketi_blockvolume_list(
             self.heketi_client_node, self.heketi_server_url)
         self.assertNotIn(vol_name_prefix, h_vol_list)
+
+    @skip("Blocked by BZ-1624670")
+    def test_path_failures_on_initiator_node_migration_and_pod_restart(self):
+        """Verify path failures on initiator node migration
+           and app pod restart. Also, make sure that existing
+           paths get cleaned up and recreated on new nodes.
+        """
+        pvc_size, pvc_amount = 1, 20
+        free_space, node_count = get_total_free_space(
+            self.heketi_client_node, self.heketi_server_url)
+        if node_count < 3:
+            self.skipTest("Skip test since number of nodes"
+                          "online is less than 3.")
+        free_space_available = int(free_space / node_count)
+        space_required = int(pvc_size * pvc_amount)
+        if free_space_available < space_required:
+            self.skipTest("Skip test since free_space_available %s"
+                          "is less than the space_required %s."
+                          % (free_space_available, space_required))
+
+        # Create pvs & dc's
+        pvc_names = self.create_and_wait_for_pvcs(
+            pvc_size=pvc_size, pvc_amount=pvc_amount,
+            timeout=300, wait_step=5)
+        dc_and_pod_names = self.create_dcs_with_pvc(
+            pvc_names, timeout=600, wait_step=5)
+
+        # Validate iscsi sessions & multipath for created pods
+        for pvc, (dc_name, pod_name) in dc_and_pod_names.items():
+            iqn, _, ini_node = self.verify_iscsi_sessions_and_multipath(
+                pvc, dc_name)
+            dc_and_pod_names[pvc] = (dc_name, pod_name, ini_node, iqn)
+
+        # Run IO on app pods
+        _file, base_size, count = '/mnt/file', 4096, 1000
+        file_size = base_size * count
+        cmd_run_io = 'dd if=/dev/urandom of=%s bs=%s count=%s' % (
+            _file, base_size, count)
+        for _, pod_name, _, _ in dc_and_pod_names.values():
+            oc_rsh(self.node, pod_name, cmd_run_io)
+
+        # Start deleting the app pods & wait for new pods to spin up
+        dc_names = [dc_name[0] for dc_name in dc_and_pod_names.values()]
+        scale_dcs_pod_amount_and_wait(self.node, dc_names, pod_amount=0)
+        pod_names = scale_dcs_pod_amount_and_wait(
+            self.node, dc_names, pod_amount=1, timeout=1200, wait_step=5)
+
+        temp_pvc_node = {}
+        for pvc, (dc_name, _, _, _) in dc_and_pod_names.items():
+            _, _, new_node = self.verify_iscsi_sessions_and_multipath(
+                pvc, dc_name)
+            temp_pvc_node[pvc] = new_node
+
+        # Validate devices are logged out from the old node
+        for w in Waiter(900, 10):
+            if not temp_pvc_node.items():
+                break
+            for pvc, new_node in temp_pvc_node.items():
+                if new_node != dc_and_pod_names[pvc][2]:
+                    iscsi = get_iscsi_session(
+                        dc_and_pod_names[pvc][2],
+                        dc_and_pod_names[pvc][3],
+                        raise_on_error=False)
+                    if not iscsi:
+                        del temp_pvc_node[pvc]
+                else:
+                    del temp_pvc_node[pvc]
+        msg = ("logout of iqn's for PVC's '%s' did not happen"
+               % temp_pvc_node.keys())
+        self.assertFalse(temp_pvc_node, msg)
+
+        # Validate data written is present in the respinned app pods
+        for pod_name in pod_names.values():
+            cmd_run_out = "ls -l %s" % _file
+            _, out, _ = oc_rsh(self.node, pod_name[0], cmd_run_out)
+            msg = ("Expected size %s of file '%s' is not present "
+                   "in out '%s'" % (file_size, _file, out))
+            self.assertIn(six.text_type(file_size), out, msg)
