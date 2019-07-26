@@ -4,6 +4,7 @@ import re
 import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster.block_libs import get_block_list
+from glustolibs.gluster.volume_ops import get_volume_list
 from pkg_resources import parse_version
 import pytest
 import six
@@ -44,8 +45,8 @@ from openshiftstoragelibs.openshift_ops import (
     get_ocp_gluster_pod_details,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
-    get_vol_names_from_pv,
     get_pvc_status,
+    get_vol_names_from_pv,
     kill_service_on_gluster_pod_or_node,
     match_pv_and_heketi_block_volumes,
     oc_adm_manage_node,
@@ -1583,3 +1584,140 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         for vol_id in vol_ids:
             self.assertNotIn(
                 vol_id, blockvolume_list, msg % (vol_id, blockvolume_list))
+
+    @pytest.mark.tier2
+    @podcmd.GlustoPod()
+    def test_pvc_state_when_node_is_power_on_and_off(self):
+        """Verify PVC gets bound after gluster node is powered off and on
+        and blockvolume does not gets deleted when gluster-blockd is down.
+        """
+        # Skip test case for OCS verion < 3.11.3
+        if get_openshift_storage_version() < "3.11.3":
+            self.skipTest(
+                "This test case is not supported for < OCS 3.11.3 builds due "
+                "to bug BZ-1678446 and BZ-1676466")
+
+        # Skip test if not able to connect to Cloud Provider
+        try:
+            find_vm_name_by_ip_or_hostname(self.node)
+        except (NotImplementedError, ConfigError) as e:
+            self.skipTest(e)
+
+        h_client, h_server = self.heketi_client_node, self.heketi_server_url
+
+        # Heketi volume count, size and name prefix
+        h_vol_amount, h_vol_size = 6, 5
+        prefix = "autotests-{}".format(utils.get_random_str())
+
+        # Create volumes by heketi
+        block_vols = []
+        for i in range(h_vol_amount):
+            vol_name = "{}-{}".format(prefix, utils.get_random_str())
+            vol_details = heketi_blockvolume_create(
+                h_client, h_server, h_vol_size, name=vol_name, json=True)
+            block_vols.append((vol_details["id"], vol_details["name"]))
+            self.addCleanup(
+                heketi_blockvolume_delete,
+                h_client, h_server, vol_details["id"])
+
+        # Power-off all gluster nodes except first two
+        power_off_g_nodes = []
+        for g_node in list(self.gluster_servers_info.values())[2:]:
+            g_hostname = g_node["manage"]
+            vm_name = find_vm_name_by_ip_or_hostname(g_hostname)
+            self.power_off_gluster_node_vm(vm_name, g_hostname)
+
+            power_off_g_nodes.append((vm_name, g_hostname))
+
+        # Create PVC when only two gluster nodes are up
+        pvc_name = self.create_pvcs_not_waiting(pvc_name_prefix=prefix)[0]
+        pvc_status = get_pvc_status(self.node, pvc_name)
+        self.assertEqual(
+            pvc_status, "Pending",
+            "Unexpected PVC '{}' state '{}', expected 'Pending'" .format(
+                pvc_name, pvc_status))
+
+        # Power on gluster nodes & wait for PVC to be in 'Bound' state
+        for vm_name, g_node in power_off_g_nodes:
+            self.power_on_gluster_node_vm(vm_name, g_node)
+        wait_for_pvcs_be_bound(self.node, [pvc_name])
+
+        # Get gluster volume list
+        gluster_vol_list_before = get_volume_list("auto_get_gluster_endpoint")
+
+        # Validate BHV and BV info
+        bhv_info = {}
+        block_vol_list_before = heketi_blockvolume_list(
+            h_client, h_server, json=True)
+        for block_vol in block_vol_list_before["blockvolumes"]:
+            block_vol_info = heketi_blockvolume_info(
+                h_client, h_server, block_vol, json=True)
+            bhv_id = block_vol_info["blockhostingvolume"]
+            if bhv_id not in bhv_info:
+                bhv_info = {
+                    bhv_id: {
+                        "size": int(block_vol_info["size"]),
+                        "blockvolumes": [block_vol]}}
+            else:
+                bhv_info[bhv_id]["size"] += int(block_vol_info["size"])
+                bhv_info[bhv_id]["blockvolumes"].append(block_vol)
+
+        for vol_id in bhv_info.keys():
+            h_vol_info = heketi_volume_info(
+                h_client, h_server, vol_id, json=True)
+            bhv_bvs = bhv_info[vol_id]["blockvolumes"]
+            h_vol_bvs = h_vol_info["blockinfo"]["blockvolume"]
+            self.assertEqual(
+                bhv_bvs, h_vol_bvs,
+                "BHV and Volume block volumes didn't match. BHV '{}' and Vol "
+                "BVs {}'".format(bhv_bvs, h_vol_bvs))
+
+            free_size = int(h_vol_info["size"]) - bhv_info[vol_id]["size"]
+            bhv_free_size = (
+                free_size - int(h_vol_info["blockinfo"]["reservedsize"]))
+            h_vol_free_size = int(h_vol_info["blockinfo"]["freesize"])
+            self.assertEqual(
+                bhv_free_size, h_vol_free_size,
+                "BHV and Volume free size didn't match. BHV '{}' and vol "
+                "{} free size".format(bhv_free_size, h_vol_free_size))
+
+        # Stop 'gluster-blockd' service on gluster pod or node
+        for g_node in self.gluster_servers[2:]:
+            cmd_run_on_gluster_pod_or_node(
+                self.node, 'systemctl stop gluster-blockd', g_node)
+            self.addCleanup(
+                wait_for_service_status_on_gluster_pod_or_node,
+                self.node, 'gluster-blockd', 'active', 'running', g_node)
+            self.addCleanup(
+                cmd_run_on_gluster_pod_or_node,
+                self.node, 'systemctl start gluster-blockd', g_node)
+
+        # Try to delete first block volume expecting failure
+        with self.assertRaises(AssertionError):
+            heketi_blockvolume_delete(h_client, h_server, block_vols[0][0])
+
+        # Try to create heketi block volume
+        with self.assertRaises(AssertionError):
+            vol_name = "{}-{}".format(prefix, utils.get_random_str())
+            volume = heketi_blockvolume_create(
+                h_client, h_server, 5, name=vol_name, json=True)
+            self.addCleanup(
+                heketi_blockvolume_delete, h_client, h_server, volume["id"])
+
+        # Validate heketi and gluster block volumes
+        block_vol_list_after = heketi_blockvolume_list(
+            h_client, h_server, json=True)
+        unmatched_block_vols = (
+            set(block_vol_list_before) ^ set(block_vol_list_after))
+        self.assertEqual(
+            sorted(block_vol_list_before), sorted(block_vol_list_after),
+            "Failed to match heketi block volumes, unmatched volumes are "
+            "{}".format(unmatched_block_vols))
+
+        gluster_vol_list_after = get_volume_list("auto_get_gluster_endpoint")
+        unmatched_gluster_vols = (
+            set(gluster_vol_list_before) ^ set(gluster_vol_list_after))
+        self.assertEqual(
+            sorted(gluster_vol_list_before), sorted(gluster_vol_list_after),
+            "Failed to match gluster volumes, unmatched volumes are {}".format(
+                unmatched_gluster_vols))
