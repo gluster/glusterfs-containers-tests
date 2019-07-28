@@ -1511,7 +1511,7 @@ def check_service_status_on_pod(
 
 
 def wait_for_service_status_on_gluster_pod_or_node(
-        ocp_client, service, status, state, gluster_node,
+        ocp_client, service, status, state, gluster_node=None,
         raise_on_error=True, timeout=180, wait_step=3):
     """Wait for a service specific status on a Gluster POD or node.
 
@@ -1546,7 +1546,8 @@ def wait_for_service_status_on_gluster_pod_or_node(
         raise exceptions.ExecutionError(err_msg)
 
 
-def restart_service_on_gluster_pod_or_node(ocp_client, service, gluster_node):
+def restart_service_on_gluster_pod_or_node(
+        ocp_client, service, gluster_node=None):
     """Restart service on Gluster either POD or node.
 
     Args:

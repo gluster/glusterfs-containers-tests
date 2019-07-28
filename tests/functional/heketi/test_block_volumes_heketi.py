@@ -1,8 +1,17 @@
 import ddt
+from glusto.core import Glusto as g
 from glustolibs.gluster.block_libs import get_block_list
-from glustolibs.gluster.volume_ops import get_volume_info
+from glustolibs.gluster.volume_ops import (
+    get_volume_info,
+    volume_start,
+    volume_stop,
+)
 
 from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import exceptions
+from openshiftstoragelibs.gluster_ops import (
+    get_block_hosting_volume_name,
+)
 from openshiftstoragelibs.heketi_ops import (
     get_block_hosting_volume_list,
     get_total_free_space,
@@ -18,7 +27,9 @@ from openshiftstoragelibs.heketi_ops import (
     hello_heketi,
 )
 from openshiftstoragelibs.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
     get_default_block_hosting_volume_size,
+    restart_service_on_gluster_pod_or_node,
     wait_for_service_status_on_gluster_pod_or_node,
 )
 from openshiftstoragelibs import podcmd
@@ -342,3 +353,77 @@ class TestBlockVolumeOps(BaseClass):
 
         # Check if all blockhosting volumes are deleted from heketi
         self.assertFalse(new_bhv_list)
+
+    @podcmd.GlustoPod()
+    def test_targetcli_when_block_hosting_volume_down(self):
+        """Validate no inconsistencies occur in targetcli when block volumes
+           are created with one block hosting volume down."""
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+        cmd = ("targetcli ls | egrep '%s' || echo unavailable")
+        error_msg = (
+            "targetcli has inconsistencies when block devices are "
+            "created with one block hosting volume %s is down")
+
+        # Delete BHV which has no BV or fill it completely
+        bhv_list = get_block_hosting_volume_list(h_node, h_server).keys()
+        for bhv in bhv_list:
+            bhv_info = heketi_volume_info(h_node, h_server, bhv, json=True)
+            if not bhv_info["blockinfo"].get("blockvolume", []):
+                heketi_volume_delete(h_node, h_server, bhv)
+                continue
+            free_size = bhv_info["blockinfo"].get("freesize", 0)
+            if free_size:
+                bv = heketi_volume_create(
+                    h_node, h_server, free_size, json=True)
+                self.addCleanup(
+                    heketi_blockvolume_delete, h_node, h_server, bv["id"])
+
+        # Create BV
+        bv = heketi_blockvolume_create(h_node, h_server, 2, json=True)
+        self.addCleanup(heketi_blockvolume_delete, h_node, h_server, bv["id"])
+
+        # Bring down BHV
+        bhv_name = get_block_hosting_volume_name(h_node, h_server, bv["id"])
+        ret, out, err = volume_stop("auto_get_gluster_endpoint", bhv_name)
+        if ret != 0:
+            err_msg = "Failed to stop gluster volume %s. error: %s" % (
+                bhv_name, err)
+            g.log.error(err_msg)
+            raise AssertionError(err_msg)
+        self.addCleanup(
+            podcmd.GlustoPod()(volume_start), "auto_get_gluster_endpoint",
+            bhv_name)
+
+        ocp_node = self.ocp_master_node[0]
+        gluster_block_svc = "gluster-block-target"
+        self.addCleanup(
+            wait_for_service_status_on_gluster_pod_or_node,
+            ocp_node, gluster_block_svc,
+            "active", "exited", gluster_node=self.gluster_servers[0])
+        self.addCleanup(
+            restart_service_on_gluster_pod_or_node, ocp_node,
+            gluster_block_svc, self.gluster_servers[0])
+        for condition in ("continue", "break"):
+            restart_service_on_gluster_pod_or_node(
+                ocp_node, gluster_block_svc,
+                gluster_node=self.gluster_servers[0])
+            wait_for_service_status_on_gluster_pod_or_node(
+                ocp_node, gluster_block_svc,
+                "active", "exited", gluster_node=self.gluster_servers[0])
+
+            targetcli = cmd_run_on_gluster_pod_or_node(
+                ocp_node, cmd % bv["id"], self.gluster_servers[0])
+            if condition == "continue":
+                self.assertEqual(
+                    targetcli, "unavailable", error_msg % bhv_name)
+            else:
+                self.assertNotEqual(
+                    targetcli, "unavailable", error_msg % bhv_name)
+                break
+
+            # Bring up the same BHV
+            ret, out, err = volume_start("auto_get_gluster_endpoint", bhv_name)
+            if ret != 0:
+                err = "Failed to start gluster volume %s on %s. error: %s" % (
+                    bhv_name, h_node, err)
+                raise exceptions.ExecutionError(err)
