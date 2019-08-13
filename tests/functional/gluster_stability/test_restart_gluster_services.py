@@ -6,27 +6,7 @@ from unittest import skip
 import ddt
 from glusto.core import Glusto as g
 
-from openshiftstoragelibs.baseclass import BaseClass
-from openshiftstoragelibs.heketi_ops import heketi_blockvolume_list
-from openshiftstoragelibs.openshift_ops import (
-    get_pod_name_from_dc,
-    match_pv_and_heketi_block_volumes,
-    match_pvc_and_pv,
-    oc_create_app_dc_with_io,
-    oc_create_pvc,
-    oc_create_sc,
-    oc_create_secret,
-    oc_delete,
-    oc_get_custom_resource,
-    oc_get_yaml,
-    oc_rsh,
-    restart_service_on_gluster_pod_or_node,
-    scale_dc_pod_amount_and_wait,
-    verify_pvc_status_is_bound,
-    wait_for_pod_be_ready,
-    wait_for_resource_absence,
-    wait_for_service_status_on_gluster_pod_or_node,
-)
+from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs.gluster_ops import (
     get_block_hosting_volume_name,
     get_gluster_vol_hosting_nodes,
@@ -34,6 +14,21 @@ from openshiftstoragelibs.gluster_ops import (
     restart_file_volume,
     restart_gluster_vol_brick_processes,
     wait_to_heal_complete,
+)
+from openshiftstoragelibs.heketi_ops import heketi_blockvolume_list
+from openshiftstoragelibs.openshift_ops import (
+    get_pv_name_from_pvc,
+    match_pv_and_heketi_block_volumes,
+    match_pvc_and_pv,
+    oc_create_pvc,
+    oc_delete,
+    oc_get_custom_resource,
+    oc_rsh,
+    restart_service_on_gluster_pod_or_node,
+    verify_pvc_status_is_bound,
+    wait_for_pod_be_ready,
+    wait_for_resource_absence,
+    wait_for_service_status_on_gluster_pod_or_node,
 )
 from openshiftstoragelibs import utils
 
@@ -45,7 +40,7 @@ SERVICE_TCMU = "tcmu-runner"
 
 
 @ddt.ddt
-class GlusterStabilityTestSetup(BaseClass):
+class GlusterStabilityTestSetup(GlusterBlockBaseClass):
     """class for gluster stability (restarts different servces) testcases
     """
 
@@ -55,36 +50,22 @@ class GlusterStabilityTestSetup(BaseClass):
         """
         self.oc_node = self.ocp_master_node[0]
         self.prefix = "autotest-%s" % utils.get_random_str()
-        _storage_class = self.storage_classes.get(
-            'storage_class2',
-            self.storage_classes.get('block_storage_class'))
-        self.provisioner = _storage_class["provisioner"]
-        self.restsecretnamespace = _storage_class["restsecretnamespace"]
-        self.restuser = _storage_class["restuser"]
-        self.resturl = _storage_class["resturl"]
 
+    def deploy_and_verify_resouces(self):
+        """Deploys and verifies required resources storage class, PVC
+           and user app with continous I/O runnig.
+        """
         # using pvc size count as 1 by default
         self.pvcsize = 1
 
         # using pvc count as 10 by default
         self.pvccount = 10
 
-        # create gluster block storage class, PVC and user app pod
-        self.sc_name, self.pvc_name, self.dc_name, self.secret_name = (
-            self.deploy_resouces()
-        )
-
-        # verify storage class
-        oc_get_yaml(self.oc_node, "sc", self.sc_name)
-
-        # verify pod creation, it's state and get the pod name
-        self.pod_name = get_pod_name_from_dc(
-            self.oc_node, self.dc_name, timeout=180, wait_step=3
-        )
-        wait_for_pod_be_ready(
-            self.oc_node, self.pod_name, timeout=180, wait_step=3
-        )
-        verify_pvc_status_is_bound(self.oc_node, self.pvc_name)
+        self.sc_name = self.create_storage_class(
+            vol_name_prefix=self.prefix)
+        self.pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix=self.prefix, sc_name=self.sc_name)
+        self.dc_name, self.pod_name = self.create_dc_with_pvc(self.pvc_name)
 
         # create pvc's to test
         self.pvc_list = []
@@ -102,48 +83,6 @@ class GlusterStabilityTestSetup(BaseClass):
         for pvc_name in self.pvc_list:
             self.addCleanup(oc_delete, self.oc_node, "pvc", pvc_name)
 
-    def deploy_resouces(self):
-        """Deploys required resources storage class, pvc and user app
-           with continous I/O runnig
-
-        Returns:
-            sc_name (str): deployed storage class name
-            pvc_name (str): deployed persistent volume claim name
-            dc_name (str): deployed deployment config name
-            secretname (str): created secret file name
-        """
-        secretname = oc_create_secret(
-            self.oc_node, namespace=self.restsecretnamespace,
-            data_key=self.heketi_cli_key, secret_type=self.provisioner)
-        self.addCleanup(oc_delete, self.oc_node, 'secret', secretname)
-
-        sc_name = oc_create_sc(
-            self.oc_node,
-            sc_name_prefix=self.prefix, provisioner=self.provisioner,
-            resturl=self.resturl, restuser=self.restuser,
-            restsecretnamespace=self.restsecretnamespace,
-            restsecretname=secretname, volumenameprefix=self.prefix
-        )
-        self.addCleanup(oc_delete, self.oc_node, "sc", sc_name)
-
-        pvc_name = oc_create_pvc(
-            self.oc_node, sc_name,
-            pvc_name_prefix=self.prefix, pvc_size=self.pvcsize
-        )
-        self.addCleanup(
-            wait_for_resource_absence, self.oc_node, "pvc", pvc_name,
-            timeout=120, interval=5
-        )
-        self.addCleanup(oc_delete, self.oc_node, "pvc", pvc_name)
-
-        dc_name = oc_create_app_dc_with_io(
-            self.oc_node, pvc_name, dc_name_prefix=self.prefix
-        )
-        self.addCleanup(oc_delete, self.oc_node, "dc", dc_name)
-        self.addCleanup(scale_dc_pod_amount_and_wait, self.oc_node, dc_name, 0)
-
-        return sc_name, pvc_name, dc_name, secretname
-
     def get_block_hosting_volume_by_pvc_name(self, pvc_name):
         """Get block hosting volume of pvc name given
 
@@ -151,9 +90,7 @@ class GlusterStabilityTestSetup(BaseClass):
             pvc_name (str): pvc name of which host name is need
                             to be returned
         """
-        pv_name = oc_get_custom_resource(
-            self.oc_node, 'pvc', ':.spec.volumeName', name=pvc_name
-        )[0]
+        pv_name = get_pv_name_from_pvc(self.oc_node, pvc_name)
 
         block_volume = oc_get_custom_resource(
             self.oc_node, 'pv',
@@ -174,11 +111,7 @@ class GlusterStabilityTestSetup(BaseClass):
             list : list of ids of heketi block volumes
         """
         heketi_cmd_out = heketi_blockvolume_list(
-            self.heketi_client_node,
-            self.heketi_server_url,
-            secret=self.heketi_cli_key,
-            user=self.heketi_cli_user
-        )
+            self.heketi_client_node, self.heketi_server_url)
 
         self.assertTrue(heketi_cmd_out, "failed to get block volume list")
 
@@ -271,6 +204,8 @@ class GlusterStabilityTestSetup(BaseClass):
     @ddt.data(SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET)
     def test_restart_services_provision_volume_and_run_io(self, service):
         """Restart gluster service then validate volumes"""
+        self.deploy_and_verify_resouces()
+
         block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(
             self.pvc_name)
         g_nodes = get_gluster_vol_hosting_nodes(block_hosting_vol)
@@ -299,6 +234,8 @@ class GlusterStabilityTestSetup(BaseClass):
     @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
     def test_target_side_failures_brick_failure_on_block_hosting_volume(self):
         """Target side failures - Brick failure on block hosting volume"""
+        self.deploy_and_verify_resouces()
+
         # get block hosting volume from pvc name
         block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(
             self.pvc_name)
@@ -327,6 +264,8 @@ class GlusterStabilityTestSetup(BaseClass):
            Perform stop/start operation on block hosting volume when
            IO's and provisioning are going on
         """
+        self.deploy_and_verify_resouces()
+
         # get block hosting volume from pvc name
         block_hosting_vol = self.get_block_hosting_volume_by_pvc_name(
             self.pvc_name

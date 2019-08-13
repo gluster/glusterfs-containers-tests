@@ -152,6 +152,7 @@ class BaseClass(unittest.TestCase):
     def create_storage_class(self, secret_name=None,
                              sc_name_prefix="autotests-sc",
                              create_vol_name_prefix=False,
+                             vol_name_prefix=None,
                              allow_volume_expansion=False,
                              reclaim_policy="Delete",
                              set_hacount=None,
@@ -183,7 +184,9 @@ class BaseClass(unittest.TestCase):
                 parameters["volumeoptions"] += (
                     ",user.heketi.average-file-size %s" % (
                         arbiter_avg_file_size))
-        if create_vol_name_prefix:
+        if vol_name_prefix:
+            parameters["volumenameprefix"] = vol_name_prefix
+        elif create_vol_name_prefix:
             parameters["volumenameprefix"] = self.sc.get(
                 "volumenameprefix", "autotest")
         self.sc_name = oc_create_sc(
