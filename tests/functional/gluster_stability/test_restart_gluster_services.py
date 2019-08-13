@@ -30,6 +30,9 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_resource_absence,
     wait_for_service_status_on_gluster_pod_or_node,
 )
+from openshiftstoragelibs.openshift_storage_version import (
+    get_openshift_storage_version
+)
 from openshiftstoragelibs import utils
 
 
@@ -234,6 +237,17 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
     @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
     def test_target_side_failures_brick_failure_on_block_hosting_volume(self):
         """Target side failures - Brick failure on block hosting volume"""
+        skip_msg = (
+            "Skipping this test case due to bugs "
+            "BZ-1634745, BZ-1635736, BZ-1636477, BZ-1641668")
+
+        # TODO(vamahaja): Add check for CRS version
+        if not self.is_containerized_gluster():
+            self.skipTest(skip_msg + " and not impleted CRS version check")
+
+        if get_openshift_storage_version() < "3.11.2":
+            self.skipTest(skip_msg)
+
         self.deploy_and_verify_resouces()
 
         # get block hosting volume from pvc name
@@ -264,6 +278,17 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
            Perform stop/start operation on block hosting volume when
            IO's and provisioning are going on
         """
+        skip_msg = (
+            "Skipping this test case due to bugs "
+            "BZ-1634745, BZ-1635736, BZ-1636477, BZ-1641668")
+
+        # TODO(vamahaja): Add check for CRS version
+        if not self.is_containerized_gluster():
+            self.skipTest(skip_msg + " and not impleted CRS version check")
+
+        if get_openshift_storage_version() < "3.11.2":
+            self.skipTest(skip_msg)
+
         self.deploy_and_verify_resouces()
 
         # get block hosting volume from pvc name

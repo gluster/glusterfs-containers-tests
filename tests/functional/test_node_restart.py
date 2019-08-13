@@ -11,6 +11,9 @@ from openshiftstoragelibs.openshift_ops import (
     oc_rsh,
     wait_for_pod_be_ready,
 )
+from openshiftstoragelibs.openshift_storage_version import (
+    get_openshift_storage_version
+)
 
 
 class TestNodeRestart(BaseClass):
@@ -25,6 +28,9 @@ class TestNodeRestart(BaseClass):
         if not self.gluster_pod_list:
             self.skipTest("Standalone Gluster is not supported by this test.")
         self.gluster_pod_name = self.gluster_pod_list[0]
+
+        if get_openshift_storage_version() < "3.11.1":
+            self.skipTest("Skipping this test case due to bug BZ-1635736")
 
         self.sc_name = self.create_storage_class()
 
