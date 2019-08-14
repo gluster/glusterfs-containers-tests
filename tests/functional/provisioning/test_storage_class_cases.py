@@ -30,6 +30,9 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_pod_be_ready,
     wait_for_resource_absence,
 )
+from openshiftstoragelibs.openshift_storage_version import (
+    get_openshift_storage_version
+)
 from openshiftstoragelibs.openshift_version import get_openshift_version
 
 
@@ -203,6 +206,17 @@ class TestStorageClassCases(BaseClass):
         """Validate gluster-block provisioning with different valid 'hacount'
            values
         """
+        # TODO(vamahaja): Add check for CRS version
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as CRS version check "
+                "is not implemented")
+
+        if hacount > 1 and get_openshift_storage_version() <= "3.9":
+            self.skipTest(
+                "Skipping this test case as multipath validation "
+                "is not supported in OCS 3.9")
+
         # create storage class and pvc with given parameters
         self.create_sc_with_parameter(
             'glusterblock', success=True, parameter={'hacount': str(hacount)}
@@ -222,6 +236,17 @@ class TestStorageClassCases(BaseClass):
         """Validate gluster-block provisioning with "hacount" value equal
            to gluster pods count
         """
+        # TODO(vamahaja): Add check for CRS version
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as CRS version check "
+                "is not implemented")
+
+        if get_openshift_storage_version() <= "3.9":
+            self.skipTest(
+                "Skipping this test case as multipath validation "
+                "is not supported in OCS 3.9")
+
         # get hacount as no of gluster pods the pvc creation
         hacount = get_amount_of_gluster_nodes(self.ocp_master_node[0])
 
@@ -241,6 +266,17 @@ class TestStorageClassCases(BaseClass):
         """Validate gluster-block provisioning with any invalid 'hacount'
            value
         """
+        # TODO(vamahaja): Add check for CRS version
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as CRS version check "
+                "is not implemented")
+
+        if get_openshift_storage_version() <= "3.9":
+            self.skipTest(
+                "Skipping this test case as multipath validation "
+                "is not supported in OCS 3.9")
+
         # get hacount as no of gluster pods + 1 to fail the pvc creation
         hacount = get_amount_of_gluster_nodes(self.ocp_master_node[0]) + 1
 

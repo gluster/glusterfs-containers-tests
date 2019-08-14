@@ -30,6 +30,9 @@ from openshiftstoragelibs.openshift_storage_libs import (
     get_iscsi_session,
     get_mpath_name_from_device_name,
 )
+from openshiftstoragelibs.openshift_storage_version import (
+    get_openshift_storage_version
+)
 from openshiftstoragelibs.waiter import Waiter
 
 
@@ -39,6 +42,17 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
     def setUp(self):
         super(TestGlusterBlockStability, self).setUp()
         self.node = self.ocp_master_node[0]
+
+        # TODO(vamahaja): Add check for CRS version
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as CRS version check "
+                "is not implemented")
+
+        if get_openshift_storage_version() <= "3.9":
+            self.skipTest(
+                "Skipping this test case as multipath validation "
+                "is not supported in OCS 3.9")
 
     def initiator_side_failures(self):
         self.create_storage_class()
