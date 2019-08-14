@@ -18,9 +18,11 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_expand,
     heketi_volume_info,
 )
+from openshiftstoragelibs.node_ops import node_reboot_by_command
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_default_block_hosting_volume_size,
+    get_gluster_host_ips_by_pvc_name,
     get_gluster_pod_names_by_pvc_name,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
@@ -148,13 +150,9 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             ret, 0,
             "Failed to execute command %s on %s" % (write_data_cmd, self.node))
 
-    def test_dynamic_provisioning_glusterblock_glusterpod_failure(self):
-        """Create glusterblock PVC when gluster pod is down."""
-
-        # Check that we work with containerized Gluster
-        if not self.is_containerized_gluster():
-            self.skipTest("Only containerized Gluster clusters are supported.")
-
+    def test_dynamic_provisioning_glusterblock_gluster_pod_or_node_failure(
+            self):
+        """Create glusterblock PVC when gluster pod or node is down."""
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
 
         # Create DC with attached PVC
@@ -168,29 +166,48 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             pod_name, datafile_path)
         async_io = g.run_async(self.node, io_cmd, "root")
 
-        # Pick up one of the hosts which stores PV brick (4+ nodes case)
-        gluster_pod_data = get_gluster_pod_names_by_pvc_name(
-            self.node, pvc_name)[0]
+        # Check for containerized Gluster
+        if self.is_containerized_gluster():
+            # Pick up one of the hosts which stores PV brick (4+ nodes case)
+            gluster_pod_data = get_gluster_pod_names_by_pvc_name(
+                self.node, pvc_name)[0]
 
-        # Delete glusterfs POD from chosen host and wait for spawn of new one
-        oc_delete(self.node, 'pod', gluster_pod_data["pod_name"])
-        cmd = ("oc get pods -o wide | grep glusterfs | grep %s | "
-               "grep -v Terminating | awk '{print $1}'") % (
-                   gluster_pod_data["pod_hostname"])
-        for w in Waiter(600, 15):
-            out = self.cmd_run(cmd)
-            new_gluster_pod_name = out.strip().split("\n")[0].strip()
-            if not new_gluster_pod_name:
-                continue
-            else:
-                break
-        if w.expired:
-            error_msg = "exceeded timeout, new gluster pod not created"
-            g.log.error(error_msg)
-            raise ExecutionError(error_msg)
-        new_gluster_pod_name = out.strip().split("\n")[0].strip()
-        g.log.info("new gluster pod name is %s" % new_gluster_pod_name)
-        wait_for_pod_be_ready(self.node, new_gluster_pod_name)
+            # Delete glusterfs POD from chosen host and wait for
+            # spawn of new one
+            oc_delete(self.node, 'pod', gluster_pod_data["pod_name"])
+            cmd = ("oc get pods -o wide | grep glusterfs | grep %s | "
+                   "grep -v Terminating | awk '{print $1}'") % (
+                       gluster_pod_data["pod_hostname"])
+            for w in Waiter(600, 15):
+                new_gluster_pod_name = self.cmd_run(cmd)
+                if new_gluster_pod_name:
+                    break
+            if w.expired:
+                error_msg = "exceeded timeout, new gluster pod not created"
+                g.log.error(error_msg)
+                raise AssertionError(error_msg)
+            g.log.info("new gluster pod name is %s" % new_gluster_pod_name)
+            wait_for_pod_be_ready(self.node, new_gluster_pod_name)
+        else:
+            pvc_hosting_node_ip = get_gluster_host_ips_by_pvc_name(
+                self.node, pvc_name)[0]
+            heketi_nodes = heketi_node_list(
+                self.heketi_client_node, self.heketi_server_url)
+            node_ip_for_reboot = None
+            for heketi_node in heketi_nodes:
+                heketi_node_ip = heketi_node_info(
+                    self.heketi_client_node, self.heketi_server_url,
+                    heketi_node, json=True)["hostnames"]["storage"][0]
+                if heketi_node_ip == pvc_hosting_node_ip:
+                    node_ip_for_reboot = heketi_node_ip
+                    break
+
+            if not node_ip_for_reboot:
+                raise AssertionError(
+                    "Gluster node IP %s not matched with heketi node %s" % (
+                        pvc_hosting_node_ip, heketi_node_ip))
+
+            node_reboot_by_command(node_ip_for_reboot)
 
         # Check that async IO was not interrupted
         ret, out, err = async_io.async_communicate()
