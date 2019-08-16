@@ -57,6 +57,7 @@ openshift:
                 volumenameprefix: "autotests-block"
 
 common:
+    allow_heketi_zones_update: False
     stop_on_first_failure: False
     heketi_command_timeout: 120
 

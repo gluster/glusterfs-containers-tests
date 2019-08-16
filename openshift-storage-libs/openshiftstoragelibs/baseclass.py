@@ -166,7 +166,8 @@ class BaseClass(unittest.TestCase):
                              allow_volume_expansion=False,
                              reclaim_policy="Delete",
                              set_hacount=None,
-                             is_arbiter_vol=False, arbiter_avg_file_size=None):
+                             is_arbiter_vol=False, arbiter_avg_file_size=None,
+                             heketi_zone_checking=None):
 
         # Create secret if one is not specified
         if not secret_name:
@@ -194,6 +195,13 @@ class BaseClass(unittest.TestCase):
                 parameters["volumeoptions"] += (
                     ",user.heketi.average-file-size %s" % (
                         arbiter_avg_file_size))
+        if heketi_zone_checking:
+            if parameters.get("volumeoptions"):
+                parameters["volumeoptions"] += (
+                    ",user.heketi.zone-checking %s" % heketi_zone_checking)
+            else:
+                parameters["volumeoptions"] = (
+                    "user.heketi.zone-checking %s" % heketi_zone_checking)
         if vol_name_prefix:
             parameters["volumenameprefix"] = vol_name_prefix
         elif create_vol_name_prefix:
