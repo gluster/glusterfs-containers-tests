@@ -3,6 +3,8 @@ from unittest import skip
 
 import ddt
 from glusto.core import Glusto as g
+from glustolibs.gluster.block_libs import get_block_list
+from pkg_resources import parse_version
 import six
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
@@ -15,6 +17,7 @@ from openshiftstoragelibs.gluster_ops import (
     match_heketi_and_gluster_block_volumes_by_prefix
 )
 from openshiftstoragelibs.heketi_ops import (
+    get_block_hosting_volume_list,
     get_total_free_space,
     heketi_blockvolume_create,
     heketi_blockvolume_delete,
@@ -23,6 +26,8 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_list_by_name_prefix,
     heketi_node_info,
     heketi_node_list,
+    heketi_volume_delete,
+    heketi_volume_info,
 )
 from openshiftstoragelibs.node_ops import (
     find_vm_name_by_ip_or_hostname,
@@ -38,6 +43,7 @@ from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
     get_vol_names_from_pv,
+    get_pvc_status,
     kill_service_on_gluster_pod_or_node,
     match_pv_and_heketi_block_volumes,
     oc_adm_manage_node,
@@ -69,6 +75,7 @@ from openshiftstoragelibs.openshift_storage_version import (
 from openshiftstoragelibs.openshift_version import (
     get_openshift_version
 )
+from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import utils
 from openshiftstoragelibs.waiter import Waiter
 
@@ -1325,3 +1332,134 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         msg = ("Available free space %s is not same as expected %s"
                % (initial_free_storage, final_free_storage))
         self.assertEqual(initial_free_storage, final_free_storage, msg)
+
+    @podcmd.GlustoPod()
+    def test_delete_block_device_pvc_while_io_in_progress(self):
+        """Delete block device or pvc while io is in progress"""
+        size_of_pvc, amount_of_pvc = 1, 20
+        e_pkg_version = '6.2.0.874-13'
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+        free_space, node_count = get_total_free_space(h_node, h_server)
+
+        # Skip the test if node count is less than 3
+        if node_count < 3:
+            self.skipTest("Skip test since number of nodes"
+                          "online is %s which is less than 3." % node_count)
+
+        # Skip the test if iscsi-initiator-utils version is not the expected
+        cmd = ("rpm -q iscsi-initiator-utils"
+               " --queryformat '%{version}-%{release}\n'"
+               "| cut -d '.' -f 1,2,3,4")
+        for g_server in self.gluster_servers:
+            out = self.cmd_run(cmd, g_server)
+            if parse_version(out) < parse_version(e_pkg_version):
+                self.skipTest("Skip test since isci initiator utils version "
+                              "actual: %s is less than expected: %s "
+                              "on node %s, for more info refer to BZ-1624670"
+                              % (out, e_pkg_version, g_server))
+
+        # Skip the test if free space is less than required space
+        free_space_available = int(free_space / node_count)
+        free_space_required = int(size_of_pvc * amount_of_pvc)
+        if free_space_available < free_space_required:
+            self.skipTest("Skip test since free space available %s"
+                          "is less than the required space. %s"
+                          % (free_space_available, free_space_required))
+
+        new_bhv_list, bv_list = [], []
+
+        # Get existing list of BHV's
+        existing_bhv_list = get_block_hosting_volume_list(h_node, h_server)
+        bhv_list = list(existing_bhv_list.keys())
+
+        # Create PVC's & app pods
+        pvc_names = self.create_and_wait_for_pvcs(
+            pvc_size=size_of_pvc, pvc_amount=amount_of_pvc,
+            timeout=600, wait_step=5)
+        dc_and_pod_names = self.create_dcs_with_pvc(
+            pvc_names, timeout=600, wait_step=5)
+
+        # Get new list of BHV's
+        custom = r':.metadata.annotations."gluster\.org\/volume\-id"'
+        for pvc_name in pvc_names:
+            pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+            block_vol_id = oc_get_custom_resource(
+                self.node, "pv", custom, name=pv_name)
+            bv_list.append(block_vol_id)
+            # Get block hosting volume ID
+            bhv_id = heketi_blockvolume_info(
+                h_node, h_server, block_vol_id[0], json=True
+            )["blockhostingvolume"]
+            if bhv_id not in bhv_list:
+                new_bhv_list.append(bhv_id)
+        for bh_id in new_bhv_list:
+            self.addCleanup(
+                heketi_volume_delete, h_node, h_server,
+                bh_id, raise_on_error=False)
+
+        for pvc_name in pvc_names:
+            self.addCleanup(
+                wait_for_resource_absence, self.node, 'pvc', pvc_name)
+            self.addCleanup(
+                oc_delete, self.node, 'pvc', pvc_name, raise_on_absence=False)
+
+        # Validate iscsi sessions & multipath for created pods
+        for pvc, (dc_name, pod_name) in dc_and_pod_names.items():
+            iqn, _, ini_node = self.verify_iscsi_sessions_and_multipath(
+                pvc, dc_name)
+            dc_and_pod_names[pvc] = (dc_name, pod_name, ini_node, iqn)
+
+        # Run IO on app pods
+        _file, base_size, count = '/mnt/file', 4096, 1000
+        cmd_run_io = 'dd if=/dev/urandom of=%s bs=%s count=%s' % (
+            _file, base_size, count)
+        for _, pod_name, _, _ in dc_and_pod_names.values():
+            oc_rsh(self.node, pod_name, cmd_run_io)
+
+        # Delete 10 pvcs
+        oc_delete(self.node, 'pvc', " ".join(pvc_names[:10]))
+        for w in Waiter(10, 1):
+            statuses = []
+            for pvc_name in pvc_names[:10]:
+                status = get_pvc_status(self.node, pvc_name)
+                statuses.append(status)
+            if statuses.count("Terminating") == 10:
+                break
+        if w.expired:
+            err_msg = "Not all 10 deleted PVCs are in Terminating state."
+            raise AssertionError(err_msg)
+
+        # Delete all app pods
+        dc_names = [dc[0] for dc in dc_and_pod_names.values()]
+        scale_dcs_pod_amount_and_wait(self.node, dc_names, pod_amount=0)
+
+        oc_delete(self.node, 'pvc', " ".join(pvc_names[10:]))
+
+        # Validate no stale mounts or iscsi login exist on initiator side
+        temp_pvcs = pvc_names[:]
+        for w in Waiter(900, 10):
+            if not temp_pvcs:
+                break
+            for pvc_name in temp_pvcs:
+                iscsi = get_iscsi_session(
+                    dc_and_pod_names[pvc_name][2],
+                    dc_and_pod_names[pvc_name][3],
+                    raise_on_error=False)
+                if not iscsi:
+                    temp_pvcs.remove(pvc_name)
+        msg = "logout of iqn's for PVC's '%s' did not happen" % temp_pvcs
+        self.assertFalse(temp_pvcs, msg)
+
+        # Validate that Heketi and Gluster do not have block volumes
+        for bhv_id in new_bhv_list:
+            heketi_vol_info = heketi_volume_info(
+                h_node, h_server, bhv_id, json=True)
+            self.assertNotIn(
+                "blockvolume", heketi_vol_info["blockinfo"].keys())
+            gluster_vol_info = get_block_list(
+                'auto_get_gluster_endpoint', volname="vol_%s" % bhv_id)
+            self.assertIsNotNone(
+                gluster_vol_info,
+                "Failed to get block list from bhv %s" % bhv_id)
+            for blockvol in gluster_vol_info:
+                self.assertNotIn("blockvol_", blockvol)
