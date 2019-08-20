@@ -233,7 +233,7 @@ def oc_process(ocp_node, params, filename):
     return out
 
 
-def oc_create_secret(hostname, secret_name_prefix="autotests-secret-",
+def oc_create_secret(hostname, secret_name_prefix="autotests-secret",
                      namespace="default",
                      data_key="password",
                      secret_type="kubernetes.io/glusterfs"):

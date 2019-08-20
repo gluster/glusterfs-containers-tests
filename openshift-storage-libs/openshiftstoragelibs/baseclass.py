@@ -136,7 +136,7 @@ class BaseClass(unittest.TestCase):
         return command.cmd_run(
             cmd=cmd, hostname=hostname, raise_on_error=raise_on_error)
 
-    def create_secret(self, secret_name_prefix="autotests-secret-"):
+    def create_secret(self, secret_name_prefix="autotests-secret"):
         secret_name = oc_create_secret(
             self.ocp_client[0],
             secret_name_prefix=secret_name_prefix,
