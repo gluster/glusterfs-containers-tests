@@ -1,6 +1,7 @@
 import re
 from unittest import skip
 
+import ddt
 from glusto.core import Glusto as g
 import six
 
@@ -72,6 +73,7 @@ from openshiftstoragelibs.waiter import Waiter
 HEKETI_BLOCK_VOLUME_REGEX = "^Id:(.*).Cluster:(.*).Name:%s_(.*)$"
 
 
+@ddt.ddt
 class TestGlusterBlockStability(GlusterBlockBaseClass):
     '''Class that contain gluster-block stability TC'''
 
@@ -698,7 +700,8 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             "Could not match glusterips in pv describe, difference is %s "
             % unmatched_tpips)
 
-    def test_volume_create_delete_when_block_services_are_down(self):
+    @ddt.data('tcmu-runner', 'gluster-blockd')
+    def test_volume_create_delete_when_block_services_are_down(self, service):
         """Create and Delete PVC's when block related services gluster-blockd,
         tcmu-runner are down.
         """
@@ -719,8 +722,10 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                 json=True)
             g_nodes.append(g_node['hostnames']['manage'][0])
 
-        start_svc_cmd = (
-            'systemctl start gluster-blockd gluster-block-target tcmu-runner')
+        stop_svc_cmd = 'systemctl stop %s' % service
+        start_svc_cmd = 'systemctl start gluster-blockd'
+        if service == 'tcmu-runner':
+            start_svc_cmd += ' gluster-block-target tcmu-runner'
 
         pvc_counts = [5, 10, 15, 20]
 
@@ -736,10 +741,10 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                     oc_delete, self.node, 'pvc', pvc_name,
                     raise_on_absence=False)
 
-            # Stop tcmu-runner service
+            # Stop tcmu-runner/gluster-blockd service
             for g_node in g_nodes:
                 cmd_run_on_gluster_pod_or_node(
-                    self.node, 'systemctl stop tcmu-runner', g_node)
+                    self.node, stop_svc_cmd, g_node)
                 self.addCleanup(
                     wait_for_service_status_on_gluster_pod_or_node, self.node,
                     'gluster-blockd', 'active', 'running', g_node,
@@ -809,10 +814,10 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         for pvc in pvc_names:
             verify_pvc_status_is_bound(self.node, pvc, timeout=60)
 
-        # Stop tcmu-runner service
+        # Stop tcmu-runner/gluster-blockd service
         for g_node in g_nodes:
             cmd_run_on_gluster_pod_or_node(
-                self.node, 'systemctl stop tcmu-runner', g_node)
+                self.node, stop_svc_cmd, g_node)
             self.addCleanup(
                 wait_for_service_status_on_gluster_pod_or_node, self.node,
                 'gluster-blockd', 'active', 'running', g_node,
