@@ -6,6 +6,8 @@ import six
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs import node_ops
+from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import utils
 
@@ -408,3 +410,57 @@ class TestVolumeCreationTestCases(BaseClass):
         msg = ('Volume %s and %s got created two times with the same name '
                'unexpectedly.' % (vol_info, vol_info_new))
         self.assertFalse(vol_info_new, msg)
+
+    @pytest.mark.tier2
+    def test_heketi_volume_provision_after_node_reboot(self):
+        """Provision volume before and after node reboot"""
+        h_client, h_server = self.heketi_client_node, self.heketi_server_url
+        g_nodes = [
+            g_node["manage"]
+            for g_node in self.gluster_servers_info.values()][2:]
+
+        # Create heketi volume
+        vol_info = heketi_ops.heketi_volume_create(
+            h_client, h_server, 1, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete,
+            h_client, h_server, vol_info['id'])
+
+        # Reboot gluster server nodes
+        for g_node in g_nodes:
+            node_ops.node_reboot_by_command(g_node, wait_for_connection=False)
+
+        # Create heketi volume when gluster nodes are down
+        with self.assertRaises(AssertionError):
+            vol_info = heketi_ops.heketi_volume_create(
+                h_client, h_server, 1, json=True)
+            self.addCleanup(
+                heketi_ops.heketi_volume_delete,
+                h_client, h_server, vol_info['id'])
+
+        for g_node in g_nodes:
+            node_ops.wait_for_ssh_connection(g_node)
+
+        # Wait for the gluster pods and nodes to be ready
+        if self.is_containerized_gluster():
+            for g_node in g_nodes:
+                openshift_ops.wait_for_ocp_node_be_ready(self.node, g_node)
+                gluster_pod_details = (
+                    openshift_ops.get_ocp_gluster_pod_details(self.node))
+                gluster_pod = list(
+                    filter(
+                        lambda pod: (pod["pod_hostname"] == g_node),
+                        gluster_pod_details))
+                openshift_ops.wait_for_pod_be_ready(
+                    self.node, gluster_pod[0]["pod_name"])
+
+        for g_node in g_nodes:
+            openshift_ops.wait_for_service_status_on_gluster_pod_or_node(
+                self.node, 'glusterd', 'active', 'running', g_node)
+
+        # Try to create heketi volume after reboot
+        vol_info = heketi_ops.heketi_volume_create(
+            h_client, h_server, 1, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete,
+            h_client, h_server, vol_info['id'])
