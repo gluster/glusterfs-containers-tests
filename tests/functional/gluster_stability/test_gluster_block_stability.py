@@ -16,10 +16,12 @@ from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
     oc_adm_manage_node,
+    oc_create_app_dc_with_io,
     oc_delete,
     oc_get_custom_resource,
     oc_get_schedulable_nodes,
     oc_rsh,
+    scale_dc_pod_amount_and_wait,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
     wait_for_service_status_on_gluster_pod_or_node,
@@ -357,3 +359,110 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         # Wait for pod to come up when 1 target node is down
         pod_name = get_pod_name_from_dc(self.node, dc_name)
         wait_for_pod_be_ready(self.node, pod_name, timeout=120, wait_step=5)
+
+    def test_initiator_and_target_on_same_node_app_pod_deletion(self):
+        """Test iscsi login and logout functionality on deletion of an app
+        pod when initiator and target are on the same node.
+        """
+        if not self.is_containerized_gluster():
+            self.skipTest("Skipping this TC as it's not supported on non"
+                          " containerized glusterfs setup.")
+
+        schedulable_nodes = oc_get_schedulable_nodes(self.node)
+
+        # Get list of all gluster nodes
+        g_pods = get_ocp_gluster_pod_details(self.node)
+        g_nodes = [pod['pod_hostname'] for pod in g_pods]
+
+        # Get the list of schedulable nodes other than gluster nodes
+        o_nodes = list((set(schedulable_nodes) - set(g_nodes)))
+
+        # Make nodes unschedulable other than gluster nodes
+        oc_adm_manage_node(
+            self.node, '--schedulable=false', nodes=o_nodes)
+        self.addCleanup(
+            oc_adm_manage_node, self.node, '--schedulable=true', nodes=o_nodes)
+
+        # Create 10 PVC's
+        pvcs = self.create_and_wait_for_pvcs(pvc_amount=10)
+
+        pvc_and_dc = {}
+        dc_names = ''
+        # Create DC's
+        for pvc in pvcs:
+            dc_name = oc_create_app_dc_with_io(self.node, pvc)
+            self.addCleanup(oc_delete, self.node, 'dc', dc_name)
+            self.addCleanup(
+                scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
+            pvc_and_dc[pvc] = {'dc_name': dc_name}
+            dc_names += ' ' + dc_name
+
+        # Delete all pods before waiting for absence in cleanup to speedup
+        cmd_scale = "oc scale dc --replicas=0"
+        self.addCleanup(cmd_run, (cmd_scale + dc_names), self.node)
+
+        # Wait for app pods and verify block sessions
+        for pvc in pvcs:
+            dc_name = pvc_and_dc[pvc]['dc_name']
+            pod_name = get_pod_name_from_dc(self.node, dc_name)
+            wait_for_pod_be_ready(self.node, pod_name, wait_step=10)
+
+            iqn, _, p_node = self.verify_iscsi_sessions_and_multipath(
+                pvc, dc_name)
+            pvc_and_dc[pvc] = {
+                'dc_name': dc_name,
+                'pod_name': pod_name,
+                'p_node': p_node,
+                'iqn': iqn
+            }
+
+        # Delete 5 pods permanently
+        dc_names = " ".join([pvc_and_dc[pvc]['dc_name'] for pvc in pvcs[:5]])
+        cmd_run((cmd_scale + ' ' + dc_names), self.node)
+
+        # Wait for pods to be delete, for permanently deleted pods
+        for pvc in pvcs[:5]:
+            wait_for_resource_absence(
+                self.node, 'pod', pvc_and_dc[pvc]['pod_name'])
+
+        # Wait for logout, for permanently deleted pods
+        temp_pvcs = pvcs[:5]
+        for w in Waiter(900, 10):
+            if not temp_pvcs:
+                break
+            for pvc in temp_pvcs:
+                # Get the iscsi from the previous node to verify logout
+                iscsi = get_iscsi_session(
+                    pvc_and_dc[pvc]['p_node'], pvc_and_dc[pvc]['iqn'],
+                    raise_on_error=False)
+                if not iscsi:
+                    temp_pvcs.remove(pvc)
+        msg = ("logout of iqn's for PVC's: '%s' did not happen" % temp_pvcs)
+        self.assertFalse(temp_pvcs, msg)
+
+        # Start IO and delete remaining pods, so they can re-spin
+        _file = '/mnt/file'
+        cmd_run_io = 'dd if=/dev/urandom of=%s bs=4k count=1000' % _file
+        for pvc in pvcs[5:]:
+            oc_rsh(self.node, pvc_and_dc[pvc]['pod_name'], cmd_run_io)
+            oc_delete(self.node, 'pod', pvc_and_dc[pvc]['pod_name'])
+
+        # Wait for remaining pods to come up
+        for pvc in pvcs[5:]:
+            wait_for_resource_absence(
+                self.node, 'pod', pvc_and_dc[pvc]['pod_name'])
+
+            # Wait for new pod to come up
+            pod_name = get_pod_name_from_dc(
+                self.node, pvc_and_dc[pvc]['dc_name'])
+            wait_for_pod_be_ready(self.node, pod_name, wait_step=20)
+
+            # Verify file
+            _, out, _ = oc_rsh(self.node, pod_name, 'ls -l %s' % _file)
+            msg = ('Expected size: 4096000 of file: %s is not present '
+                   'in out: %s' % (_file, out))
+            self.assertIn('4096000', out, msg)
+
+            # Verify block sessions
+            self.verify_iscsi_sessions_and_multipath(
+                pvc, pvc_and_dc[pvc]['dc_name'])
