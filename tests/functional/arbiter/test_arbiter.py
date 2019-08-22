@@ -2,38 +2,27 @@ import re
 
 import ddt
 from glusto.core import Glusto as g
-from glustolibs.gluster.volume_ops import get_volume_info
+from glustolibs.gluster import volume_ops
 
-from openshiftstoragelibs.baseclass import BaseClass
-from openshiftstoragelibs.exceptions import ExecutionError
+from openshiftstoragelibs import baseclass
+from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import heketi_version
-from openshiftstoragelibs.openshift_ops import (
-    cmd_run_on_gluster_pod_or_node,
-    get_gluster_vol_info_by_pvc_name,
-    oc_create_pvc,
-    oc_create_tiny_pod_with_volume,
-    oc_delete,
-    resize_pvc,
-    verify_pvc_size,
-    verify_pvc_status_is_bound,
-    wait_for_pod_be_ready,
-    wait_for_resource_absence,
-)
-from openshiftstoragelibs.openshift_version import get_openshift_version
+from openshiftstoragelibs import openshift_ops
+from openshiftstoragelibs import openshift_version
 from openshiftstoragelibs import podcmd
-from openshiftstoragelibs.utils import get_random_str
+from openshiftstoragelibs import utils
 
 BRICK_REGEX = r"^(.*):\/var\/lib\/heketi\/mounts\/(.*)\/brick$"
 
 
 @ddt.ddt
-class TestArbiterVolumeCreateExpandDelete(BaseClass):
+class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
 
     def setUp(self):
         super(TestArbiterVolumeCreateExpandDelete, self).setUp()
         self.node = self.ocp_master_node[0]
-        if get_openshift_version() < "3.9":
+        if openshift_version.get_openshift_version() < "3.9":
             self.skipTest("Arbiter feature cannot be used on OCP older "
                           "than 3.9, because 'volumeoptions' for Heketi "
                           "is not supported there.")
@@ -141,7 +130,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         self.create_and_wait_for_pvc()
 
         # Get vol info
-        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, self.pvc_name)
 
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(vol_info)
 
@@ -155,16 +145,18 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
 
         # Create POD with attached volume
         mount_path = "/mnt"
-        pod_name = oc_create_tiny_pod_with_volume(
+        pod_name = openshift_ops.oc_create_tiny_pod_with_volume(
             self.node, self.pvc_name, "test-arbiter-pvc-mount-on-app-pod",
             mount_path=mount_path)
-        self.addCleanup(oc_delete, self.node, 'pod', pod_name)
+        self.addCleanup(openshift_ops.oc_delete, self.node, 'pod', pod_name)
 
         # Wait for POD be up and running
-        wait_for_pod_be_ready(self.node, pod_name, timeout=60, wait_step=2)
+        openshift_ops.wait_for_pod_be_ready(
+            self.node, pod_name, timeout=60, wait_step=2)
 
         # Get volume ID
-        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, self.pvc_name)
         vol_id = vol_info["gluster_vol_id"]
 
         # Verify that POD has volume mounted on it
@@ -318,7 +310,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         self.create_and_wait_for_pvc(int(target_vol_size_kb / 1024.0**2))
 
         # Get gluster volume info
-        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, self.pvc_name)
 
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info, arbiter_bricks=2, data_bricks=4)
@@ -350,7 +343,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         self.create_and_wait_for_pvc(pvc_size_gb)
 
         # Get volume info
-        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, self.pvc_name)
 
         # Verify proportion of data and arbiter bricks
         bricks_info = (
@@ -371,7 +365,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
             brick_path = brick_path[0:-6]
 
             cmd = "mount | grep %s || echo '%s'" % (brick_path, not_found)
-            out = cmd_run_on_gluster_pod_or_node(self.node, cmd, gluster_ip)
+            out = openshift_ops.cmd_run_on_gluster_pod_or_node(
+                self.node, cmd, gluster_ip)
             if out != not_found:
                 cmd = (
                     "python -c \"["
@@ -379,7 +374,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
                     "    for i in range(%s)"
                     "]\"" % (brick_path, expected_file_amount)
                 )
-                cmd_run_on_gluster_pod_or_node(self.node, cmd, gluster_ip)
+                openshift_ops.cmd_run_on_gluster_pod_or_node(
+                    self.node, cmd, gluster_ip)
                 passed_arbiter_bricks.append(brick["name"])
 
         # Make sure all the arbiter bricks were checked
@@ -444,7 +440,7 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
             self.create_and_wait_for_pvc(1)
 
             # Get gluster volume info
-            vol_info = get_gluster_vol_info_by_pvc_name(
+            vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
                 self.node, self.pvc_name)
             arbiter_bricks, data_bricks = [], []
             for brick in vol_info['bricks']['brick']:
@@ -521,42 +517,46 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         # Create and delete 3 small volumes concurrently
         pvc_names = []
         for i in range(3):
-            pvc_name = oc_create_pvc(
+            pvc_name = openshift_ops.oc_create_pvc(
                 self.node, self.sc_name, pvc_name_prefix='arbiter-pvc',
                 pvc_size=int(pvc_size / 3))
             pvc_names.append(pvc_name)
         exception_exists = False
         for pvc_name in pvc_names:
             try:
-                verify_pvc_status_is_bound(self.node, pvc_name)
+                openshift_ops.verify_pvc_status_is_bound(self.node, pvc_name)
             except Exception:
                 for pvc_name in pvc_names:
                     self.addCleanup(
-                        wait_for_resource_absence, self.node, 'pvc', pvc_name)
+                        openshift_ops.wait_for_resource_absence,
+                        self.node, 'pvc', pvc_name)
                 for pvc_name in pvc_names:
-                    self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
+                    self.addCleanup(
+                        openshift_ops.oc_delete, self.node, 'pvc', pvc_name)
                 exception_exists = True
         if exception_exists:
             raise
         for pvc_name in pvc_names:
-            oc_delete(self.node, 'pvc', pvc_name)
+            openshift_ops.oc_delete(self.node, 'pvc', pvc_name)
         for pvc_name in pvc_names:
-            wait_for_resource_absence(self.node, 'pvc', pvc_name)
+            openshift_ops.wait_for_resource_absence(self.node, 'pvc', pvc_name)
 
         # Create and delete big volumes in a loop
         for i in range(pvc_amount):
-            pvc_name = oc_create_pvc(
+            pvc_name = openshift_ops.oc_create_pvc(
                 self.node, self.sc_name, pvc_name_prefix='arbiter-pvc',
                 pvc_size=pvc_size)
             try:
-                verify_pvc_status_is_bound(self.node, pvc_name)
+                openshift_ops.verify_pvc_status_is_bound(self.node, pvc_name)
             except Exception:
                 self.addCleanup(
-                    wait_for_resource_absence, self.node, 'pvc', pvc_name)
-                self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
+                    openshift_ops.wait_for_resource_absence,
+                    self.node, 'pvc', pvc_name)
+                self.addCleanup(
+                    openshift_ops.oc_delete, self.node, 'pvc', pvc_name)
                 raise
-            oc_delete(self.node, 'pvc', pvc_name)
-            wait_for_resource_absence(self.node, 'pvc', pvc_name)
+            openshift_ops.oc_delete(self.node, 'pvc', pvc_name)
+            openshift_ops.wait_for_resource_absence(self.node, 'pvc', pvc_name)
 
     def test_arbiter_volume_expand_using_pvc(self):
         """Validate arbiter volume expansion by PVC creation"""
@@ -568,15 +568,17 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         self.create_and_wait_for_pvc()
 
         # Get vol info
-        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, self.pvc_name)
 
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(vol_info)
 
         pvc_size = 2
-        resize_pvc(self.node, self.pvc_name, pvc_size)
-        verify_pvc_size(self.node, self.pvc_name, pvc_size)
+        openshift_ops.resize_pvc(self.node, self.pvc_name, pvc_size)
+        openshift_ops.verify_pvc_size(self.node, self.pvc_name, pvc_size)
 
-        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, self.pvc_name)
 
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info, arbiter_bricks=2, data_bricks=4)
@@ -636,7 +638,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         # Create PVC and wait for it to be in 'Bound' state
         self.create_and_wait_for_pvc()
 
-        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, self.pvc_name)
 
         bricks = self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info)
@@ -652,10 +655,11 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
 
         # Expand PVC and verify the size
         pvc_size = 2
-        resize_pvc(self.node, self.pvc_name, pvc_size)
-        verify_pvc_size(self.node, self.pvc_name, pvc_size)
+        openshift_ops.resize_pvc(self.node, self.pvc_name, pvc_size)
+        openshift_ops.verify_pvc_size(self.node, self.pvc_name, pvc_size)
 
-        vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, self.pvc_name)
 
         bricks = self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info, arbiter_bricks=2, data_bricks=4)
@@ -710,7 +714,7 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         vol_expanded = False
 
         for i in range(2):
-            vol_info = get_gluster_vol_info_by_pvc_name(
+            vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
                 self.node, self.pvc_name)
             bricks = (
                 self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
@@ -726,7 +730,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
                 self.assertIn(ip, arbiter_hosts)
                 # verify the size of arbiter brick
                 cmd = "df -h %s --output=size | tail -1" % brick_name
-                out = cmd_run_on_gluster_pod_or_node(self.node, cmd, ip)
+                out = openshift_ops.cmd_run_on_gluster_pod_or_node(
+                    self.node, cmd, ip)
                 self.assertEqual(out, expected_brick_size)
             # verify that data bricks lies on data hosts
             for brick in bricks['data_list']:
@@ -736,8 +741,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
                 break
             # Expand PVC and verify the size
             pvc_size = 2
-            resize_pvc(self.node, self.pvc_name, pvc_size)
-            verify_pvc_size(self.node, self.pvc_name, pvc_size)
+            openshift_ops.resize_pvc(self.node, self.pvc_name, pvc_size)
+            openshift_ops.verify_pvc_size(self.node, self.pvc_name, pvc_size)
             vol_expanded = True
 
     @podcmd.GlustoPod()
@@ -745,7 +750,7 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         """Test Arbiter volume delete using pvc when volume is not mounted
            on app pod
         """
-        prefix = "autotest-%s" % get_random_str()
+        prefix = "autotest-%s" % utils.get_random_str()
 
         # Create sc with gluster arbiter info
         sc_name = self.create_storage_class(
@@ -756,7 +761,7 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
             pvc_name_prefix=prefix, sc_name=sc_name)
 
         # Get vol info
-        gluster_vol_info = get_gluster_vol_info_by_pvc_name(
+        gluster_vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
             self.node, pvc_name)
 
         # Verify arbiter volume properties
@@ -767,8 +772,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         gluster_vol_id = gluster_vol_info["gluster_vol_id"]
 
         # Delete the pvc
-        oc_delete(self.node, 'pvc', pvc_name)
-        wait_for_resource_absence(self.node, 'pvc', pvc_name)
+        openshift_ops.oc_delete(self.node, 'pvc', pvc_name)
+        openshift_ops.wait_for_resource_absence(self.node, 'pvc', pvc_name)
 
         # Check the heketi volume list if pvc is deleted
         g.log.info("List heketi volumes")
@@ -779,7 +784,7 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         self.assertNotIn(prefix, heketi_volumes, err_msg)
 
         # Check presence for the gluster volume
-        get_gluster_vol_info = get_volume_info(
+        get_gluster_vol_info = volume_ops.get_volume_info(
             "auto_get_gluster_endpoint", gluster_vol_id)
         err_msg = "Failed to delete gluster volume %s" % gluster_vol_id
         self.assertFalse(get_gluster_vol_info, err_msg)
@@ -788,14 +793,14 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         for brick in gluster_vol_info['bricks']['brick']:
             gluster_node_ip, brick_name = brick["name"].split(":")
 
-            with self.assertRaises(ExecutionError):
+            with self.assertRaises(exceptions.ExecutionError):
                 cmd = "df %s" % brick_name
-                cmd_run_on_gluster_pod_or_node(
+                openshift_ops.cmd_run_on_gluster_pod_or_node(
                     self.node, cmd, gluster_node_ip)
 
-            with self.assertRaises(ExecutionError):
+            with self.assertRaises(exceptions.ExecutionError):
                 lv_match = re.search(BRICK_REGEX, brick["name"])
                 if lv_match:
                     cmd = "lvs %s" % lv_match.group(2).strip()
-                    cmd_run_on_gluster_pod_or_node(
+                    openshift_ops.cmd_run_on_gluster_pod_or_node(
                         self.node, cmd, gluster_node_ip)
