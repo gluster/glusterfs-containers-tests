@@ -4,6 +4,7 @@ from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs.command import cmd_run
 from openshiftstoragelibs.exceptions import ConfigError
 from openshiftstoragelibs.heketi_ops import (
+    heketi_blockvolume_info,
     heketi_node_info,
     heketi_node_list,
 )
@@ -21,6 +22,7 @@ from openshiftstoragelibs.openshift_ops import (
     oc_adm_manage_node,
     oc_delete,
     oc_get_custom_resource,
+    oc_get_pv,
     oc_get_schedulable_nodes,
     oc_rsh,
     scale_dcs_pod_amount_and_wait,
@@ -546,3 +548,68 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.assertIn(six.text_type(file_size), out, msg)
 
             self.verify_iscsi_sessions_and_multipath(pvc, dc_name)
+
+    def test_validate_gluster_ip_utilized_by_blockvolumes(self):
+        """ Validate if all gluster nodes IP are
+            utilized by blockvolume when using HA=2
+        """
+        host_ips, block_volumes, gluster_ips_bv = [], [], []
+        target_portal_list, pv_info = [], {}
+        size_of_pvc, amount_of_pvc, ha_count = 1, 5, 2
+        unmatched_gips, unmatched_tpips = [], []
+
+        node_list = heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
+        if len(node_list) < 3:
+            self.skipTest("Skip test since number of nodes"
+                          "are less than 3.")
+        for node_id in node_list:
+            node_info = heketi_node_info(
+                self.heketi_client_node, self.heketi_server_url,
+                node_id, json=True)
+            host_ips.append(node_info["hostnames"]["storage"][0])
+
+        # Create new sc with ha count as 2
+        sc_name = self.create_storage_class(set_hacount=ha_count)
+
+        # Create pvcs
+        pvc_names = self.create_and_wait_for_pvcs(
+            pvc_size=size_of_pvc, pvc_amount=amount_of_pvc, sc_name=sc_name)
+
+        # From PVC get pv_name,targetportal_ip & blockvolumes
+        # Attach pvc to app pods
+        for pvc_name in pvc_names:
+            pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+            pv_info = oc_get_pv(self.node, pv_name)
+            target_portal_list.extend(
+                pv_info.get('spec').get('iscsi').get('portals'))
+            target_portal_list.append(
+                pv_info.get('spec').get('iscsi').get('targetPortal'))
+            block_volume = oc_get_custom_resource(
+                self.node, 'pv',
+                r':.metadata.annotations."gluster\.org\/volume\-id"',
+                name=pv_name)[0]
+            block_volumes.append(block_volume)
+        self.create_dcs_with_pvc(pvc_names)
+
+        # Validate that all gluster ips are utilized by block volume.
+        for bv_id in block_volumes:
+            block_volume_info = heketi_blockvolume_info(
+                self.heketi_client_node, self.heketi_server_url,
+                bv_id, json=True)
+            gluster_ips_bv.append(block_volume_info["blockvolume"]["hosts"])
+        gluster_ips_bv_flattend = [
+            ip for list_of_lists in gluster_ips_bv for ip in list_of_lists]
+        host_ips = sorted(set(host_ips))
+        gluster_ips_bv_flattend = sorted(set(gluster_ips_bv_flattend))
+        target_portal_list = sorted(set(target_portal_list))
+        unmatched_gips = (set(host_ips) ^ set(gluster_ips_bv_flattend))
+        unmatched_tpips = (set(host_ips) ^ set(target_portal_list))
+        self.assertEqual(
+            cmp(host_ips, gluster_ips_bv_flattend), 0,
+            "Could not match glusterips in blockvolumes, difference is %s "
+            % unmatched_gips)
+        self.assertEqual(
+            cmp(host_ips, target_portal_list), 0,
+            "Could not match glusterips in pv describe, difference is %s "
+            % unmatched_tpips)
