@@ -1138,3 +1138,110 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             node_add_iptables_rules(path_node, chain, rules % tcmu_port)
         oc_rsh(self.node, pod_name, cmd_run_io % file1)
         self.verify_iscsi_sessions_and_multipath(self.pvc_name, dc_name)
+
+    def test_initiator_failures_reboot_initiator_node_when_target_node_is_down(
+            self):
+        """Restart initiator node when gluster node is down, to make sure paths
+        rediscovery is happening.
+        """
+        # Skip test if not able to connect to Cloud Provider
+        try:
+            find_vm_name_by_ip_or_hostname(self.node)
+        except (NotImplementedError, ConfigError) as e:
+            self.skipTest(e)
+
+        ini_node = self.get_initiator_node_and_mark_other_nodes_unschedulable()
+
+        # Create 5 PVC's and DC's
+        pvcs = self.create_and_wait_for_pvcs(pvc_amount=5)
+        dcs = self.create_dcs_with_pvc(pvcs)
+
+        # Run I/O on app pods
+        _file, base_size, count = '/mnt/file', 4096, 1000
+        file_size = base_size * count
+        cmd_run_io = 'dd if=/dev/urandom of=%s bs=%s count=%s' % (
+            _file, base_size, count)
+        for _, pod_name in dcs.values():
+            oc_rsh(self.node, pod_name, cmd_run_io)
+
+        vol_info = {}
+        for pvc, (dc_name, _) in dcs.items():
+            # Get target portals
+            pv_name = get_pv_name_from_pvc(self.node, pvc)
+            targets = oc_get_custom_resource(
+                self.node, 'pv', ':.spec.iscsi.portals,'
+                ':.spec.iscsi.targetPortal', name=pv_name)
+            targets = [item.strip('[').strip(
+                ']') for item in targets if isinstance(item, six.string_types)]
+
+            iqn, hacount, _ = self.verify_iscsi_sessions_and_multipath(
+                pvc, dc_name)
+            vol_info[pvc] = (iqn, hacount, targets)
+
+        target = targets[0]
+
+        # Get hostname of target node from heketi
+        h_node_list = heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
+        for node_id in h_node_list:
+            node_info = heketi_node_info(
+                self.heketi_client_node, self.heketi_server_url, node_id,
+                json=True)
+            if node_info['hostnames']['storage'][0] == target:
+                target_hostname = node_info['hostnames']['manage'][0]
+                break
+        self.assertTrue(target_hostname)
+
+        # Find VM Name and power it off
+        target_vm_name = find_vm_name_by_ip_or_hostname(target_hostname)
+        self.power_off_gluster_node_vm(target_vm_name, target_hostname)
+
+        # Sync I/O
+        for _, pod_name in dcs.values():
+            oc_rsh(self.node, pod_name, "/bin/sh -c 'cd /mnt && sync'")
+
+        # Reboot initiator node where all the app pods are running
+        node_reboot_by_command(ini_node)
+        wait_for_ocp_node_be_ready(self.node, ini_node)
+
+        # Wait for pods to be ready after node reboot
+        dc_names = [dc[0] for dc in dcs.values()]
+        pod_names = scale_dcs_pod_amount_and_wait(self.node, dc_names)
+
+        # Verify one path is down, because one gluster node is down
+        for iqn, _, _ in vol_info.values():
+            devices = get_iscsi_block_devices_by_path(ini_node, iqn).keys()
+            mpath = get_mpath_name_from_device_name(ini_node, list(devices)[0])
+            with self.assertRaises(AssertionError):
+                self.verify_all_paths_are_up_in_multipath(
+                    mpath, hacount, ini_node, timeout=1)
+
+        # Power on gluster node and wait for the services to be up
+        self.power_on_gluster_node_vm(target_vm_name, target_hostname)
+
+        # Delete pod so it can rediscover paths while creating new pod
+        scale_dcs_pod_amount_and_wait(self.node, dc_names, pod_amount=0)
+        pod_names = scale_dcs_pod_amount_and_wait(self.node, dc_names)
+
+        # Verify file
+        for pvc, (dc_name, _) in dcs.items():
+            pod_name = pod_names[dc_name][0]
+            _, out, _ = oc_rsh(self.node, pod_name, 'ls -l %s' % _file)
+            msg = ("Expected size %s of file '%s' is not present "
+                   "in out '%s'" % (file_size, _file, out))
+            self.assertIn(six.text_type(file_size), out, msg)
+
+        # Verify all paths are up and running
+        for iqn, hacount, _ in vol_info.values():
+            devices = get_iscsi_block_devices_by_path(ini_node, iqn).keys()
+
+            # Get mpath names and verify that only one mpath is there
+            mpaths = set()
+            for device in devices:
+                mpaths.add(get_mpath_name_from_device_name(ini_node, device))
+            msg = ("Only one mpath was expected on Node %s, but got %s" % (
+                ini_node, mpaths))
+            self.assertEqual(1, len(mpaths), msg)
+
+            self.verify_all_paths_are_up_in_multipath(
+                list(mpaths)[0], hacount, ini_node, timeout=1)

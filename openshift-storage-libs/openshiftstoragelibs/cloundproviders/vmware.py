@@ -198,6 +198,8 @@ class VmWare(object):
             g.log.error(msg)
             raise exceptions.CloudProviderError(msg)
 
+        # TODO(Nitin Goyal): Need to raise exact same below exception in other
+        # cloud providers as well in future e.g. AWS etc.
         if vm[0].summary.runtime.powerState == 'poweredOn':
             msg = 'VM %s is already powered On' % vm_name
             g.log.error(msg)
@@ -228,6 +230,8 @@ class VmWare(object):
             g.log.error(msg)
             raise exceptions.CloudProviderError(msg)
 
+        # TODO(Nitin Goyal): Need to raise exact same below exception in other
+        # cloud providers as well in future e.g. AWS etc.
         if vm[0].summary.runtime.powerState == 'poweredOff':
             msg = 'VM %s is already powered Off' % vm_name
             g.log.error(msg)

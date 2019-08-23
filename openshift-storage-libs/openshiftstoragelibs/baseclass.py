@@ -7,6 +7,7 @@ import six
 
 from openshiftstoragelibs import command
 from openshiftstoragelibs.exceptions import (
+    CloudProviderError,
     ConfigError,
     ExecutionError,
 )
@@ -26,6 +27,8 @@ from openshiftstoragelibs.heketi_ops import (
 from openshiftstoragelibs.node_ops import (
     node_add_iptables_rules,
     node_delete_iptables_rules,
+    power_off_vm_by_name,
+    power_on_vm_by_name,
 )
 from openshiftstoragelibs.openshift_ops import (
     get_block_provisioner,
@@ -41,9 +44,12 @@ from openshiftstoragelibs.openshift_ops import (
     oc_label,
     scale_dcs_pod_amount_and_wait,
     switch_oc_project,
+    wait_for_gluster_pod_be_ready_on_specific_node,
+    wait_for_ocp_node_be_ready,
     wait_for_pvcs_be_bound,
     wait_for_pods_be_ready,
     wait_for_resources_absence,
+    wait_for_service_status_on_gluster_pod_or_node,
 )
 from openshiftstoragelibs.openshift_storage_libs import (
     get_iscsi_block_devices_by_path,
@@ -548,6 +554,64 @@ class BaseClass(unittest.TestCase):
                        "kwargs = %s" % (func, args, kwargs))
                 g.log.warn(msg)
         return super(BaseClass, cls).doClassCleanups()
+
+    def power_on_vm(self, vm_name):
+        try:
+            power_on_vm_by_name(vm_name)
+        except CloudProviderError as e:
+            # Try to power on VM, if it raises already powered On error
+            # then don't raise exception.
+            if 'VM %s is already powered On' % vm_name not in e:
+                raise
+
+    def power_off_vm(self, vm_name):
+        self.addCleanup(self.power_on_vm, vm_name)
+        power_off_vm_by_name(vm_name)
+
+    def power_on_gluster_node_vm(
+            self, vm_name, gluster_hostname, timeout=300, wait_step=3):
+        # NOTE(Nitin Goyal): Same timeout is used for all functions.
+
+        # Bring up the target node
+        power_on_vm_by_name(vm_name)
+
+        # Wait for gluster node and pod to be ready
+        if self.is_containerized_gluster():
+            wait_for_ocp_node_be_ready(
+                self.node, gluster_hostname,
+                timeout=timeout, wait_step=wait_step)
+            wait_for_gluster_pod_be_ready_on_specific_node(
+                self.node, gluster_hostname,
+                timeout=timeout, wait_step=wait_step)
+
+        # Wait for gluster services to be up
+        for service in ('glusterd', 'gluster-blockd'):
+            wait_for_service_status_on_gluster_pod_or_node(
+                self.node, service, 'active', 'running', gluster_hostname,
+                raise_on_error=False, timeout=timeout, wait_step=wait_step)
+
+    def power_off_gluster_node_vm(
+            self, vm_name, gluster_hostname, timeout=300, wait_step=3):
+        # NOTE(Nitin Goyal): Same timeout is used for all functions.
+
+        # Wait for gluster services to be up in cleanup
+        for service in ('gluster-blockd', 'glusterd'):
+            self.addCleanup(
+                wait_for_service_status_on_gluster_pod_or_node,
+                self.node, service, 'active', 'running', gluster_hostname,
+                raise_on_error=False, timeout=timeout, wait_step=wait_step)
+
+        # Wait for gluster pod to be up and node to be ready in cleanup
+        if self.is_containerized_gluster():
+            self.addCleanup(
+                wait_for_gluster_pod_be_ready_on_specific_node, self.node,
+                gluster_hostname, timeout=timeout, wait_step=wait_step)
+            self.addCleanup(
+                wait_for_ocp_node_be_ready, self.node, gluster_hostname,
+                timeout=timeout, wait_step=wait_step)
+
+        # Power off vm
+        self.power_off_vm(vm_name)
 
 
 class GlusterBlockBaseClass(BaseClass):

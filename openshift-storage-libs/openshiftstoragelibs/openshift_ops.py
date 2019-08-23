@@ -467,7 +467,8 @@ def oc_delete(ocp_node, rtype, name, raise_on_absence=True):
     g.log.info('Deleted resource: %r %r', rtype, name)
 
 
-def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None):
+def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None,
+                           field_selector=None):
     """Get an OCP resource by custom column names.
 
     Args:
@@ -477,6 +478,8 @@ def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None):
         name (str|None): Name of the resource to fetch.
         selector (str|list|None): Column Name or list of column
                                   names select to.
+        field_selector (str|list|None): object field selector
+            which looks like following: 'spec.nodeName=foo_node_1'
     Returns:
         list: List containting data about the resource custom column
     Raises:
@@ -489,15 +492,25 @@ def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None):
     """
     cmd = ['oc', 'get', rtype, '--no-headers']
 
-    cmd.append('-o=custom-columns=%s' % (
-        ','.join(custom) if isinstance(custom, list) else custom))
+    if name:
+        cmd.append(name)
 
     if selector:
         cmd.append('--selector %s' % (
             ','.join(selector) if isinstance(selector, list) else selector))
 
-    if name:
-        cmd.append(name)
+    if field_selector:
+        # NOTE(Nitin Goyal): Add field-selector parameters to custom because it
+        # is not supported in ocp 3.6 and 3.7 and filter them via python later
+        custom = ','.join(custom) if isinstance(custom, list) else custom
+        field_selector = (field_selector.split(',') if isinstance(
+            field_selector, six.string_types) else field_selector)
+
+        for fs in field_selector:
+            custom += ',:' + re.split('=|!=', fs)[0]
+
+    cmd.append('-o=custom-columns=%s' % (
+        ','.join(custom) if isinstance(custom, list) else custom))
 
     out = command.cmd_run(cmd, hostname=ocp_node)
 
@@ -508,7 +521,21 @@ def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None):
         for line in (out.strip()).split('\n'):
             out_list.append(
                 list(filter(None, map(str.strip, line.split(' ')))))
+
+    if not field_selector:
         return out_list
+    # Filter out field-selector parameters
+    for fs in field_selector[::-1]:
+        fs_value = re.split('=|!=', fs)[1]
+        found = fs.find('!=')
+        for out in out_list[:]:
+            # Not equalto in fs and value present in list then remove it
+            if (found > 0 and out[-1] == fs_value
+                    # Equalto in fs and value does not match to fs then remove
+                    or found == -1 and out[-1] != fs_value):
+                out_list.remove(out)
+            out.pop()
+    return out_list
 
 
 def get_block_provisioner(ocp_node):
@@ -800,6 +827,46 @@ def get_gluster_pod_names_by_pvc_name(
             "Haven't found Gluster PODs on the cluster.")
     else:
         return None
+
+
+def wait_for_gluster_pod_be_ready_on_specific_node(
+        ocp_client_node, gluster_hostname, selector='glusterfs=storage-pod',
+        timeout=300, wait_step=10):
+    """Wait for gluster pod to be ready on specific node.
+
+    Args:
+        ocp_client_node (str): Node to execute OCP commands on.
+        gluster_hostname (str): Name of node hosting gluster pod.
+        selector (str): Selector for gluster pod.
+
+    Returns:
+        None
+    """
+    g_pod_name = get_gluster_pod_name_for_specific_node(
+        ocp_client_node, gluster_hostname, selector=selector)
+    wait_for_pod_be_ready(
+        ocp_client_node, g_pod_name, timeout=timeout, wait_step=wait_step)
+
+
+def get_gluster_pod_name_for_specific_node(
+        ocp_client_node, gluster_hostname, selector='glusterfs=storage-pod'):
+    """Get gluster pod name on specific gluster node.
+
+    Args:
+        ocp_client_node (str): Node to execute OCP commands on.
+        gluster_hostname (str): Name of node hosting gluster pod.
+        selector (str): Selector for gluster pod.
+
+    Returns:
+        str: Name of the gluster pod
+    """
+    g_pod_name = oc_get_custom_resource(
+        ocp_client_node, 'pod', ':.metadata.name', selector=selector,
+        field_selector='spec.nodeName=%s' % gluster_hostname)
+    if not g_pod_name:
+        raise AssertionError(
+            'Gluster pod was not found for node %s' % gluster_hostname)
+    return g_pod_name[0][0]
 
 
 def cmd_run_on_gluster_pod_or_node(
