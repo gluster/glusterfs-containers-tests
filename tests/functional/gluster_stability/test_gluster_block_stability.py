@@ -1,5 +1,7 @@
+from datetime import datetime
 import math
 import re
+from unittest import skip
 
 import ddt
 from glusto.core import Glusto as g
@@ -81,6 +83,10 @@ from openshiftstoragelibs.openshift_version import (
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import utils
 from openshiftstoragelibs.waiter import Waiter
+
+TCMU_CONF = "/etc/tcmu/tcmu.conf"
+TCMU_RUNNER_LOG = "/var/log/glusterfs/gluster-block/tcmu-runner.log"
+LOG_REGEX = r"^(\d+-\d+-\d+.*\d+:\d+:\d+)\.\d+.*\[(\S+)\](.*):(\d+):(.*)$"
 
 
 @ddt.ddt
@@ -1721,3 +1727,77 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             sorted(gluster_vol_list_before), sorted(gluster_vol_list_after),
             "Failed to match gluster volumes, unmatched volumes are {}".format(
                 unmatched_gluster_vols))
+
+    def _set_log_level(self, g_node, level, msg, exec_time):
+        delete_log_level = r'sed -i "/\(^log_level.*=.*[0-9]\)/d" {}'
+        set_log_level = r'sed -i "\$alog_level = {}" {}'
+        check_log_msg = r'sed -n "/.*\({}\).*/{{p;}}" {} | tail -1'
+
+        # Set log level
+        cmd_run_on_gluster_pod_or_node(
+            self.node, set_log_level.format(level, TCMU_CONF),
+            gluster_node=g_node)
+        self.addCleanup(
+            cmd_run_on_gluster_pod_or_node,
+            self.node, delete_log_level.format(TCMU_CONF), gluster_node=g_node)
+
+        # Validate log level
+        log_msg = "log level now is {}".format(msg)
+        for w in Waiter(120, 3):
+            out = cmd_run_on_gluster_pod_or_node(
+                self.node, check_log_msg.format(log_msg, TCMU_RUNNER_LOG),
+                gluster_node=g_node)
+            match = re.match(LOG_REGEX, out)
+            if (match
+                    and exec_time < datetime.strptime(
+                        match.group(1), "%Y-%m-%d %H:%M:%S")):
+                break
+
+        if w.expired:
+            raise ExecutionError(
+                "Log level '{}:{}' of tcmu did not get changed on node"
+                " {}".format(level, msg, g_node))
+
+        cmd_run_on_gluster_pod_or_node(
+            self.node, delete_log_level.format(TCMU_CONF), gluster_node=g_node)
+
+    @skip("Blocked by BZ-1755903")
+    @pytest.mark.tier1
+    def test_tcmu_log_levels(self):
+        """Check tcmu log levels and verify log levels"""
+        g_node, get_system_time = self.gluster_servers[0], "date '+%F %T'"
+
+        # Create PVC and pod with I/O
+        self.create_and_wait_for_pvc()
+        self.create_dc_with_pvc(self.pvc_name)
+
+        # Get current system date & time
+        exec_time = cmd_run_on_gluster_pod_or_node(
+            self.node, get_system_time, gluster_node=g_node)
+        exec_time = datetime.strptime(exec_time, "%Y-%m-%d %H:%M:%S")
+
+        # Change log level from 1 and verify message
+        for level, msg in (
+                (0, "CRIT"),
+                (2, "WARNING"),
+                (3, "INFO"),
+                (4, "DEBUG"),
+                (5, "DEBUG SCSI CMD")):
+            # Set log level to 1
+            self._set_log_level(g_node, 1, "ERROR", exec_time)
+
+            # Change log level
+            self._set_log_level(g_node, level, msg, exec_time)
+
+        # Change log level from 2 and verify message
+        for level, msg in (
+                (0, "CRIT"),
+                (1, "ERROR"),
+                (3, "INFO"),
+                (4, "DEBUG"),
+                (5, "DEBUG SCSI CMD")):
+            # Set log level to 2
+            self._set_log_level(g_node, 2, "WARNING", exec_time)
+
+            # Change log level
+            self._set_log_level(g_node, level, msg, exec_time)
