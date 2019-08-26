@@ -1,19 +1,25 @@
 import ddt
+from glustolibs.gluster.block_libs import get_block_list
 from glustolibs.gluster.volume_ops import get_volume_info
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
+    get_block_hosting_volume_list,
     get_total_free_space,
     heketi_blockvolume_create,
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
     heketi_blockvolume_list,
+    heketi_node_info,
+    heketi_node_list,
     heketi_volume_create,
     heketi_volume_delete,
     heketi_volume_info,
+    hello_heketi,
 )
 from openshiftstoragelibs.openshift_ops import (
-    get_default_block_hosting_volume_size
+    get_default_block_hosting_volume_size,
+    wait_for_service_status_on_gluster_pod_or_node,
 )
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import utils
@@ -240,3 +246,99 @@ class TestBlockVolumeOps(BaseClass):
             block_vol_info["name"], vol_name,
             ("Block volume Names are not same %s as %s",
              (block_vol_info["name"], vol_name)))
+
+    @podcmd.GlustoPod()
+    def test_create_max_num_blockhostingvolumes(self):
+        num_of_bv = 10
+        new_bhv_list, bv_list, g_nodes = [], [], []
+        free_space, nodenum = get_total_free_space(
+            self.heketi_client_node, self.heketi_server_url)
+        if nodenum < 3:
+            self.skipTest("Skip the test case since number of"
+                          "online nodes is less than 3.")
+        free_space_available = int(free_space / nodenum)
+        default_bhv_size = get_default_block_hosting_volume_size(
+            self.heketi_client_node, self.heketi_dc_name)
+        # Get existing list of BHV's
+        existing_bhv_list = get_block_hosting_volume_list(
+            self.heketi_client_node, self.heketi_server_url)
+
+        # Skip the test if available space is less than default_bhv_size
+        if free_space_available < default_bhv_size:
+            self.skipTest("Skip the test case since free_space_available %s"
+                          "is less than space_required_for_bhv %s ."
+                          % (free_space_available, default_bhv_size))
+
+        # Create BHV's
+        while free_space_available > default_bhv_size:
+            block_host_create_info = heketi_volume_create(
+                self.heketi_client_node, self.heketi_server_url,
+                default_bhv_size, json=True, block=True)
+            if block_host_create_info["id"] not in existing_bhv_list.keys():
+                new_bhv_list.append(block_host_create_info["id"])
+            self.addCleanup(
+                heketi_volume_delete, self.heketi_client_node,
+                self.heketi_server_url, block_host_create_info["id"],
+                raise_on_error=False)
+            block_vol_size = int(
+                block_host_create_info["blockinfo"]["freesize"] / num_of_bv)
+
+            # Create specified number of BV's in BHV's created
+            for i in range(0, num_of_bv):
+                block_vol = heketi_blockvolume_create(
+                    self.heketi_client_node, self.heketi_server_url,
+                    block_vol_size, json=True, ha=3, auth=True)
+                self.addCleanup(
+                    heketi_blockvolume_delete, self.heketi_client_node,
+                    self.heketi_server_url, block_vol["id"],
+                    raise_on_error=False)
+                bv_list.append(block_vol["id"])
+            free_space_available = int(free_space_available - default_bhv_size)
+
+        # Get gluster node ips
+        h_nodes_ids = heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url)
+        for h_node in h_nodes_ids[:2]:
+            g_node = heketi_node_info(
+                self.heketi_client_node, self.heketi_server_url, h_node,
+                json=True)
+            g_nodes.append(g_node['hostnames']['manage'][0])
+
+        # Check if there is no crash in gluster related services & heketi
+        services = (
+            ("glusterd", "running"), ("gluster-blockd", "running"),
+            ("tcmu-runner", "running"), ("gluster-block-target", "exited"))
+        for g_node in g_nodes:
+            for service, state in services:
+                wait_for_service_status_on_gluster_pod_or_node(
+                    self.ocp_client[0], service, 'active', state,
+                    g_node, raise_on_error=False)
+            out = hello_heketi(self.heketi_client_node, self.heketi_server_url)
+            self.assertTrue(
+                out, "Heketi server %s is not alive" % self.heketi_server_url)
+
+        # Delete all the BHV's and BV's created
+        for bv_volume in bv_list:
+            heketi_blockvolume_delete(
+                self.heketi_client_node, self.heketi_server_url, bv_volume)
+
+        # Check if any blockvolume exist in heketi & gluster
+        for bhv_volume in new_bhv_list[:]:
+            heketi_vol_info = heketi_volume_info(
+                self.heketi_client_node, self.heketi_server_url,
+                bhv_volume, json=True)
+            self.assertNotIn(
+                "blockvolume", heketi_vol_info["blockinfo"].keys())
+            gluster_vol_info = get_block_list(
+                'auto_get_gluster_endpoint', volname="vol_%s" % bhv_volume)
+            self.assertIsNotNone(
+                gluster_vol_info, "Failed to get volume info %s" % bhv_volume)
+            new_bhv_list.remove(bhv_volume)
+            for blockvol in gluster_vol_info:
+                self.assertNotIn("blockvol_", blockvol)
+                heketi_volume_delete(
+                    self.heketi_client_node, self.heketi_server_url,
+                    bhv_volume)
+
+        # Check if all blockhosting volumes are deleted from heketi
+        self.assertFalse(new_bhv_list)
