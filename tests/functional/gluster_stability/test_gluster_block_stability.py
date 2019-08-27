@@ -1,3 +1,5 @@
+import six
+
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs.command import cmd_run
 from openshiftstoragelibs.exceptions import ConfigError
@@ -7,6 +9,7 @@ from openshiftstoragelibs.heketi_ops import (
 )
 from openshiftstoragelibs.node_ops import (
     find_vm_name_by_ip_or_hostname,
+    node_reboot_by_command,
     power_off_vm_by_name,
     power_on_vm_by_name,
 )
@@ -21,6 +24,7 @@ from openshiftstoragelibs.openshift_ops import (
     oc_get_schedulable_nodes,
     oc_rsh,
     scale_dcs_pod_amount_and_wait,
+    wait_for_ocp_node_be_ready,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
     wait_for_service_status_on_gluster_pod_or_node,
@@ -33,6 +37,9 @@ from openshiftstoragelibs.openshift_storage_libs import (
 )
 from openshiftstoragelibs.openshift_storage_version import (
     get_openshift_storage_version
+)
+from openshiftstoragelibs.openshift_version import (
+    get_openshift_version
 )
 from openshiftstoragelibs.waiter import Waiter
 
@@ -447,3 +454,95 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             # Verify block sessions
             self.verify_iscsi_sessions_and_multipath(
                 pvc, pvc_and_dc[pvc]['dc_name'])
+
+    def get_initiator_node_and_mark_other_nodes_unschedulable(self):
+
+        ocp_version = get_openshift_version(self.node)
+        if ocp_version < '3.10':
+            self.skipTest(
+                "Block functionality doesn't work in OCP less than 3.10")
+
+        # Get all nodes
+        all_nodes = oc_get_custom_resource(
+            self.node, 'no', ':.metadata.name,:.spec.unschedulable')
+        all_nodes = {node[0]: node[1] for node in all_nodes}
+
+        # Get master nodes
+        master_nodes = oc_get_custom_resource(
+            self.node, 'node', ':.metadata.name',
+            selector='node-role.kubernetes.io/master=true')
+        master_nodes = [node[0] for node in master_nodes]
+
+        # Get list of all gluster nodes
+        g_nodes = oc_get_custom_resource(
+            self.node, 'pod', ':.spec.nodeName', selector='glusterfs-node=pod')
+        g_nodes = [node[0] for node in g_nodes]
+
+        # Get the list of nodes other than gluster and master
+        o_nodes = list(
+            (set(all_nodes.keys()) - set(g_nodes) - set(master_nodes)))
+
+        # Find a schedulable nodes in other nodes if not skip the test
+        initiator_nodes = [
+            node for node in o_nodes if all_nodes[node] == '<none>']
+
+        if not initiator_nodes:
+            self.skipTest('Sufficient schedulable nodes are not available')
+
+        # Get schedulable node
+        schedulable_nodes = oc_get_schedulable_nodes(self.node)
+
+        # Get the list of nodes which needs to be marked as unschedulable
+        unschedule_nodes = list(
+            set(schedulable_nodes) - set([initiator_nodes[0]]))
+
+        # Mark all schedulable, gluster and master nodes as unschedulable
+        # except one node on which app pods wil run
+        oc_adm_manage_node(
+            self.node, '--schedulable=false', nodes=unschedule_nodes)
+        self.addCleanup(
+            oc_adm_manage_node, self.node, '--schedulable=true',
+            nodes=unschedule_nodes)
+
+        return initiator_nodes[0]
+
+    def test_initiator_and_target_on_diff_node_abrupt_reboot_of_initiator_node(
+            self):
+        """Abrupt reboot initiator node to make sure paths rediscovery is
+        happening.
+        """
+        ini_node = self.get_initiator_node_and_mark_other_nodes_unschedulable()
+
+        # Create 5 PVC's and 5 DC's
+        pvcs = self.create_and_wait_for_pvcs(pvc_amount=5)
+        dcs = self.create_dcs_with_pvc(pvcs)
+
+        for pvc, (dc_name, _) in dcs.items():
+            self.verify_iscsi_sessions_and_multipath(pvc, dc_name)
+
+        # Run I/O on app pods
+        _file, base_size, count = '/mnt/file', 4096, 1000
+        file_size = base_size * count
+        cmd_run_io = 'dd if=/dev/urandom of=%s bs=%s count=%s' % (
+            _file, base_size, count)
+
+        for _, pod_name in dcs.values():
+            oc_rsh(self.node, pod_name, cmd_run_io)
+
+        # Reboot initiator node where all the app pods are running
+        node_reboot_by_command(ini_node)
+        wait_for_ocp_node_be_ready(self.node, ini_node)
+
+        # Wait for pods to be ready after node reboot
+        pod_names = scale_dcs_pod_amount_and_wait(
+            self.node, [dc[0] for dc in dcs.values()])
+
+        for pvc, (dc_name, _) in dcs.items():
+            pod_name = pod_names[dc_name][0]
+            # Verify file
+            _, out, _ = oc_rsh(self.node, pod_name, 'ls -l %s' % _file)
+            msg = ("Expected size %s of file '%s' is not present "
+                   "in out '%s'" % (file_size, _file, out))
+            self.assertIn(six.text_type(file_size), out, msg)
+
+            self.verify_iscsi_sessions_and_multipath(pvc, dc_name)

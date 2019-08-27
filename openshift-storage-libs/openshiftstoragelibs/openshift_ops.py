@@ -1529,3 +1529,29 @@ def get_default_block_hosting_volume_size(hostname, heketi_dc_name):
            "out['glusterfs']['block_hosting_volume_size'] from out:\n" % out)
     g.log.error(msg)
     raise exceptions.ExecutionError(msg)
+
+
+def wait_for_ocp_node_be_ready(
+        hostname, node_name, timeout=300, wait_step=5):
+    """Wait for OCP node to be in ready state.
+
+    Args:
+        hostname (str): Node where we want to run our commands.
+        node_name (str): Name of ocp node.
+        timeout (int): Seconds to wait for Node to be Ready.
+        wait_step (int): Interval in seconds to wait before checking
+                         status again.
+    Raises:
+        exceptions.ExecutionError.
+    """
+    custom = r'":.status.conditions[?(@.type==\"Ready\")]".status'
+
+    for w in waiter.Waiter(timeout, wait_step):
+        status = oc_get_custom_resource(hostname, 'node', custom, node_name)
+        if status[0] == 'True':
+            return
+
+    err_msg = ("Exceeded timeout: %s for waiting for Node: %s "
+               "to be in Ready state" % (timeout, node_name))
+    g.log.error(err_msg)
+    raise exceptions.ExecutionError(err_msg)
