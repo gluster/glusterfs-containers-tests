@@ -196,12 +196,12 @@ class VmWare(object):
         if not vm:
             msg = 'VM %s is not present in list' % vm_name
             g.log.error(msg)
-            exceptions.CloudProviderError(msg)
+            raise exceptions.CloudProviderError(msg)
 
         if vm[0].summary.runtime.powerState == 'poweredOn':
             msg = 'VM %s is already powered On' % vm_name
             g.log.error(msg)
-            exceptions.CloudProviderError(msg)
+            raise exceptions.CloudProviderError(msg)
 
         tasks = [vm[0].PowerOn()]
         self._wait_for_tasks(tasks, self.vsphere_client)
@@ -226,12 +226,12 @@ class VmWare(object):
         if not vm:
             msg = 'VM %s is not present in list' % vm_name
             g.log.error(msg)
-            exceptions.CloudProviderError(msg)
+            raise exceptions.CloudProviderError(msg)
 
         if vm[0].summary.runtime.powerState == 'poweredOff':
             msg = 'VM %s is already powered Off' % vm_name
             g.log.error(msg)
-            exceptions.CloudProviderError(msg)
+            raise exceptions.CloudProviderError(msg)
 
         tasks = [vm[0].PowerOff()]
         self._wait_for_tasks(tasks, self.vsphere_client)
