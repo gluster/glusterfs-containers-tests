@@ -29,10 +29,11 @@ from glusto.core import Glusto as g
 import six
 
 from openshiftstoragelibs import command
+from openshiftstoragelibs import exceptions
 
 
 OPENSHIFT_STORAGE_VERSION_RE = r"(?:v?)(\d+)(?:\.)(\d+)(?:\.(\d+))?.*"
-BUILD_INFO_FILE_REGEX = r"Dockerfile-(:?.*)-rhgs-server-(:?.*)-"
+BUILDS_LABEL_TAG_REGEX = r"^LABEL.(ocs|cns)\.tags=\"v(.*),v(.*)\"$"
 OPENSHIFT_STORAGE_VERSION = None
 
 
@@ -56,11 +57,20 @@ def _get_openshift_storage_version_str(hostname=None):
             "OCS version check cannot be done on the standalone setup.")
 
     buildinfo_cmd = (
-        "oc rsh %s ls -l /root/buildinfo/ | "
-        "awk '{print $9}' | tail -1" % gluster_pod)
+        "oc rsh %s "
+        "find . -name \"Dockerfile-rhgs3-rhgs-server-rhel7*\" "
+        r"-exec awk '/%s/{print $0}' {} \; "
+        "| tail -1" %
+        (gluster_pod, BUILDS_LABEL_TAG_REGEX))
     out = command.cmd_run(buildinfo_cmd, hostname)
 
-    return out
+    build_tag_match = re.search(BUILDS_LABEL_TAG_REGEX, out)
+    if not build_tag_match:
+        error_msg = "Unexpected BUILD LABEL tag expression: '%s'" % out
+        g.log.error(error_msg)
+        raise exceptions.ExecutionError(error_msg)
+
+    return (build_tag_match.group(2)).strip()
 
 
 def _parse_openshift_storage_version(openshift_storage_version_str):
