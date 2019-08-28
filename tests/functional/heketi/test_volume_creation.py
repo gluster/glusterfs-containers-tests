@@ -145,3 +145,33 @@ class TestVolumeCreationTestCases(BaseClass):
             self.assertFalse(
                 vol_fail,
                 "Volume should have not been created. Out: %s" % vol_fail)
+
+    @podcmd.GlustoPod()
+    def test_volume_create_replica_2(self):
+        """Validate creation of a replica 2 volume"""
+        vol_create_info = heketi_ops.heketi_volume_create(
+            self.heketi_client_node, self.heketi_server_url, 1,
+            replica=2, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_create_info["id"],
+            raise_on_error=True)
+        actual_replica = int(
+            vol_create_info["durability"]["replicate"]["replica"])
+        self.assertEqual(
+            actual_replica, 2,
+            "Volume '%s' has '%s' as value for replica,"
+            " expected 2." % (vol_create_info["id"], actual_replica))
+        vol_name = vol_create_info['name']
+
+        # Get gluster volume info
+        gluster_vol = volume_ops.get_volume_info(
+            'auto_get_gluster_endpoint', volname=vol_name)
+        self.assertTrue(
+            gluster_vol, "Failed to get volume '%s' info" % vol_name)
+
+        # Check amount of bricks
+        brick_amount = len(gluster_vol[vol_name]['bricks']['brick'])
+        self.assertEqual(brick_amount, 2,
+                         "Brick amount is expected to be 2. "
+                         "Actual amount is '%s'" % brick_amount)
