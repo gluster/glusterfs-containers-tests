@@ -1,3 +1,4 @@
+import ddt
 from glustolibs.gluster.volume_ops import get_volume_info
 
 from openshiftstoragelibs.baseclass import BaseClass
@@ -17,6 +18,7 @@ from openshiftstoragelibs.openshift_ops import (
 from openshiftstoragelibs import podcmd
 
 
+@ddt.ddt
 class TestBlockVolumeOps(BaseClass):
     """Class to test heketi block volume deletion with and without block
        volumes existing, heketi block volume list, heketi block volume info
@@ -194,3 +196,30 @@ class TestBlockVolumeOps(BaseClass):
             self.assertIn(k, vol_info[bhv_name]["options"].keys())
             self.assertEqual(v, vol_info[bhv_name]
                              ["options"][k])
+
+    @ddt.data(True, False)
+    def test_create_blockvolume_with_different_auth_values(self, auth_value):
+        """To validate block volume creation with different auth values"""
+        # Block volume create with auth enabled
+        block_vol = heketi_blockvolume_create(
+            self.heketi_client_node, self.heketi_server_url, 1,
+            auth=auth_value, json=True)
+        self.addCleanup(
+            heketi_blockvolume_delete, self.heketi_client_node,
+            self.heketi_server_url, block_vol["id"])
+
+        # Verify username and password are present
+        block_vol_info = heketi_blockvolume_info(
+            self.heketi_client_node, self.heketi_server_url,
+            block_vol["id"], json=True)
+        assertion_func = (self.assertNotEqual if auth_value
+                          else self.assertEqual)
+        assertion_msg_part = "not " if auth_value else ""
+        assertion_func(
+            block_vol_info["blockvolume"]["username"], "",
+            ("Username is %spresent in %s", (assertion_msg_part,
+                                             block_vol["id"])))
+        assertion_func(
+            block_vol_info["blockvolume"]["password"], "",
+            ("Password is %spresent in %s", (assertion_msg_part,
+                                             block_vol["id"])))
