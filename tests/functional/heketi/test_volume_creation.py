@@ -1,6 +1,7 @@
 from glusto.core import Glusto as g
 from glustolibs.gluster import snap_ops
 from glustolibs.gluster import volume_ops
+import six
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs import heketi_ops
@@ -11,6 +12,10 @@ class TestVolumeCreationTestCases(BaseClass):
     """
     Class for volume creation related test cases
     """
+
+    def setUp(self):
+        super(TestVolumeCreationTestCases, self).setUp()
+        self.node = self.ocp_master_node[0]
 
     @podcmd.GlustoPod()
     def test_create_heketi_volume(self):
@@ -214,3 +219,152 @@ class TestVolumeCreationTestCases(BaseClass):
                 'auto_get_gluster_endpoint', snap_name)
             self.assertEqual(
                 ret, 0, "Failed to delete snapshot %s" % snap_name)
+
+    @podcmd.GlustoPod()
+    def get_gluster_vol_info(self, file_vol):
+        """Get Gluster vol info.
+
+        Args:
+            ocp_client (str): Node to execute OCP commands.
+            file_vol (str): file volume name.
+
+        Returns:
+            dict: Info of the given gluster vol.
+        """
+        g_vol_info = volume_ops.get_volume_info(
+            "auto_get_gluster_endpoint", file_vol)
+
+        if not g_vol_info:
+            raise AssertionError("Failed to get volume info for gluster "
+                                 "volume '%s'" % file_vol)
+        if file_vol in g_vol_info:
+            g_vol_info = g_vol_info.get(file_vol)
+        return g_vol_info
+
+    def test_volume_creation_of_size_greater_than_the_device_size(self):
+        """Validate creation of a volume of size greater than the size of a
+        device.
+        """
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+        topology = heketi_ops.heketi_topology_info(h_node, h_url, json=True)
+
+        nodes_free_space, nodes_ips = [], []
+        selected_nodes, selected_devices = [], []
+        cluster = topology['clusters'][0]
+        node_count = len(cluster['nodes'])
+        msg = ("At least 3 Nodes are required in cluster. "
+               "But only %s Nodes are present." % node_count)
+        if node_count < 3:
+            self.skipTest(msg)
+
+        online_nodes_count = 0
+        for node in cluster['nodes']:
+            nodes_ips.append(node['hostnames']['storage'][0])
+
+            if node['state'] != 'online':
+                continue
+
+            online_nodes_count += 1
+
+            # Disable nodes after 3rd online nodes
+            if online_nodes_count > 3:
+                heketi_ops.heketi_node_disable(h_node, h_url, node['id'])
+                self.addCleanup(
+                    heketi_ops.heketi_node_enable, h_node, h_url, node['id'])
+                continue
+
+            selected_nodes.append(node['id'])
+
+            device_count = len(node['devices'])
+            msg = ("At least 2 Devices are required on each Node."
+                   "But only %s Devices are present." % device_count)
+            if device_count < 2:
+                self.skipTest(msg)
+
+            sel_devices, online_devices_count, free_space = [], 0, 0
+            for device in node['devices']:
+                if device['state'] != 'online':
+                    continue
+
+                online_devices_count += 1
+
+                # Disable devices after 2nd online devices
+                if online_devices_count > 2:
+                    heketi_ops.heketi_device_disable(
+                        h_node, h_url, device['id'])
+                    self.addCleanup(
+                        heketi_ops.heketi_device_enable, h_node, h_url,
+                        device['id'])
+                    continue
+
+                sel_devices.append(device['id'])
+                free_space += int(device['storage']['free'] / (1024**2))
+
+            selected_devices.append(sel_devices)
+            nodes_free_space.append(free_space)
+
+            msg = ("At least 2 online Devices are required on each Node. "
+                   "But only %s Devices are online on Node: %s." % (
+                       online_devices_count, node['id']))
+            if online_devices_count < 2:
+                self.skipTest(msg)
+
+        msg = ("At least 3 online Nodes are required in cluster. "
+               "But only %s Nodes are online in Cluster: %s." % (
+                   online_nodes_count, cluster['id']))
+        if online_nodes_count < 3:
+            self.skipTest(msg)
+
+        # Select node with minimum free space
+        min_free_size = min(nodes_free_space)
+        index = nodes_free_space.index(min_free_size)
+
+        # Get max device size from selected node
+        device_size = 0
+        for device in selected_devices[index]:
+            device_info = heketi_ops.heketi_device_info(
+                h_node, h_url, device, json=True)
+            device_size = max(device_size, (
+                int(device_info['storage']['total'] / (1024**2))))
+
+        vol_size = device_size + 1
+
+        if vol_size >= min_free_size:
+            self.skipTest('Required free space %s is not available' % vol_size)
+
+        # Create heketi volume with device size + 1
+        vol_info = heketi_ops.heketi_volume_create(
+            h_node, h_url, vol_size, clusters=cluster['id'], json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, h_node, h_url, vol_info['id'])
+
+        # Get gluster server IP's from heketi volume info
+        glusterfs_servers = heketi_ops.get_vol_file_servers_and_hosts(
+            h_node, h_url, vol_info['id'])
+
+        # Verify gluster server IP's in heketi volume info
+        msg = ("gluster IP's '%s' does not match with IP's '%s' found in "
+               "heketi volume info" % (
+                   nodes_ips, glusterfs_servers['vol_servers']))
+        self.assertEqual(
+            set(glusterfs_servers['vol_servers']), set(nodes_ips), msg)
+
+        vol_name = vol_info['name']
+        gluster_v_info = self.get_gluster_vol_info(vol_name)
+
+        # Verify replica count in gluster v info
+        msg = "Volume %s is replica %s instead of replica 3" % (
+            vol_name, gluster_v_info['replicaCount'])
+        self.assertEqual('3', gluster_v_info['replicaCount'])
+
+        # Verify distCount in gluster v info
+        msg = "Volume %s distCount is %s instead of distCount as 3" % (
+            vol_name, gluster_v_info['distCount'])
+        self.assertEqual(
+            six.text_type(int(gluster_v_info['brickCount']) / 3),
+            gluster_v_info['distCount'])
+
+        # Verify bricks count in gluster v info
+        msg = ("Volume %s does not have bricks count multiple of 3. It has %s"
+               % (vol_name, gluster_v_info['brickCount']))
+        self.assertFalse(int(gluster_v_info['brickCount']) % 3)

@@ -1810,3 +1810,38 @@ def get_heketi_volume_and_brick_count_list(
         volume_name_brick_count = [
             (v['name'], len(v['bricks'])) for v in c['volumes']]
     return volume_name_brick_count
+
+
+def get_vol_file_servers_and_hosts(
+        heketi_client_node, heketi_server_url, volume_id, **kwargs):
+    """Get volume file server and hosts.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+        volume_id (str): Volume ID
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        dict: {'vol_servers': [], 'vol_hosts': []}
+
+    Raises:
+        AssertionError: if command fails.
+    """
+    if 'json' in kwargs:
+        raise AssertionError("json is not expected parameter")
+
+    kwargs['json'] = True
+
+    vol_info = heketi_volume_info(
+        heketi_client_node, heketi_server_url, volume_id, **kwargs)
+
+    glusterfs = vol_info['mount']['glusterfs']
+    vol_servers = (
+        glusterfs['device'].split(":")[:1]
+        + glusterfs['options']['backup-volfile-servers'].split(","))
+    return {'vol_servers': vol_servers, 'vol_hosts': glusterfs['hosts']}
