@@ -1,6 +1,7 @@
 from __future__ import division
 import math
 
+import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 
@@ -19,6 +20,7 @@ from openshiftstoragelibs.heketi_ops import (
 from openshiftstoragelibs import podcmd
 
 
+@ddt.ddt
 class TestHeketiVolume(BaseClass):
 
     def setUp(self):
@@ -91,7 +93,9 @@ class TestHeketiVolume(BaseClass):
         vol_size_gb = int(min(map(max, nodes.values())) / (1024 ** 2)) + 1
         return vol_size_gb
 
-    def _create_distributed_replica_vol(self, validate_cleanup):
+    @podcmd.GlustoPod()
+    def _create_distributed_replica_vol(
+            self, validate_cleanup, block=False):
 
         # Create distributed vol
         vol_size_gb = self._get_vol_size()
@@ -100,7 +104,8 @@ class TestHeketiVolume(BaseClass):
             g.log.info(
                 "Trying to create distributed '%s'Gb volume." % vol_size_gb)
             heketi_vol = heketi_volume_create(
-                self.heketi_client_node, heketi_url, vol_size_gb, json=True)
+                self.heketi_client_node, heketi_url, vol_size_gb,
+                json=True, block=block)
         except AssertionError as e:
             # NOTE: rare situation when we need to decrease size of a volume.
             #       and we expect this vol to be distributed.
@@ -112,7 +117,7 @@ class TestHeketiVolume(BaseClass):
                 vol_size_gb -= 1
                 heketi_vol = heketi_volume_create(
                     self.heketi_client_node, heketi_url, vol_size_gb,
-                    json=True)
+                    json=True, block=block)
             else:
                 raise
         g.log.info("Successfully created distributed volume.")
@@ -193,14 +198,18 @@ class TestHeketiVolume(BaseClass):
                        free_space_after_creating_vol,
                        free_space_after_deleting_vol))
 
-    @podcmd.GlustoPod()
     def test_to_create_distribute_replicated_vol(self):
         """Validate 2x3 vol type creation when the volume cannot be
            carved out of a single device
         """
         self._create_distributed_replica_vol(validate_cleanup=False)
 
-    @podcmd.GlustoPod()
     def test_to_create_and_delete_dist_rep_vol(self):
         """Validate whether deleting a dist-rep volume is handled by heketi"""
         self._create_distributed_replica_vol(validate_cleanup=True)
+
+    @ddt.data(True, False)
+    def test_create_and_delete_dist_replicated_bhv(self, validate_cleanup):
+        """Validate distributed replicated bhv using heketi-cli"""
+        self._create_distributed_replica_vol(
+            validate_cleanup, block=True)
