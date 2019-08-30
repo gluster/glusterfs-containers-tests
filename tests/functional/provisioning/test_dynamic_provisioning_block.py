@@ -255,8 +255,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             for pvc in self.pvc_name_list:
                 with self.assertRaises(ExecutionError):
                     wait_for_resource_absence(
-                       self.ocp_client[0], 'pvc', pvc,
-                       interval=3, timeout=30)
+                        self.ocp_client[0], 'pvc', pvc, interval=3, timeout=30)
         finally:
             # bring back heketi-pod
             scale_dc_pod_amount_and_wait(self.ocp_client[0],
@@ -309,11 +308,11 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
         pv_name = get_pv_name_from_pvc(self.node, self.pvc_name)
         vol_name = oc_get_custom_resource(
-                self.node, 'pv',
-                ':.metadata.annotations.glusterBlockShare', pv_name)[0]
+            self.node, 'pv',
+            ':.metadata.annotations.glusterBlockShare', pv_name)[0]
 
         block_vol_list = heketi_blockvolume_list(
-                self.heketi_client_node, self.heketi_server_url)
+            self.heketi_client_node, self.heketi_server_url)
 
         self.assertIn(vol_name, block_vol_list)
 

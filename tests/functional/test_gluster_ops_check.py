@@ -29,6 +29,5 @@ class TestOpsCheck(BaseClass):
 
         # Validate the result
         err_msg = ("Got unexepeted max-brick process - '%s' "
-                   "Expected max brick process is : 250") % (
-                   bprocess_status)
+                   "Expected max brick process is : 250") % bprocess_status
         self.assertIn(bprocess_status, '250', err_msg)

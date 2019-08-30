@@ -183,7 +183,7 @@ class TestStorageClassCases(BaseClass):
         {"restuser": "fakeuser"},
         {"volumenameprefix": "dept_qe"},
         {"clusterids": "123456789abcdefg"},
-        )
+    )
     def test_sc_glusterfile_incorrect_parameter(self, parameter={}):
         """Validate glusterfile storage with different incorrect parameters"""
         self.create_sc_with_parameter("glusterfile", parameter=parameter)
@@ -194,7 +194,7 @@ class TestStorageClassCases(BaseClass):
          "restsecretnamespace": "fakerestnamespace"},
         {"restuser": "fakeuser"},
         {"clusterids": "123456789abcdefg"},
-        )
+    )
     def test_sc_glusterblock_incorrect_parameter(self, parameter={}):
         """Validate glusterblock storage with different incorrect parameters"""
         self.create_sc_with_parameter("glusterblock", parameter=parameter)
@@ -341,6 +341,6 @@ class TestStorageClassCases(BaseClass):
             self.ocp_master_node[0], "pv", ":spec.glusterfs.endpoints",
             name=pv_name)
         self.assertTrue(
-             endpoint,
-             "Failed to read Endpoints of %s on  %s " % (
-                 pv_name, self.ocp_master_node[0]))
+            endpoint,
+            "Failed to read Endpoints of %s on  %s " % (
+                pv_name, self.ocp_master_node[0]))

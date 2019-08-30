@@ -53,8 +53,8 @@ class TestHeketiVolume(BaseClass):
         for node_id in node_ids:
             node_info = heketi_node_info(
                 self.heketi_client_node, heketi_url, node_id, json=True)
-            if (node_info['state'].lower() != 'online' or
-                    not node_info['devices']):
+            if (node_info['state'].lower() != 'online'
+                    or not node_info['devices']):
                 continue
             if len(nodes) > 2:
                 out = heketi_node_disable(
@@ -80,8 +80,8 @@ class TestHeketiVolume(BaseClass):
                 nodes[node_id].append(device['storage']['free'])
 
         # Skip test if nodes requirements are not met
-        if (len(nodes) < 3 or
-                not all(map((lambda _list: len(_list) > 1), nodes.values()))):
+        if (len(nodes) < 3
+                or not all(map((lambda _l: len(_l) > 1), nodes.values()))):
             raise self.skipTest(
                 "Could not find 3 online nodes with, "
                 "at least, 2 online devices having free space "

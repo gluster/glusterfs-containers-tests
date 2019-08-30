@@ -77,8 +77,8 @@ class TestHeketiMetrics(BaseClass):
                              for obj in metrics['heketi_device_count']])
                 self.assertIn(hostname, hostnames)
                 for device_count in metrics['heketi_device_count']:
-                    if (device_count['cluster'] == cluster_id and
-                            device_count['hostname'] == hostname):
+                    if (device_count['cluster'] == cluster_id
+                            and device_count['hostname'] == hostname):
                         self.assertEqual(
                             len(node['devices']), device_count['value'])
 
@@ -101,9 +101,9 @@ class TestHeketiMetrics(BaseClass):
                                metrics['heketi_device_brick_count']])
                     self.assertIn(device_name, devices)
                     for brick_count in metrics['heketi_device_brick_count']:
-                        if (brick_count['cluster'] == cluster_id and
-                                brick_count['hostname'] == hostname and
-                                brick_count['device'] == device_name):
+                        if (brick_count['cluster'] == cluster_id
+                                and brick_count['hostname'] == hostname
+                                and brick_count['device'] == device_name):
                             self.assertEqual(
                                 len(device['bricks']), brick_count['value'])
 
@@ -117,9 +117,9 @@ class TestHeketiMetrics(BaseClass):
                                for obj in metrics['heketi_device_size']])
                     self.assertIn(device_name, devices)
                     for device_size in metrics['heketi_device_size']:
-                        if (device_size['cluster'] == cluster_id and
-                                device_size['hostname'] == hostname and
-                                device_size['device'] == device_name):
+                        if (device_size['cluster'] == cluster_id
+                                and device_size['hostname'] == hostname
+                                and device_size['device'] == device_name):
                             self.assertEqual(
                                 device_size_t, device_size['value'])
 
@@ -133,9 +133,9 @@ class TestHeketiMetrics(BaseClass):
                                for obj in metrics['heketi_device_free']])
                     self.assertIn(device_name, devices)
                     for device_free in metrics['heketi_device_free']:
-                        if (device_free['cluster'] == cluster_id and
-                                device_free['hostname'] == hostname and
-                                device_free['device'] == device_name):
+                        if (device_free['cluster'] == cluster_id
+                                and device_free['hostname'] == hostname
+                                and device_free['device'] == device_name):
                             self.assertEqual(
                                 device_free_t, device_free['value'])
 
@@ -149,9 +149,9 @@ class TestHeketiMetrics(BaseClass):
                                for obj in metrics['heketi_device_used']])
                     self.assertIn(device_name, devices)
                     for device_used in metrics['heketi_device_used']:
-                        if (device_used['cluster'] == cluster_id and
-                                device_used['hostname'] == hostname and
-                                device_used['device'] == device_name):
+                        if (device_used['cluster'] == cluster_id
+                                and device_used['hostname'] == hostname
+                                and device_used['device'] == device_name):
                             self.assertEqual(
                                 device_used_t, device_used['value'])
 

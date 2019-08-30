@@ -132,7 +132,7 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
                 total_free_space += device["storage"]["free"]
             free_spaces.append(total_free_space)
 
-        total_free_space = sum(free_spaces)/(1024 ** 2)
+        total_free_space = sum(free_spaces) / (1024 ** 2)
         total_free_space = int(math.floor(total_free_space))
 
         return total_free_space
@@ -221,15 +221,15 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
             volume_info_after_expansion["size"])
 
         difference_size_after_expansion = (
-            heketi_vol_info_size_after_expansion -
-            heketi_vol_info_size_before_expansion)
+            heketi_vol_info_size_after_expansion
+            - heketi_vol_info_size_before_expansion)
 
         self.assertTrue(
             difference_size_after_expansion > 0,
             "Volume expansion for %s did not consume free space" % volume_id)
 
-        num_of_bricks_added_after_expansion = (num_of_bricks_after_expansion -
-                                               num_of_bricks_before_expansion)
+        num_of_bricks_added_after_expansion = (
+            num_of_bricks_after_expansion - num_of_bricks_before_expansion)
 
         self.assertEqual(
             num_of_bricks_added_after_expansion, 3,
@@ -270,16 +270,16 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
             volume_info_after_further_expansion["size"])
 
         difference_size_after_further_expansion = (
-            heketi_vol_info_size_after_further_expansion -
-            heketi_vol_info_size_after_expansion)
+            heketi_vol_info_size_after_further_expansion
+            - heketi_vol_info_size_after_expansion)
 
         self.assertTrue(
             difference_size_after_further_expansion > 0,
             "Size of volume %s did not increase" % volume_id)
 
         num_of_bricks_added_after_further_expansion = (
-            num_of_bricks_after_further_expansion -
-            num_of_bricks_after_expansion)
+            num_of_bricks_after_further_expansion
+            - num_of_bricks_after_expansion)
 
         self.assertEqual(
             num_of_bricks_added_after_further_expansion, 3,
@@ -330,8 +330,8 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
                 devices, "Node '%s' does not have devices." % node_id)
             if devices[0]["state"].strip().lower() != "online":
                 self.skipTest("Test expects first device to be enabled.")
-            if (smallest_size is None or
-                    devices[0]["storage"]["free"] < smallest_size):
+            if (smallest_size is None
+                    or devices[0]["storage"]["free"] < smallest_size):
                 smallest_size = devices[0]["storage"]["free"]
             for device in node_info["devices"][1:]:
                 heketi_ops.heketi_device_disable(
@@ -346,8 +346,8 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
                 gluster_server_data = self.gluster_servers_info[gluster_server]
                 g_manage = gluster_server_data["manage"]
                 g_storage = gluster_server_data["storage"]
-                if not (g_manage in node_info["hostnames"]["manage"] or
-                        g_storage in node_info["hostnames"]["storage"]):
+                if not (g_manage in node_info["hostnames"]["manage"]
+                        or g_storage in node_info["hostnames"]["storage"]):
                     continue
                 additional_device_name = ((
                     gluster_server_data.get("additional_devices") or [''])[0])
@@ -358,8 +358,9 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
                             "'%s' node, which has following hostnames and "
                             "IP addresses: %s.\n" % (
                                 node_id,
-                                ', '.join(node_info["hostnames"]["manage"] +
-                                          node_info["hostnames"]["storage"])))
+                                ', '.join(
+                                    node_info["hostnames"]["manage"]
+                                    + node_info["hostnames"]["storage"])))
                 continue
 
             heketi_ops.heketi_device_add(
@@ -487,8 +488,8 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
         heketi_vol_info_size_after_expansion = (
             volume_info_after_expansion["size"])
 
-        difference_size = (heketi_vol_info_size_after_expansion -
-                           heketi_vol_info_size_before_expansion)
+        difference_size = (heketi_vol_info_size_after_expansion
+                           - heketi_vol_info_size_before_expansion)
 
         self.assertTrue(
             difference_size > 0,
@@ -497,8 +498,8 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
         self.get_brick_and_volume_status(volume_name)
         num_of_bricks_after_expansion = self.get_num_of_bricks(volume_name)
 
-        num_of_bricks_added = (num_of_bricks_after_expansion -
-                               num_of_bricks_before_expansion)
+        num_of_bricks_added = (
+            num_of_bricks_after_expansion - num_of_bricks_before_expansion)
 
         self.assertEqual(
             num_of_bricks_added, 3,

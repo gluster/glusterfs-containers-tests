@@ -48,7 +48,7 @@ class TestPvResizeClass(BaseClass):
         (True, True),
         (False, True),
         (False, False),
-        )
+    )
     @ddt.unpack
     def test_pv_resize_with_prefix_for_name_and_size(
             self, create_vol_name_prefix=False, valid_size=True):
@@ -79,8 +79,8 @@ class TestPvResizeClass(BaseClass):
         cmd = ("dd if=/dev/urandom of=%sfile "
                "bs=100K count=1000") % dir_path
         ret, out, err = oc_rsh(node, pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, node))
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
         pv_name = get_pv_name_from_pvc(node, pvc_name)
 
         # If resize size is invalid then size should not change
@@ -111,8 +111,8 @@ class TestPvResizeClass(BaseClass):
         cmd = ("dd if=/dev/urandom of=%sfile_new "
                "bs=50K count=10000") % dir_path
         ret, out, err = oc_rsh(node, pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, node))
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
 
     def _pv_resize(self, exceed_free_space):
         dir_path = "/mnt"
@@ -128,8 +128,8 @@ class TestPvResizeClass(BaseClass):
         for node_id in node_id_list:
             node_info = heketi_ops.heketi_node_info(
                 self.heketi_client_node, heketi_url, node_id, json=True)
-            if (node_info['state'].lower() != 'online' or
-                    not node_info['devices']):
+            if (node_info['state'].lower() != 'online'
+                    or not node_info['devices']):
                 continue
             if len(nodes) > 2:
                 out = heketi_ops.heketi_node_disable(
@@ -239,8 +239,8 @@ class TestPvResizeClass(BaseClass):
         cmd = ("dd if=/dev/urandom of=%sfile "
                "bs=100K count=3000") % dir_path
         ret, out, err = oc_rsh(node, pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, node))
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
         pvc_resize = 2
         with self.assertRaises(AssertionError):
             resize_pvc(node, pvc_name, pvc_resize)
@@ -250,8 +250,8 @@ class TestPvResizeClass(BaseClass):
         cmd = ("dd if=/dev/urandom of=%sfile_new "
                "bs=100K count=2000") % dir_path
         ret, out, err = oc_rsh(node, pod_name, cmd)
-        self.assertEqual(ret, 0, "failed to execute command %s on %s" % (
-                             cmd, node))
+        self.assertEqual(
+            ret, 0, "Failed to execute command %s on %s" % (cmd, node))
 
     def test_pv_resize_when_heketi_down(self):
         """Create a PVC and try to expand it when heketi is down, It should

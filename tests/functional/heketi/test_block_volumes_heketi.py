@@ -112,8 +112,8 @@ class TestBlockVolumeOps(BaseClass):
                           "is less than the default_bhv_size %s"
                           % (free_space_available, default_bhv_size))
         block_host_create_info = heketi_volume_create(
-                self.heketi_client_node, self.heketi_server_url,
-                default_bhv_size, json=True, block=True)
+            self.heketi_client_node, self.heketi_server_url,
+            default_bhv_size, json=True, block=True)
         block_vol_size = block_host_create_info["blockinfo"]["freesize"]
         block_hosting_vol_id = block_host_create_info["id"]
         self.addCleanup(heketi_volume_delete,
@@ -178,9 +178,8 @@ class TestBlockVolumeOps(BaseClass):
                           "is less than the default_bhv_size %s ."
                           % (free_space_available, default_bhv_size))
         block_host_create_info = heketi_volume_create(
-                self.heketi_client_node,
-                self.heketi_server_url, default_bhv_size,
-                json=True, block=True)
+            self.heketi_client_node, self.heketi_server_url, default_bhv_size,
+            json=True, block=True)
         self.addCleanup(heketi_volume_delete,
                         self.heketi_client_node,
                         self.heketi_server_url,

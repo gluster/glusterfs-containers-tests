@@ -321,7 +321,7 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
         vol_info = get_gluster_vol_info_by_pvc_name(self.node, self.pvc_name)
 
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
-                vol_info, arbiter_bricks=2, data_bricks=4)
+            vol_info, arbiter_bricks=2, data_bricks=4)
 
     # NOTE(vponomar): do not create big volumes setting value less than 64
     # for 'avg_file_size'. It will cause creation of very huge amount of files
@@ -358,8 +358,8 @@ class TestArbiterVolumeCreateExpandDelete(BaseClass):
                 vol_info))
 
         expected_file_amount = pvc_size_gb * 1024**2 / (avg_file_size or 64)
-        expected_file_amount = (expected_file_amount /
-                                bricks_info['arbiter_amount'])
+        expected_file_amount = (
+            expected_file_amount / bricks_info['arbiter_amount'])
 
         # Try to create expected amount of files on arbiter brick mount
         passed_arbiter_bricks = []

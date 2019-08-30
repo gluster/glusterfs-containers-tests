@@ -213,8 +213,8 @@ class TestHeketiDeviceOperations(BaseClass):
             for device in host["devices"]:
                 if device["state"].strip().lower() != "online":
                     continue
-                if (lowest_device_size is None or
-                        device["storage"]["total"] < lowest_device_size):
+                if (lowest_device_size is None
+                        or device["storage"]["total"] < lowest_device_size):
                     lowest_device_size = device["storage"]["total"]
                     lowest_device_id = device["id"]
                     lowest_device_name = device["name"]
@@ -340,8 +340,8 @@ class TestHeketiDeviceOperations(BaseClass):
         for node_id in node_ids:
             node_info = heketi_node_info(
                 heketi_node, heketi_url, node_id, json=True)
-            if (node_info["state"].lower() != "online" or
-                    not node_info["devices"]):
+            if (node_info["state"].lower() != "online"
+                    or not node_info["devices"]):
                 continue
             if len(nodes) > 2:
                 heketi_node_disable(heketi_node, heketi_url, node_id)
@@ -365,8 +365,8 @@ class TestHeketiDeviceOperations(BaseClass):
                     "device_id": device["id"], "free": free_space})
 
         # Skip test if nodes requirements are not met
-        if (len(nodes) < 3 or
-                not all(map((lambda _list: len(_list) > 1), nodes.values()))):
+        if (len(nodes) < 3
+                or not all(map((lambda _l: len(_l) > 1), nodes.values()))):
             raise self.skipTest(
                 "Could not find 3 online nodes with 2 online devices "
                 "having free space bigger than %dGb." % min_free_space_gb)

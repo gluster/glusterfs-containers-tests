@@ -166,9 +166,8 @@ class TestHeketiVolume(BaseClass):
             self.topology_volumes_with_bricks())
         for vol_name in volume_names[:2]:
             self.assertNotIn(vol_name, topology_volumes.keys(), (
-                                "volume %s shown in the heketi topology after "
-                                "deletion\nTopology info:\n%s" % (
-                                    vol_name, indented_topology)))
+                "volume %s shown in the heketi topology after deletion"
+                "\nTopology info:\n%s" % (vol_name, indented_topology)))
 
         # Check the existence of third volume
         self.assertIn(volume_names[2], topology_volumes.keys(), ("volume %s "
@@ -246,8 +245,8 @@ class TestHeketiVolume(BaseClass):
         for node_id in node_ids:
             node_info = heketi_node_info(
                 self.heketi_client_node, heketi_url, node_id, json=True)
-            if (node_info['state'].lower() != 'online' or
-                    not node_info['devices']):
+            if (node_info['state'].lower() != 'online'
+                    or not node_info['devices']):
                 continue
             for device in node_info['devices']:
                 if device['state'].lower() != 'online':

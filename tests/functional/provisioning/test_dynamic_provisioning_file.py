@@ -74,7 +74,7 @@ class TestDynamicProvisioningP0(BaseClass):
                 r'"gluster\.kubernetes\.io\/heketi-volume-id"'
             ]
             pv_vol_name, vol_id = oc_get_custom_resource(
-                    self.ocp_client[0], 'pv', custom, pv_name)
+                self.ocp_client[0], 'pv', custom, pv_name)
 
             # check if the pv_volume_name is present in heketi
             # Check if volume name is "vol_"+volumeid or not
@@ -331,8 +331,7 @@ class TestDynamicProvisioningP0(BaseClass):
             for pvc in self.pvc_name_list:
                 with self.assertRaises(ExecutionError):
                     wait_for_resource_absence(
-                       self.ocp_client[0], 'pvc', pvc,
-                       interval=3, timeout=30)
+                        self.ocp_client[0], 'pvc', pvc, interval=3, timeout=30)
         finally:
             # bring back heketi-pod
             scale_dc_pod_amount_and_wait(self.ocp_client[0],
