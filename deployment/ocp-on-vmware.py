@@ -243,8 +243,8 @@ class OCPOnVMWare(object):
             if v == '':
                 err_count += 1
                 print "Missing %s " % k
-        if (self.cns_automation_config_file_path and
-                not os.path.exists(
+        if (self.cns_automation_config_file_path
+                and not os.path.exists(
                     os.path.abspath(self.cns_automation_config_file_path))):
             err_count += 1
             print ("Wrong value for 'cns_automation_config_file_path' "
@@ -311,7 +311,7 @@ class OCPOnVMWare(object):
                 if 'pass' in key:
                     print '\t %s:  ******' % (key)
                 else:
-                    print '\t %s:  %s' % (key,  val)
+                    print '\t %s:  %s' % (key, val)
         print '\n'
 
     def _create_inventory_file(self):

@@ -290,8 +290,8 @@ class VMWareInventory(object):
         for child in content.rootFolder.childEntity:
             instances += self._get_instances_from_children(child)
         if self.args.max_instances:
-            if len(instances) >= (self.args.max_instances+1):
-                instances = instances[0:(self.args.max_instances+1)]
+            if len(instances) >= (self.args.max_instances + 1):
+                instances = instances[0:(self.args.max_instances + 1)]
         instance_tuples = []
         for instance in sorted(instances):
             ifacts = self.facts_from_vobj(instance)
@@ -535,15 +535,15 @@ class VMWareInventory(object):
                 if type(vi) in self.safe_types:
                     rdata.append(vi)
                 else:
-                    if (level+1 <= self.maxlevel):
-                        vid = self.facts_from_vobj(vi, level=(level+1))
+                    if (level + 1 <= self.maxlevel):
+                        vid = self.facts_from_vobj(vi, level=(level + 1))
                         if vid:
                             rdata.append(vid)
 
         elif hasattr(vobj, '__dict__'):
-            if (level+1 <= self.maxlevel):
+            if (level + 1 <= self.maxlevel):
                 md = None
-                md = self.facts_from_vobj(vobj, level=(level+1))
+                md = self.facts_from_vobj(vobj, level=(level + 1))
                 if md:
                     rdata = md
         elif not vobj or type(vobj) in self.safe_types:

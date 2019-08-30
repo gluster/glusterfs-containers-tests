@@ -342,9 +342,9 @@ class VMWareAddNode(object):
             if v == '':
                 err_count += 1
                 print "Missing %s " % k
-        if not (self.container_storage_disks and
-                re.search(r'^[0-9]*(,[0-9]*)*$',
-                          self.container_storage_disks)):
+        if not (self.container_storage_disks
+                and re.search(
+                    r'^[0-9]*(,[0-9]*)*$', self.container_storage_disks)):
             err_count += 1
             print ("'container_storage_disks' has improper value - "
                    "'%s'. Only integers separated with comma are allowed." % (
@@ -374,8 +374,8 @@ class VMWareAddNode(object):
                 print ("'container_storage_glusterfs_timeout' can be "
                        "either empty or integer. Provided value is '%s'" % (
                            self.container_storage_glusterfs_timeout))
-        if (self.cns_automation_config_file_path and
-                not os.path.exists(
+        if (self.cns_automation_config_file_path
+                and not os.path.exists(
                     os.path.abspath(self.cns_automation_config_file_path))):
             err_count += 1
             print ("Wrong value for 'cns_automation_config_file_path' "
@@ -452,12 +452,12 @@ class VMWareAddNode(object):
             if self.node_type == 'compute':
                 guest_name = '%s-%s' % (self.node_type, i)
                 guest_type = 'compute'
-            elif (self.node_type == 'storage' and
-                    self.container_storage == 'crs'):
+            elif (self.node_type == 'storage'
+                    and self.container_storage == 'crs'):
                 guest_name = '%s-%s' % (self.container_storage, i)
                 guest_type = self.container_storage
-            elif (self.node_type == 'storage' and
-                    self.container_storage == 'cns'):
+            elif (self.node_type == 'storage'
+                    and self.container_storage == 'cns'):
                 guest_name = '%s-%s' % (self.container_storage, i)
                 guest_type = self.container_storage
             else:
@@ -485,8 +485,8 @@ class VMWareAddNode(object):
             if not click.confirm('Continue adding nodes with these values?'):
                 sys.exit(0)
 
-        if (self.container_storage in ('cns', 'crs') and
-                'storage' in self.node_type):
+        if (self.container_storage in ('cns', 'crs')
+                and 'storage' in self.node_type):
             if 'None' in self.tag:
                 # do the full install and config minus the cleanup
                 self.tag = 'vms,node-setup'
@@ -597,8 +597,8 @@ class VMWareAddNode(object):
                 playbook_vars_dict[
                     'openshift_storage_glusterfs_block_image'] = (
                         "%s:%s" % (
-                            self.cns_glusterfs_block_image or
-                            'rhgs3/rhgs-gluster-block-prov-rhel7',
+                            self.cns_glusterfs_block_image
+                            or 'rhgs3/rhgs-gluster-block-prov-rhel7',
                             self.cns_glusterfs_block_version))
             elif self.cns_glusterfs_block_image:
                 playbook_vars_dict[
@@ -606,15 +606,15 @@ class VMWareAddNode(object):
                         "%s:latest" % self.cns_glusterfs_block_image)
             if self.cns_glusterfs_heketi_version:
                 playbook_vars_dict[
-                        'openshift_storage_glusterfs_heketi_image'] = (
-                    "%s:%s" % (
-                        self.cns_glusterfs_heketi_image or
-                        'rhgs3/rhgs-volmanager-rhel7',
-                        self.cns_glusterfs_heketi_version))
+                    'openshift_storage_glusterfs_heketi_image'] = (
+                        "%s:%s" % (
+                            self.cns_glusterfs_heketi_image
+                            or 'rhgs3/rhgs-volmanager-rhel7',
+                            self.cns_glusterfs_heketi_version))
             elif self.cns_glusterfs_heketi_image:
                 playbook_vars_dict[
-                        "openshift_storage_glusterfs_heketi_image"] = (
-                    "%s:latest" % self.cns_glusterfs_heketi_image)
+                    "openshift_storage_glusterfs_heketi_image"] = (
+                        "%s:latest" % self.cns_glusterfs_heketi_image)
 
         playbook_vars_str = ' '.join('%s=%s' % (k, v)
                                      for (k, v) in playbook_vars_dict.items())
@@ -633,11 +633,12 @@ class VMWareAddNode(object):
             os.system(command)
 
             command = (
-               "ansible-playbook"
-               " --extra-vars '@./%s'"
-               " --tags %s"
-               " -e '%s' %s" % (
-                   self.inventory_file, self.tag, playbook_vars_str, playbook))
+                "ansible-playbook"
+                " --extra-vars '@./%s'"
+                " --tags %s"
+                " -e '%s' %s" % (
+                    self.inventory_file, self.tag, playbook_vars_str, playbook)
+            )
 
             if self.verbose > 0:
                 command += " -vvvvv"
