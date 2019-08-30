@@ -63,8 +63,8 @@ def heketi_cmd_run(hostname, cmd, raise_on_error=True):
         g.log.error(
             'Failed to run "%s" command on the "%s" host. '
             'Got following error:\n%s' % (cmd, hostname, e))
-        if ('connection refused' in six.text_type(e).lower() or
-                'operation timed out' in six.text_type(e).lower()):
+        if ('connection refused' in six.text_type(e).lower()
+                or 'operation timed out' in six.text_type(e).lower()):
             time.sleep(1)
             out = cmd_run_on_heketi_pod(cmd, raise_on_error=raise_on_error)
         else:
@@ -75,8 +75,9 @@ def heketi_cmd_run(hostname, cmd, raise_on_error=True):
 def _set_heketi_global_flags(heketi_server_url, **kwargs):
     """Helper function to set heketi-cli global flags."""
 
-    heketi_server_url = (heketi_server_url if heketi_server_url else ("http:" +
-                         "//heketi-storage-project.cloudapps.mystorage.com"))
+    heketi_server_url = (
+        heketi_server_url if heketi_server_url else (
+            "http://heketi-storage-project.cloudapps.mystorage.com"))
     json = kwargs.get("json")
     secret = kwargs.get("secret")
     user = kwargs.get("user")
@@ -145,8 +146,9 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
             if heketi_cli_key is not None:
                 kwargs['secret'] = heketi_cli_key
 
-    heketi_server_url = (heketi_server_url if heketi_server_url else ("http:" +
-                         "//heketi-storage-project.cloudapps.mystorage.com"))
+    heketi_server_url = (
+        heketi_server_url if heketi_server_url else (
+            "http://heketi-storage-project.cloudapps.mystorage.com"))
 
     block_arg = "--block" if kwargs.get("block") else ""
     clusters_arg = ("--clusters %s" % kwargs.get("clusters")
@@ -423,8 +425,8 @@ def hello_heketi(heketi_client_node, heketi_server_url, **kwargs):
         g.log.error(
             'Failed to run "%s" command on the "%s" host. '
             'Got following error:\n%s' % (cmd, heketi_client_node, e))
-        if ('connection refused' in six.text_type(e).lower() or
-                'operation timed out' in six.text_type(e).lower()):
+        if ('connection refused' in six.text_type(e).lower()
+                or 'operation timed out' in six.text_type(e).lower()):
             time.sleep(1)
             cmd_run_on_heketi_pod(
                 "curl --max-time 10 http://localhost:8080/hello")
@@ -1003,8 +1005,8 @@ def heketi_blockvolume_create(heketi_client_node, heketi_server_url, size,
 
     auth = clusters = ha = name = None
     if heketi_server_url is None:
-        heketi_server_url = ("http://" +
-                             "heketi-storage-project.cloudapps.mystorage.com")
+        heketi_server_url = (
+            "http://heketi-storage-project.cloudapps.mystorage.com")
 
     if 'auth' in kwargs:
         auth = kwargs['auth']
@@ -1140,7 +1142,7 @@ def verify_volume_name_prefix(hostname, prefix, namespace, pvc_name,
     heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
         heketi_server_url, **kwargs)
 
-    heketi_vol_name_prefix = "%s_%s_%s_" % (prefix, namespace,  pvc_name)
+    heketi_vol_name_prefix = "%s_%s_%s_" % (prefix, namespace, pvc_name)
     cmd = "heketi-cli -s %s volume list %s %s %s | grep %s" % (
         heketi_server_url, json_arg, admin_key, user, heketi_vol_name_prefix)
     cmd = TIMEOUT_PREFIX + cmd
@@ -1346,8 +1348,8 @@ def get_heketi_metrics(heketi_client_node, heketi_server_url,
         g.log.error(
             'Failed to run "%s" command on the "%s" host. '
             'Got following error:\n%s' % (cmd, heketi_client_node, e))
-        if ('connection refused' in six.text_type(e).lower() or
-                'operation timed out' in six.text_type(e).lower()):
+        if ('connection refused' in six.text_type(e).lower()
+                or 'operation timed out' in six.text_type(e).lower()):
             time.sleep(1)
             out = cmd_run_on_heketi_pod(
                 "curl --max-time 10 http://localhost:8080/metrics")

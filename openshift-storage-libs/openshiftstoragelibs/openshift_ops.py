@@ -655,11 +655,10 @@ def get_gluster_host_ips_by_pvc_name(ocp_node, pvc_name):
         ]
     elif sp == "gluster.org/glusterblock":
         get_gluster_pod_node_ip_cmd = (
-            r"""oc get pv --template '{{range .items}}""" +
-            r"""{{if eq .spec.claimRef.name "%s"}}""" +
-            r"""{{.spec.iscsi.targetPortal}}{{" "}}""" +
-            r"""{{.spec.iscsi.portals}}{{end}}{{end}}'""") % (
-                pvc_name)
+            r"""oc get pv --template '{{range .items}}"""
+            + r"""{{if eq .spec.claimRef.name "%s"}}"""
+            + r"""{{.spec.iscsi.targetPortal}}{{" "}}"""
+            + r"""{{.spec.iscsi.portals}}{{end}}{{end}}'""") % pvc_name
         node_ips_raw = command.cmd_run(
             get_gluster_pod_node_ip_cmd, hostname=ocp_node)
         node_ips_raw = node_ips_raw.replace(
@@ -1120,8 +1119,7 @@ def get_pv_name_from_pvc(hostname, pvc_name):
     cmd = ("oc get pvc %s -o=custom-columns=:."
            "spec.volumeName" % pvc_name)
     pv_name = command.cmd_run(cmd, hostname=hostname)
-    g.log.info("pv name is %s for pvc %s" % (
-                   pv_name, pvc_name))
+    g.log.info("pv name is %s for pvc %s" % (pv_name, pvc_name))
 
     return pv_name
 
@@ -1301,8 +1299,8 @@ def match_pv_and_heketi_block_volumes(
         err_msg = "PV block volumes and Heketi Block volume list match failed"
         err_msg += "\nPV Block Volumes: %s, " % pv_block_volumes
         err_msg += "\nHeketi Block volumes %s" % heketi_block_volumes
-        err_msg += "\nDifference: %s" % (set(pv_block_volumes) ^
-                                         set(heketi_block_volumes))
+        err_msg += "\nDifference: %s" % (
+            set(pv_block_volumes) ^ set(heketi_block_volumes))
         raise AssertionError(err_msg)
 
 
@@ -1336,8 +1334,8 @@ def check_service_status_on_pod(
 
         for line in out.splitlines():
             status_match = re.search(SERVICE_STATUS_REGEX, line)
-            if (status_match and status_match.group(1) == status and
-                    status_match.group(2) == state):
+            if (status_match and status_match.group(1) == status
+                    and status_match.group(2) == state):
                 return True
 
     if w.expired:
@@ -1373,8 +1371,8 @@ def wait_for_service_status_on_gluster_pod_or_node(
             raise_on_error=raise_on_error)
         for line in out.splitlines():
             status_match = re.search(SERVICE_STATUS_REGEX, line)
-            if (status_match and status_match.group(1) == status and
-                    status_match.group(2) == state):
+            if (status_match and status_match.group(1) == status
+                    and status_match.group(2) == state):
                 return True
     if w.expired:
         g.log.error(err_msg)
@@ -1479,8 +1477,8 @@ def get_default_block_hosting_volume_size(hostname, heketi_dc_name):
         g.log.error(msg)
         raise exceptions.ExecutionError(msg)
 
-    if ('glusterfs' in out.keys() and
-            'block_hosting_volume_size' in out['glusterfs'].keys()):
+    if ('glusterfs' in out.keys()
+            and 'block_hosting_volume_size' in out['glusterfs'].keys()):
         return int(out['glusterfs']['block_hosting_volume_size'])
     msg = ("Not able to get the value of "
            "out['glusterfs']['block_hosting_volume_size'] from out:\n" % out)

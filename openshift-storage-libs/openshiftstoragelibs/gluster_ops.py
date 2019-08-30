@@ -136,7 +136,7 @@ def restart_gluster_vol_brick_processes(ocp_client_node, file_vol,
         if w.expired:
             error_msg = ("Process ID '%s' still exists on '%s' after waiting "
                          "for it 60 seconds to get killed." % (
-                            pid, gluster_node))
+                             pid, gluster_node))
             g.log.error(error_msg)
             raise exceptions.ExecutionError(error_msg)
 
@@ -229,8 +229,8 @@ def match_heketi_and_gluster_block_volumes_by_prefix(
         err_msg = "Gluster and Heketi Block volume list match failed"
         err_msg += "\nGluster Volumes: %s, " % gluster_vol_block_list
         err_msg += "\nBlock volumes %s" % heketi_block_volumes
-        err_msg += "\nDifference: %s" % (set(gluster_vol_block_list) ^
-                                         set(heketi_block_volumes))
+        err_msg += "\nDifference: %s" % (
+            set(gluster_vol_block_list) ^ set(heketi_block_volumes))
         raise AssertionError(err_msg)
 
 

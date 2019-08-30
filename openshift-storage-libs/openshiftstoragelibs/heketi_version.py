@@ -88,9 +88,9 @@ def _get_heketi_server_version_str(ocp_client_node=None):
     err_msg = ""
     for heketi_pod_line in heketi_pods.split("\n"):
         heketi_pod_data = heketi_pod_line.split()
-        if ("-deploy" in heketi_pod_data[0] or
-                heketi_pod_data[1].lower() != "1/1" or
-                heketi_pod_data[2].lower() != "running"):
+        if ("-deploy" in heketi_pod_data[0]
+                or heketi_pod_data[1].lower() != "1/1"
+                or heketi_pod_data[2].lower() != "running"):
             continue
         try:
             pod_cmd = "oc exec %s -- %s" % (

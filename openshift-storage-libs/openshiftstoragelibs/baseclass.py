@@ -109,8 +109,8 @@ class BaseClass(unittest.TestCase):
         g.log.info(msg)
 
     def setUp(self):
-        if (BaseClass.STOP_ON_FIRST_FAILURE and
-                BaseClass.ERROR_OR_FAILURE_EXISTS):
+        if (BaseClass.STOP_ON_FIRST_FAILURE
+                and BaseClass.ERROR_OR_FAILURE_EXISTS):
             self.skipTest("Test is skipped, because of the restriction "
                           "to one test case failure.")
 
@@ -306,9 +306,9 @@ class BaseClass(unittest.TestCase):
         return True
 
     def doCleanups(self):
-        if (BaseClass.STOP_ON_FIRST_FAILURE and (
-                self.ERROR_OR_FAILURE_EXISTS or
-                self._is_error_or_failure_exists())):
+        if (BaseClass.STOP_ON_FIRST_FAILURE
+                and (self.ERROR_OR_FAILURE_EXISTS
+                     or self._is_error_or_failure_exists())):
             while self._cleanups:
                 (func, args, kwargs) = self._cleanups.pop()
                 msg = ("Found test case failure. Avoiding run of scheduled "
@@ -319,8 +319,8 @@ class BaseClass(unittest.TestCase):
 
     @classmethod
     def doClassCleanups(cls):
-        if (BaseClass.STOP_ON_FIRST_FAILURE and
-                BaseClass.ERROR_OR_FAILURE_EXISTS):
+        if (BaseClass.STOP_ON_FIRST_FAILURE
+                and BaseClass.ERROR_OR_FAILURE_EXISTS):
             while cls._class_cleanups:
                 (func, args, kwargs) = cls._class_cleanups.pop()
                 msg = ("Found test case failure. Avoiding run of scheduled "

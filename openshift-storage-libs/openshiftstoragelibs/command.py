@@ -13,8 +13,8 @@ def cmd_run(cmd, hostname, raise_on_error=True):
         str: Stripped shell command's stdout value if not None.
     """
     ret, out, err = g.run(hostname, cmd, "root")
-    if ("no ssh connection" in err.lower() or
-            "tls handshake timeout" in err.lower()):
+    if ("no ssh connection" in err.lower()
+            or "tls handshake timeout" in err.lower()):
         g.ssh_close_connection(hostname)
         ret, out, err = g.run(hostname, cmd, "root")
     msg = ("Failed to execute command '%s' on '%s' node. Got non-zero "
