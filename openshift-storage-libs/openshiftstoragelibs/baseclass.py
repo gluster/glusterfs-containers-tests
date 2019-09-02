@@ -24,10 +24,9 @@ from openshiftstoragelibs.openshift_ops import (
     oc_delete,
     oc_get_custom_resource,
     oc_get_pods,
-    scale_dc_pod_amount_and_wait,
+    scale_dcs_pod_amount_and_wait,
     switch_oc_project,
     verify_pvc_status_is_bound,
-    wait_for_pod_be_ready,
     wait_for_resource_absence,
 )
 from openshiftstoragelibs.openshift_storage_libs import (
@@ -264,15 +263,45 @@ class BaseClass(unittest.TestCase):
         )[0]
         return self.pvc_name
 
-    def create_dc_with_pvc(self, pvc_name, timeout=300, wait_step=10):
-        dc_name = oc_create_app_dc_with_io(self.ocp_client[0], pvc_name)
-        self.addCleanup(oc_delete, self.ocp_client[0], 'dc', dc_name)
+    def create_dcs_with_pvc(self, pvc_names, timeout=600, wait_step=5):
+        """Create bunch of DCs with app PODs which use unique PVCs.
+
+        Args:
+            pvc_names (str/set/list/tuple): List/set/tuple of PVC names
+                to attach to app PODs as part of DCs.
+            timeout (int): timeout value, default value is 600 seconds.
+            wait_step( int): wait step, default value is 5 seconds.
+        Returns: dictionary with following structure:
+            {
+                "pvc_name_1": ("dc_name_1", "pod_name_1"),
+                "pvc_name_2": ("dc_name_2", "pod_name_2"),
+                ...
+                "pvc_name_n": ("dc_name_n", "pod_name_n"),
+            }
+        """
+        pvc_names = (
+            pvc_names
+            if isinstance(pvc_names, (list, set, tuple)) else [pvc_names])
+        dc_and_pod_names, dc_names = {}, {}
+        for pvc_name in pvc_names:
+            dc_name = oc_create_app_dc_with_io(self.ocp_client[0], pvc_name)
+            dc_names[pvc_name] = dc_name
+            self.addCleanup(oc_delete, self.ocp_client[0], 'dc', dc_name)
         self.addCleanup(
-            scale_dc_pod_amount_and_wait, self.ocp_client[0], dc_name, 0)
-        pod_name = get_pod_name_from_dc(self.ocp_client[0], dc_name)
-        wait_for_pod_be_ready(self.ocp_client[0], pod_name,
-                              timeout=timeout, wait_step=wait_step)
-        return dc_name, pod_name
+            scale_dcs_pod_amount_and_wait, self.ocp_client[0],
+            dc_names.values(), 0, timeout=timeout, wait_step=wait_step)
+
+        for pvc_name, dc_name in dc_names.items():
+            pod_name = get_pod_name_from_dc(self.ocp_client[0], dc_name)
+            dc_and_pod_names[pvc_name] = (dc_name, pod_name)
+        scale_dcs_pod_amount_and_wait(
+            self.ocp_client[0], dc_names.values(), 1,
+            timeout=timeout, wait_step=wait_step)
+
+        return dc_and_pod_names
+
+    def create_dc_with_pvc(self, pvc_name, timeout=300, wait_step=10):
+        return self.create_dcs_with_pvc(pvc_name, timeout, wait_step)[pvc_name]
 
     def is_containerized_gluster(self):
         cmd = ("oc get pods --no-headers -l glusterfs-node=pod "

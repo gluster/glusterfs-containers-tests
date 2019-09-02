@@ -16,12 +16,11 @@ from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
     oc_adm_manage_node,
-    oc_create_app_dc_with_io,
     oc_delete,
     oc_get_custom_resource,
     oc_get_schedulable_nodes,
     oc_rsh,
-    scale_dc_pod_amount_and_wait,
+    scale_dcs_pod_amount_and_wait,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
     wait_for_service_status_on_gluster_pod_or_node,
@@ -383,28 +382,14 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         self.addCleanup(
             oc_adm_manage_node, self.node, '--schedulable=true', nodes=o_nodes)
 
-        # Create 10 PVC's
+        # Create 10 PVC's and 10 DC's
         pvcs = self.create_and_wait_for_pvcs(pvc_amount=10)
-
-        pvc_and_dc = {}
-        dc_names = ''
-        # Create DC's
-        for pvc in pvcs:
-            dc_name = oc_create_app_dc_with_io(self.node, pvc)
-            self.addCleanup(oc_delete, self.node, 'dc', dc_name)
-            self.addCleanup(
-                scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
-            pvc_and_dc[pvc] = {'dc_name': dc_name}
-            dc_names += ' ' + dc_name
-
-        # Delete all pods before waiting for absence in cleanup to speedup
-        cmd_scale = "oc scale dc --replicas=0"
-        self.addCleanup(cmd_run, (cmd_scale + dc_names), self.node)
+        dcs = self.create_dcs_with_pvc(pvcs)
 
         # Wait for app pods and verify block sessions
+        pvc_and_dc = {}
         for pvc in pvcs:
-            dc_name = pvc_and_dc[pvc]['dc_name']
-            pod_name = get_pod_name_from_dc(self.node, dc_name)
+            dc_name, pod_name = dcs[pvc]
             wait_for_pod_be_ready(self.node, pod_name, wait_step=10)
 
             iqn, _, p_node = self.verify_iscsi_sessions_and_multipath(
@@ -417,13 +402,9 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             }
 
         # Delete 5 pods permanently
-        dc_names = " ".join([pvc_and_dc[pvc]['dc_name'] for pvc in pvcs[:5]])
-        cmd_run((cmd_scale + ' ' + dc_names), self.node)
-
-        # Wait for pods to be delete, for permanently deleted pods
-        for pvc in pvcs[:5]:
-            wait_for_resource_absence(
-                self.node, 'pod', pvc_and_dc[pvc]['pod_name'])
+        scale_dcs_pod_amount_and_wait(
+            self.node, [pvc_and_dc[pvc]['dc_name'] for pvc in pvcs[:5]],
+            pod_amount=0)
 
         # Wait for logout, for permanently deleted pods
         temp_pvcs = pvcs[:5]

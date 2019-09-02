@@ -16,6 +16,7 @@ from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
 import mock
 import six
+import time
 import yaml
 
 from openshiftstoragelibs import command
@@ -604,8 +605,58 @@ def wait_for_resource_absence(ocp_node, rtype, name,
         raise exceptions.ExecutionError(error_msg)
 
 
-def scale_dc_pod_amount_and_wait(hostname, dc_name,
-                                 pod_amount=1, namespace=None):
+def scale_dcs_pod_amount_and_wait(hostname, dc_names, pod_amount=1,
+                                  namespace=None, timeout=600, wait_step=5):
+    """Scale amount of PODs for a list of DCs.
+
+    If pod_amount is 0, then wait for it's absence.
+    If pod_amount => 1, then wait for all of a DC PODs to be ready.
+
+    Args:
+        hostname (str): Node on which the ocp command will run
+        dc_name (str/list/set/tuple): one or more DC names to be scaled.
+        pod_amount (int): Number of PODs to scale. Default is 1.
+        namespace (str): Namespace of a DC.
+        timeout (int): timeout value, default value is 600 seconds.
+        wait_step( int): wait step, default value is 5 seconds.
+    Returns: dictionary with following structure:
+        {
+            "dc_name_1": ["pod_name_1_1", "pod_name_1_2", ..., "pod_name_1_n"],
+            "dc_name_2": ["pod_name_2_1", "pod_name_2_2", ..., "pod_name_2_n"],
+            ...
+            "dc_name_n": ["pod_name_n_1", "pod_name_n_2", ..., "pod_name_n_n"],
+        }
+    """
+    dc_names = dc_names if hasattr(dc_names, '__iter__') else [dc_names]
+    dc_and_pod_names = {}
+    namespace_arg = "--namespace=%s" % namespace if namespace else ""
+    scale_cmd = "oc scale %s --replicas=%d dc/%s" % (
+        namespace_arg, pod_amount, " dc/".join(dc_names))
+
+    command.cmd_run(scale_cmd, hostname=hostname)
+
+    _start_time = time.time()
+    for dc_name in dc_names:
+        dc_and_pod_names[dc_name] = get_pod_names_from_dc(hostname, dc_name)
+        for pod_name in dc_and_pod_names[dc_name]:
+            if pod_amount == 0:
+                wait_for_resource_absence(
+                    hostname, 'pod', pod_name,
+                    interval=wait_step, timeout=timeout)
+            else:
+                wait_for_pod_be_ready(
+                    hostname, pod_name,
+                    timeout=timeout, wait_step=wait_step)
+            time_diff = time.time() - _start_time
+            if time_diff > timeout:
+                timeout = wait_step
+            else:
+                timeout -= time_diff
+    return dc_and_pod_names
+
+
+def scale_dc_pod_amount_and_wait(hostname, dc_name, pod_amount=1,
+                                 namespace=None, timeout=600, wait_step=5):
     """Scale amount of PODs for a DC.
 
     If pod_amount is 0, then wait for it's absence.
@@ -616,19 +667,13 @@ def scale_dc_pod_amount_and_wait(hostname, dc_name,
         dc_name (str): Name of heketi dc
         pod_amount (int): Number of PODs to scale. Default is 1.
         namespace (str): Namespace of a DC.
+        timeout (int): timeout value, default value is 600 seconds.
+        wait_step( int): wait step, default value is 5 seconds.
+    Returns: List of POD names of a DC.
     """
-    namespace_arg = "--namespace=%s" % namespace if namespace else ""
-    scale_cmd = "oc scale --replicas=%d dc/%s %s" % (
-        pod_amount, dc_name, namespace_arg)
-    command.cmd_run(scale_cmd, hostname=hostname)
-
-    pod_names = get_pod_names_from_dc(hostname, dc_name)
-    for pod_name in pod_names:
-        if pod_amount == 0:
-            wait_for_resource_absence(hostname, 'pod', pod_name)
-        else:
-            wait_for_pod_be_ready(hostname, pod_name)
-    return pod_names
+    return scale_dcs_pod_amount_and_wait(
+        hostname, dc_name, pod_amount, namespace=namespace,
+        timeout=timeout, wait_step=wait_step)[dc_name]
 
 
 def get_gluster_host_ips_by_pvc_name(ocp_node, pvc_name):
