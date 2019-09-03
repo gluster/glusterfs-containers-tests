@@ -515,27 +515,10 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         self.create_storage_class(is_arbiter_vol=True)
 
         # Create and delete 3 small volumes concurrently
-        pvc_names = []
-        for i in range(3):
-            pvc_name = openshift_ops.oc_create_pvc(
-                self.node, self.sc_name, pvc_name_prefix='arbiter-pvc',
-                pvc_size=int(pvc_size / 3))
-            pvc_names.append(pvc_name)
-        exception_exists = False
-        for pvc_name in pvc_names:
-            try:
-                openshift_ops.verify_pvc_status_is_bound(self.node, pvc_name)
-            except Exception:
-                for pvc_name in pvc_names:
-                    self.addCleanup(
-                        openshift_ops.wait_for_resource_absence,
-                        self.node, 'pvc', pvc_name)
-                for pvc_name in pvc_names:
-                    self.addCleanup(
-                        openshift_ops.oc_delete, self.node, 'pvc', pvc_name)
-                exception_exists = True
-        if exception_exists:
-            raise
+        pvc_names = self.create_and_wait_for_pvcs(
+            pvc_size=int(pvc_size / 3), pvc_name_prefix='arbiter-pvc',
+            pvc_amount=3, sc_name=self.sc_name)
+
         for pvc_name in pvc_names:
             openshift_ops.oc_delete(self.node, 'pvc', pvc_name)
         for pvc_name in pvc_names:
@@ -547,7 +530,8 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 self.node, self.sc_name, pvc_name_prefix='arbiter-pvc',
                 pvc_size=pvc_size)
             try:
-                openshift_ops.verify_pvc_status_is_bound(self.node, pvc_name)
+                openshift_ops.verify_pvc_status_is_bound(
+                    self.node, pvc_name, 300, 10)
             except Exception:
                 self.addCleanup(
                     openshift_ops.wait_for_resource_absence,

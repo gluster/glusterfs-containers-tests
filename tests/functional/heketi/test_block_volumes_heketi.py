@@ -114,16 +114,13 @@ class TestBlockVolumeOps(BaseClass):
             self.skipTest("Skipping the test since free_space_available %s"
                           "is less than the default_bhv_size %s"
                           % (free_space_available, default_bhv_size))
-        block_host_create_info = heketi_volume_create(
-            self.heketi_client_node, self.heketi_server_url,
-            default_bhv_size, json=True, block=True)
+        h_volume_name = (
+            "autotests-heketi-volume-%s" % utils.get_random_str())
+        block_host_create_info = self.create_heketi_volume_with_name_and_wait(
+            h_volume_name, default_bhv_size, json=True, block=True)
+
         block_vol_size = block_host_create_info["blockinfo"]["freesize"]
         block_hosting_vol_id = block_host_create_info["id"]
-        self.addCleanup(heketi_volume_delete,
-                        self.heketi_client_node,
-                        self.heketi_server_url,
-                        block_hosting_vol_id,
-                        raise_on_error=True)
         block_vol_info = {"blockhostingvolume": "init_value"}
         while (block_vol_info['blockhostingvolume'] != block_hosting_vol_id):
             block_vol = heketi_blockvolume_create(

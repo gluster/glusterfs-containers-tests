@@ -1,7 +1,9 @@
 import datetime
+import re
 import unittest
 
 from glusto.core import Glusto as g
+import six
 
 from openshiftstoragelibs import command
 from openshiftstoragelibs.exceptions import (
@@ -15,7 +17,10 @@ from openshiftstoragelibs.heketi_ops import (
     hello_heketi,
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
+    heketi_volume_create,
     heketi_volume_delete,
+    heketi_volume_info,
+    heketi_volume_list,
 )
 from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
@@ -40,6 +45,8 @@ from openshiftstoragelibs.openshift_storage_libs import (
 )
 from openshiftstoragelibs.openshift_version import get_openshift_version
 from openshiftstoragelibs.waiter import Waiter
+
+HEKETI_VOLUME_REGEX = "Id:(.*).Cluster:(.*).Name:%s"
 
 
 class BaseClass(unittest.TestCase):
@@ -307,6 +314,41 @@ class BaseClass(unittest.TestCase):
 
     def create_dc_with_pvc(self, pvc_name, timeout=300, wait_step=10):
         return self.create_dcs_with_pvc(pvc_name, timeout, wait_step)[pvc_name]
+
+    def create_heketi_volume_with_name_and_wait(
+            self, name, size, timeout=600, wait_step=10, **kwargs):
+        json = kwargs.get("json", False)
+
+        try:
+            h_volume_info = heketi_volume_create(
+                self.heketi_client_node, self.heketi_server_url,
+                size, name=name, **kwargs)
+        except Exception as e:
+            if ('more required' in six.text_type(e)
+                    or ('Failed to allocate new volume' in six.text_type(e))):
+                raise
+
+            for w in Waiter(timeout, wait_step):
+                h_volumes = heketi_volume_list(
+                    self.heketi_client_node, self.heketi_server_url)
+                h_volume_match = re.search(
+                    HEKETI_VOLUME_REGEX % name, h_volumes)
+                if h_volume_match:
+                    h_volume_info = heketi_volume_info(
+                        self.heketi_client_node, self.heketi_server_url,
+                        h_volume_match.group(1), json=json)
+                    break
+
+            if w.expired:
+                g.log.info(
+                    "Heketi volume with name %s not created in 600 sec" % name)
+                raise
+
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, h_volume_info["id"])
+
+        return h_volume_info
 
     def is_containerized_gluster(self):
         cmd = ("oc get pods --no-headers -l glusterfs-node=pod "

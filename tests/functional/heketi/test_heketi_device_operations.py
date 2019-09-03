@@ -17,6 +17,7 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_create,
     heketi_volume_delete,
 )
+from openshiftstoragelibs import utils
 
 
 @ddt.ddt
@@ -381,19 +382,23 @@ class TestHeketiDeviceOperations(BaseClass):
 
         # Create volume with such size that we consume space more than
         # size of smaller disks
+        h_volume_name = "autotests-heketi-volume-%s" % utils.get_random_str()
         try:
-            heketi_vol = heketi_volume_create(
-                heketi_node, heketi_url, vol_size_gb, json=True)
+            self.create_heketi_volume_with_name_and_wait(
+                h_volume_name, vol_size_gb, json=True)
         except Exception as e:
-            g.log.warning(
-                "Got following error trying to create '%s'Gb vol: %s" % (
-                    vol_size_gb, e))
+            # NOTE: rare situation when we need to decrease size of a volume.
+            g.log.info("Failed to create '%s'Gb volume. "
+                       "Trying to create another one, smaller for 1Gb.")
+
+            if not ('more required' in str(e)
+                    and ('Insufficient suitable allocatable extents for '
+                         'logical volume' in str(e))):
+                raise
+
             vol_size_gb -= 1
-            heketi_vol = heketi_volume_create(
-                heketi_node, heketi_url, vol_size_gb, json=True)
-        self.addCleanup(
-            heketi_volume_delete, self.heketi_client_node,
-            self.heketi_server_url, heketi_vol["bricks"][0]["volume"])
+            self.create_heketi_volume_with_name_and_wait(
+                h_volume_name, vol_size_gb, json=True)
 
         # Try to 'remove' bigger Heketi disk expecting error,
         # because there is no space on smaller disk to relocate bricks to

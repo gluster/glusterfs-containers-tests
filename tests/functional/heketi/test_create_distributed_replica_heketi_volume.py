@@ -13,11 +13,11 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_node_enable,
     heketi_node_info,
     heketi_node_list,
-    heketi_volume_create,
     heketi_volume_delete,
     heketi_volume_list,
 )
 from openshiftstoragelibs import podcmd
+from openshiftstoragelibs import utils
 
 
 @ddt.ddt
@@ -100,33 +100,27 @@ class TestHeketiVolume(BaseClass):
         # Create distributed vol
         vol_size_gb = self._get_vol_size()
         heketi_url = self.heketi_server_url
+        h_volume_name = "autotests-heketi-volume-%s" % utils.get_random_str()
         try:
-            g.log.info(
-                "Trying to create distributed '%s'Gb volume." % vol_size_gb)
-            heketi_vol = heketi_volume_create(
-                self.heketi_client_node, heketi_url, vol_size_gb,
-                json=True, block=block)
+            heketi_vol = self.create_heketi_volume_with_name_and_wait(
+                h_volume_name, vol_size_gb, json=True)
         except AssertionError as e:
             # NOTE: rare situation when we need to decrease size of a volume.
             #       and we expect this vol to be distributed.
             g.log.info("Failed to create distributed '%s'Gb volume. "
                        "Trying to create another one, smaller for 1Gb.")
-            if ('more required' in str(e)
+            if not ('more required' in str(e)
                     and ('Insufficient suitable allocatable extents for '
                          'logical volume' in str(e))):
-                vol_size_gb -= 1
-                heketi_vol = heketi_volume_create(
-                    self.heketi_client_node, heketi_url, vol_size_gb,
-                    json=True, block=block)
-            else:
                 raise
+
+            vol_size_gb -= 1
+            heketi_vol = self.create_heketi_volume_with_name_and_wait(
+                h_volume_name, vol_size_gb, json=True)
         g.log.info("Successfully created distributed volume.")
 
         vol_name = heketi_vol['name']
         vol_id = heketi_vol["bricks"][0]["volume"]
-        self.addCleanup(
-            heketi_volume_delete, self.heketi_client_node, heketi_url,
-            vol_id, raise_on_error=(not validate_cleanup))
 
         # Get gluster volume info
         g.log.info("Get gluster volume '%s' info" % vol_name)
