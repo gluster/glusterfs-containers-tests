@@ -8,7 +8,6 @@ from glusto.core import Glusto as g
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs.gluster_ops import (
-    get_block_hosting_volume_name,
     get_gluster_vol_hosting_nodes,
     match_heketi_and_gluster_block_volumes_by_prefix,
     restart_file_volume,
@@ -21,12 +20,10 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_server_operations_list,
 )
 from openshiftstoragelibs.openshift_ops import (
-    get_pv_name_from_pvc,
     match_pv_and_heketi_block_volumes,
     match_pvc_and_pv,
     oc_create_pvc,
     oc_delete,
-    oc_get_custom_resource,
     oc_rsh,
     restart_service_on_gluster_pod_or_node,
     verify_pvc_status_is_bound,
@@ -89,27 +86,6 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
 
         for pvc_name in self.pvc_list:
             self.addCleanup(oc_delete, self.oc_node, "pvc", pvc_name)
-
-    def get_block_hosting_volume_by_pvc_name(self, pvc_name):
-        """Get block hosting volume of pvc name given
-
-        Args:
-            pvc_name (str): pvc name of which host name is need
-                            to be returned
-        """
-        pv_name = get_pv_name_from_pvc(self.oc_node, pvc_name)
-
-        block_volume = oc_get_custom_resource(
-            self.oc_node, 'pv',
-            r':.metadata.annotations."gluster\.org\/volume\-id"',
-            name=pv_name
-        )[0]
-
-        # get block hosting volume from pvc name
-        block_hosting_vol = get_block_hosting_volume_name(
-            self.heketi_client_node, self.heketi_server_url, block_volume)
-
-        return block_hosting_vol
 
     def get_heketi_block_volumes(self):
         """lists heketi block volumes

@@ -8,6 +8,9 @@ from openshiftstoragelibs.exceptions import (
     ConfigError,
     ExecutionError,
 )
+from openshiftstoragelibs.gluster_ops import (
+    get_block_hosting_volume_name,
+)
 from openshiftstoragelibs.heketi_ops import (
     hello_heketi,
     heketi_blockvolume_delete,
@@ -438,3 +441,23 @@ class GlusterBlockBaseClass(BaseClass):
         for state in ['failed', 'faulty', 'undef']:
             msg = "All paths are not up in mpath %s on Node %s" % (out, node)
             self.assertNotIn(state, out, msg)
+
+    def get_block_hosting_volume_by_pvc_name(self, pvc_name):
+        """Get block hosting volume of pvc name given
+
+        Args:
+            pvc_name (str): pvc name for which the BHV name needs
+                            to be returned
+        """
+        pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+        block_volume = oc_get_custom_resource(
+            self.node, 'pv',
+            r':.metadata.annotations."gluster\.org\/volume\-id"',
+            name=pv_name
+        )[0]
+
+        # get block hosting volume from block volume
+        block_hosting_vol = get_block_hosting_volume_name(
+            self.heketi_client_node, self.heketi_server_url, block_volume)
+
+        return block_hosting_vol
