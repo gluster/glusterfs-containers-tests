@@ -16,6 +16,7 @@ from openshiftstoragelibs.openshift_ops import (
     get_default_block_hosting_volume_size
 )
 from openshiftstoragelibs import podcmd
+from openshiftstoragelibs import utils
 
 
 @ddt.ddt
@@ -223,3 +224,22 @@ class TestBlockVolumeOps(BaseClass):
             block_vol_info["blockvolume"]["password"], "",
             ("Password is %spresent in %s", (assertion_msg_part,
                                              block_vol["id"])))
+
+    def test_block_volume_create_with_name(self):
+        """Validate creation of block volume with name"""
+        vol_name = "autotests-heketi-volume-%s" % utils.get_random_str()
+        block_vol = heketi_blockvolume_create(
+            self.heketi_client_node, self.heketi_server_url, 1,
+            name=vol_name, json=True)
+        self.addCleanup(
+            heketi_blockvolume_delete, self.heketi_client_node,
+            self.heketi_server_url, block_vol["id"])
+
+        # check volume name through heketi-cli
+        block_vol_info = heketi_blockvolume_info(
+            self.heketi_client_node, self.heketi_server_url,
+            block_vol["id"], json=True)
+        self.assertEqual(
+            block_vol_info["name"], vol_name,
+            ("Block volume Names are not same %s as %s",
+             (block_vol_info["name"], vol_name)))
