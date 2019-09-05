@@ -1029,9 +1029,9 @@ def heketi_blockvolume_create(heketi_client_node, heketi_server_url, size,
         name_arg = "--name %s" % name
 
     cmd = ("heketi-cli -s %s blockvolume create --size=%s %s %s %s %s "
-           "%s %s %s %s" % (heketi_server_url, str(size), auth_arg,
-                            clusters_arg, ha_arg, name_arg, name_arg,
-                            admin_key, user, json_arg))
+           "%s %s %s" % (heketi_server_url, str(size), auth_arg,
+                         clusters_arg, ha_arg, name_arg,
+                         admin_key, user, json_arg))
     cmd = TIMEOUT_PREFIX + cmd
     out = heketi_cmd_run(heketi_client_node, cmd)
     if json_arg:
