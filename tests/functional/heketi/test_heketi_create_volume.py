@@ -25,6 +25,7 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_info,
     heketi_volume_list,
 )
+from openshiftstoragelibs.openshift_ops import cmd_run_on_gluster_pod_or_node
 from openshiftstoragelibs import podcmd
 
 
@@ -335,3 +336,40 @@ class TestHeketiVolume(BaseClass):
              "Block hosting volumes which were considered: \n%s" % (
                  max_block_hosting_vol_size, blockvol2, block_hosting_vol,
                  '\n'.join(file_volumes_debug_info))))
+
+    @podcmd.GlustoPod()
+    def test_heketi_volume_create_with_cluster_node_down(self):
+        if len(self.gluster_servers) < 5:
+            self.skipTest("Nodes in the cluster are %s which is less than 5"
+                          % len(self.gluster_servers))
+
+        cmd_glusterd_stop = "systemctl stop glusterd"
+        cmd_glusterd_start = "systemctl start glusterd"
+
+        try:
+            # Kill glusterd on 2 of the nodes
+            for gluster_server in self.gluster_servers[:2]:
+                cmd_run_on_gluster_pod_or_node(
+                    self.ocp_master_node[0], cmd_glusterd_stop,
+                    gluster_node=gluster_server)
+
+            # Create heketi volume, get the volume id and volume name
+            volume_info = heketi_volume_create(
+                self.heketi_client_node, self.heketi_server_url,
+                self.volume_size, json=True)
+            volume_id = volume_info["id"]
+            volume_name = volume_info['name']
+            self.addCleanup(
+                heketi_volume_delete, self.heketi_client_node,
+                self.heketi_server_url, volume_id)
+        finally:
+            for gluster_server in self.gluster_servers[:2]:
+                self.addCleanup(
+                    cmd_run_on_gluster_pod_or_node, self.ocp_master_node[0],
+                    cmd_glusterd_start, gluster_node=gluster_server)
+
+        # Verify volume creation at the gluster side
+        g_vol_list = get_volume_list('auto_get_gluster_endpoint')
+        msg = "volume: %s not found in the volume list: %s" % (
+            volume_name, g_vol_list)
+        self.assertIn(volume_name, g_vol_list, msg)
