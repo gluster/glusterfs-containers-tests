@@ -435,6 +435,50 @@ def hello_heketi(heketi_client_node, heketi_server_url, **kwargs):
     return True
 
 
+def heketi_cluster_create(heketi_client_node, heketi_server_url, **kwargs):
+    """Executes heketi cluster create command with provided options.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - json : (bool)
+            - secret : (str)|None
+            - user : (str)|None
+            - block : (bool)|None
+            - file : (bool)|None
+
+    Returns:
+        str: cluster delete command output on success
+
+    Raises:
+        exceptions.ExecutionError: if command fails.
+
+    Example:
+        heketi_cluster_create(
+            heketi_client_node, heketi_server_url, block=True)
+    """
+
+    heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+
+    cmd = "heketi-cli -s %s cluster create %s %s %s" % (
+        heketi_server_url, json_arg, admin_key, user)
+
+    if not kwargs.get("block", True):
+        cmd += " --block=false"
+    if not kwargs.get("file", True):
+        cmd += " --file=false"
+
+    cmd = TIMEOUT_PREFIX + cmd
+    out = heketi_cmd_run(heketi_client_node, cmd)
+    if kwargs.get("json", False):
+        return json.loads(out)
+    return out
+
+
 def heketi_cluster_delete(heketi_client_node, heketi_server_url, cluster_id,
                           **kwargs):
     """Executes heketi cluster delete command.
