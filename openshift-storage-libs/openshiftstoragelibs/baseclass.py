@@ -384,7 +384,7 @@ class GlusterBlockBaseClass(BaseClass):
         vol_info = heketi_blockvolume_info(
             self.heketi_client_node, self.heketi_server_url, vol_id, json=True)
         iqn = vol_info['blockvolume']['iqn']
-        hacount = int(self.sc['hacount'])
+        hacount = int(vol_info['hacount'])
 
         # Find node on which pod is running
         pod_name = get_pod_name_from_dc(self.node, dc_name)
@@ -394,19 +394,28 @@ class GlusterBlockBaseClass(BaseClass):
 
         # Get the iscsi sessions info from the node
         iscsi = get_iscsi_session(node, iqn)
-        self.assertEqual(hacount, len(iscsi))
+        msg = ('Only %s iscsi sessions are present on node %s, expected %s.'
+               % (iscsi, node, hacount))
+        self.assertEqual(hacount, len(iscsi), msg)
         iscsi.sort()
-        self.assertEqual(set(iscsi), (set(gluster_ips) & set(iscsi)))
+        msg = ("Only gluster Nodes %s were expected in iscsi sessions, "
+               "but got other Nodes %s on Node %s" % (
+                   gluster_ips, iscsi, node))
+        self.assertEqual(set(iscsi), (set(gluster_ips) & set(iscsi)), msg)
 
         # Get the paths info from the node
-        devices = get_iscsi_block_devices_by_path(node, iqn).keys()
-        self.assertEqual(hacount, len(devices))
+        devices = get_iscsi_block_devices_by_path(node, iqn)
+        msg = ("Only %s devices are present on Node %s, expected %s" % (
+            devices, node, hacount,))
+        self.assertEqual(hacount, len(devices), msg)
 
         # Get mpath names and verify that only one mpath is there
         mpaths = set()
-        for device in devices:
+        for device in devices.keys():
             mpaths.add(get_mpath_name_from_device_name(node, device))
-        self.assertEqual(1, len(mpaths))
+        msg = ("Only one mpath was expected on Node %s, but got %s" % (
+            node, mpaths))
+        self.assertEqual(1, len(mpaths), msg)
 
         validate_multipath_pod(
             self.node, pod_name, hacount, mpath=list(mpaths)[0])
@@ -423,6 +432,9 @@ class GlusterBlockBaseClass(BaseClass):
                     count += 1
             if hacount == count:
                 break
-        self.assertEqual(hacount, count)
+        msg = "Paths are not up equal to hacount %s in mpath %s on Node %s" % (
+            hacount, out, node)
+        self.assertEqual(hacount, count, msg)
         for state in ['failed', 'faulty', 'undef']:
-            self.assertNotIn(state, out)
+            msg = "All paths are not up in mpath %s on Node %s" % (out, node)
+            self.assertNotIn(state, out, msg)
