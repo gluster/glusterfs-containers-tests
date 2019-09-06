@@ -47,7 +47,7 @@ def wait_to_heal_complete(timeout=300, wait_step=5):
 
 @podcmd.GlustoPod()
 def get_gluster_vol_status(file_vol):
-    """Get Gluster vol hosting nodes.
+    """Get Gluster vol status.
 
     Args:
         file_vol (str): file volume name.
@@ -152,7 +152,7 @@ def restart_gluster_vol_brick_processes(ocp_client_node, file_vol,
 
 @podcmd.GlustoPod()
 def restart_file_volume(file_vol, sleep_time=120):
-    """Restars file volume service.
+    """Restart file volume (stop and start volume).
 
     Args:
         file_vol (str): name of a file volume
