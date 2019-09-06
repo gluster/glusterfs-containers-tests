@@ -413,3 +413,62 @@ class TestHeketiDeviceOperations(BaseClass):
             self.addCleanup(
                 heketi_device_disable, heketi_node, heketi_url, device_id)
             raise
+
+    def test_heketi_device_delete_operation(self):
+        """Test Heketi device delete operation"""
+
+        # Get list of additional devices for one of the Gluster nodes
+        ip_with_devices = {}
+        for gluster_server in g.config["gluster_servers"].values():
+            if not gluster_server.get("additional_devices"):
+                continue
+            ip_with_devices = {
+                gluster_server['storage']: gluster_server['additional_devices']
+            }
+            break
+
+        # Skip test if no additional device is available
+        if not ip_with_devices:
+            self.skipTest(
+                "No additional devices attached to any of the gluster nodes")
+
+        # Select any additional device and get the node id of the gluster node
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+        node_id, device_name = None, list(ip_with_devices.values())[0][0]
+        topology_info = heketi_topology_info(h_node, h_server, json=True)
+        for node in topology_info["clusters"][0]["nodes"]:
+            if list(ip_with_devices.keys())[0] == (
+                    node['hostnames']["storage"][0]):
+                node_id = node["id"]
+                break
+        self.assertTrue(node_id)
+
+        # Add additional device to the cluster
+        heketi_device_add(h_node, h_server, device_name, node_id)
+
+        # Get the device id and number of bricks on the device
+        node_info_after_addition = heketi_node_info(
+            h_node, h_server, node_id, json=True)
+        device_id, bricks = None, None
+        for device in node_info_after_addition["devices"]:
+            if device["name"] == device_name:
+                device_id, bricks = device["id"], len(device['bricks'])
+                break
+        self.assertTrue(device_id, "Device not added in expected node")
+
+        # Delete heketi device
+        heketi_device_disable(h_node, h_server, device_id)
+        heketi_device_remove(h_node, h_server, device_id)
+        heketi_device_delete(h_node, h_server, device_id)
+
+        # Verify that there were no bricks on the newly added device
+        msg = (
+            "Number of bricks on the device %s of the node %s should be zero"
+            % (device_name, list(ip_with_devices.keys())[0]))
+        self.assertEqual(0, bricks, msg)
+
+        # Verify device deletion
+        node_info_after_deletion = heketi_node_info(h_node, h_server, node_id)
+        msg = ("Device %s should not be shown in node info of the node %s"
+               "after the device deletion" % (device_id, node_id))
+        self.assertNotIn(device_id, node_info_after_deletion, msg)
