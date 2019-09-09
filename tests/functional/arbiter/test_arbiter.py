@@ -385,16 +385,31 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 "Arbiter brick '%s' was not verified. Looks like it was "
                 "not found on any of gluster PODs/nodes." % brick["name"])
 
-    @ddt.data(True, False)
-    def test_aribiter_required_tag_on_node_or_devices_other_disabled(
-            self, node_with_tag):
-        """Validate arbiter vol creation with required node or device tag"""
+    @ddt.data(
+        (False, False, True, True),
+        (True, True, False, False),
+        (False, True, False, False),
+        (True, False, False, False)
+    )
+    @ddt.unpack
+    def test_arbiter_required_tag_on_node_or_devices_other_disabled(
+            self, r_node_tag, d_node_tag, r_device_tag, d_device_tag):
+        """Validate arbiter vol creation with node or device tag"""
 
         pvc_amount = 3
 
         # Get Heketi nodes info
         node_id_list = heketi_ops.heketi_node_list(
             self.heketi_client_node, self.heketi_server_url)
+
+        # Disable n-3 nodes
+        for node_id in node_id_list[3:]:
+            heketi_ops.heketi_node_disable(self.heketi_client_node,
+                                           self.heketi_server_url, node_id)
+            self.addCleanup(heketi_ops.heketi_node_enable,
+                            self.heketi_client_node,
+                            self.heketi_server_url,
+                            node_id)
 
         # Set arbiter:required tags
         arbiter_node = heketi_ops.heketi_node_info(
@@ -403,16 +418,16 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         arbiter_nodes_ip_addresses = arbiter_node['hostnames']['storage']
         self._set_arbiter_tag_with_further_revert(
             self.heketi_client_node, self.heketi_server_url, 'node',
-            node_id_list[0], ('required' if node_with_tag else None),
+            node_id_list[0], ('required' if r_node_tag else None),
             revert_to=arbiter_node.get('tags', {}).get('arbiter'))
         for device in arbiter_node['devices']:
             self._set_arbiter_tag_with_further_revert(
                 self.heketi_client_node, self.heketi_server_url, 'device',
-                device['id'], (None if node_with_tag else 'required'),
+                device['id'], ('required' if r_device_tag else None),
                 revert_to=device.get('tags', {}).get('arbiter'))
 
         # Set arbiter:disabled tags
-        data_nodes, data_nodes_ip_addresses = [], []
+        data_nodes_ip_addresses = []
         for node_id in node_id_list[1:]:
             node_info = heketi_ops.heketi_node_info(
                 self.heketi_client_node, self.heketi_server_url,
@@ -426,13 +441,12 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             for device in node_info['devices']:
                 self._set_arbiter_tag_with_further_revert(
                     self.heketi_client_node, self.heketi_server_url, 'device',
-                    device['id'], (None if node_with_tag else 'disabled'),
+                    device['id'], ('disabled' if d_device_tag else None),
                     revert_to=device.get('tags', {}).get('arbiter'))
             self._set_arbiter_tag_with_further_revert(
                 self.heketi_client_node, self.heketi_server_url, 'node',
-                node_id, ('disabled' if node_with_tag else None),
+                node_id, ('disabled' if d_node_tag else None),
                 revert_to=node_info.get('tags', {}).get('arbiter'))
-            data_nodes.append(node_info)
 
         # Create PVCs and check that their bricks are correctly located
         self.create_storage_class(is_arbiter_vol=True)
