@@ -3,6 +3,7 @@ from glusto.core import Glusto as g
 
 from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_info,
+    verify_volume_name_prefix,
 )
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.openshift_storage_libs import (
@@ -10,7 +11,6 @@ from openshiftstoragelibs.openshift_storage_libs import (
     get_mpath_name_from_device_name,
     validate_multipath_pod,
 )
-from openshiftstoragelibs.heketi_ops import verify_volume_name_prefix
 from openshiftstoragelibs.openshift_ops import (
     get_amount_of_gluster_nodes,
     get_gluster_blockvol_info_by_pvc_name,
@@ -32,6 +32,7 @@ from openshiftstoragelibs.openshift_storage_version import (
     get_openshift_storage_version
 )
 from openshiftstoragelibs.openshift_version import get_openshift_version
+from openshiftstoragelibs import utils
 
 
 @ddt.ddt
@@ -344,3 +345,11 @@ class TestStorageClassCases(BaseClass):
             endpoint,
             "Failed to read Endpoints of %s on  %s " % (
                 pv_name, self.ocp_master_node[0]))
+
+    def test_try_to_create_sc_with_duplicated_name(self):
+        """Verify SC creation fails with duplicate name"""
+        sc_name = "test-sc-duplicated-name-" + utils.get_random_str()
+        self.create_storage_class(sc_name=sc_name)
+        self.create_and_wait_for_pvc(sc_name=sc_name)
+        with self.assertRaises(AssertionError):
+            self.create_storage_class(sc_name=sc_name)

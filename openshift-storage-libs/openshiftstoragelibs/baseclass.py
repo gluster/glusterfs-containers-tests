@@ -153,6 +153,7 @@ class BaseClass(unittest.TestCase):
 
     def create_storage_class(self, secret_name=None,
                              sc_name_prefix="autotests-sc",
+                             sc_name=None,
                              create_vol_name_prefix=False,
                              vol_name_prefix=None,
                              allow_volume_expansion=False,
@@ -194,6 +195,7 @@ class BaseClass(unittest.TestCase):
         self.sc_name = oc_create_sc(
             self.ocp_client[0],
             sc_name_prefix=sc_name_prefix,
+            sc_name=sc_name,
             provisioner=provisioner,
             allow_volume_expansion=allow_volume_expansion,
             reclaim_policy=reclaim_policy,
