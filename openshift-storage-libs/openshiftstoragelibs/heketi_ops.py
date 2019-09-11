@@ -18,19 +18,20 @@ from openshiftstoragelibs.utils import parse_prometheus_data
 from openshiftstoragelibs import waiter
 
 
-HEKETI_BHV = re.compile(r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(\S+)\s\[block\]")
-HEKETI_OPERATIONS = re.compile(r"Id:(\S+)\s+Type:(\S+)\s+Status:(\S+)")
-HEKETI_COMMAND_TIMEOUT = g.config.get("common", {}).get(
-    "heketi_command_timeout", 120)
-TIMEOUT_PREFIX = "timeout %s " % HEKETI_COMMAND_TIMEOUT
-
-MASTER_NODE = list(g.config["ocp_servers"]["master"].keys())[0]
 HEKETI_DC = g.config.get("cns", g.config.get("openshift"))[
     "heketi_config"]["heketi_dc_name"]
+HEKETI_COMMAND_TIMEOUT = g.config.get("common", {}).get(
+    "heketi_command_timeout", 120)
+MASTER_NODE = list(g.config["ocp_servers"]["master"].keys())[0]
+
+HEKETI_BHV = re.compile(r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(\S+)\s\[block\]")
+HEKETI_OPERATIONS = re.compile(r"Id:(\S+)\s+Type:(\S+)\s+Status:(\S+)")
+HEKETI_NODES = re.compile(r"Id:(\S+)\s+Cluster:(\S+)")
+
 GET_HEKETI_PODNAME_CMD = (
     "oc get pods -l deploymentconfig=%s -o=custom-columns=:.metadata.name "
-    "--no-headers" % HEKETI_DC
-)
+    "--no-headers" % HEKETI_DC)
+TIMEOUT_PREFIX = "timeout %s " % HEKETI_COMMAND_TIMEOUT
 
 
 def cmd_run_on_heketi_pod(cmd, raise_on_error=True):
@@ -948,22 +949,26 @@ def heketi_node_info(heketi_client_node, heketi_server_url, node_id, **kwargs):
     return out
 
 
-def heketi_node_list(heketi_client_node, heketi_server_url,
-                     heketi_user=None, heketi_secret=None):
+def heketi_node_list(heketi_client_node, heketi_server_url, **kwargs):
     """Execute CLI 'heketi node list' command and parse its output.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed
         heketi_server_url (str): Heketi server url to perform request to
-        heketi_user (str): Name of the user to perform request with
-        heketi_secret (str): Secret for 'heketi_user'
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - json : (bool)
+            - secret : (str)|None
+            - user : (str)|None
     Returns:
         list of strings which are node IDs
+
     Raises: openshiftstoragelibs.exceptions.ExecutionError when command fails.
     """
 
     heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
-        heketi_server_url, user=heketi_user, secret=heketi_secret)
+        heketi_server_url, **kwargs)
 
     cmd = "heketi-cli -s %s node list %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
@@ -971,10 +976,8 @@ def heketi_node_list(heketi_client_node, heketi_server_url,
     out = heketi_cmd_run(heketi_client_node, cmd)
 
     heketi_node_id_list = []
-    for line in out.strip().split("\n"):
-        # Line looks like this: 'Id:nodeIdString\tCluster:clusterIdString'
-        heketi_node_id_list.append(
-            line.strip().split("Cluster")[0].strip().split(":")[1])
+    for node in HEKETI_NODES.findall(out.strip()):
+        heketi_node_id_list.append(node[0])
     return heketi_node_id_list
 
 
