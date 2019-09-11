@@ -22,6 +22,10 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_info,
     heketi_volume_list,
 )
+from openshiftstoragelibs.node_ops import (
+    node_add_iptables_rules,
+    node_delete_iptables_rules,
+)
 from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
@@ -32,9 +36,11 @@ from openshiftstoragelibs.openshift_ops import (
     oc_delete,
     oc_get_custom_resource,
     oc_get_pods,
+    oc_label,
     scale_dcs_pod_amount_and_wait,
     switch_oc_project,
     wait_for_pvcs_be_bound,
+    wait_for_pods_be_ready,
     wait_for_resources_absence,
 )
 from openshiftstoragelibs.openshift_storage_libs import (
@@ -363,6 +369,51 @@ class BaseClass(unittest.TestCase):
             self.heketi_server_url, h_volume_info["id"])
 
         return h_volume_info
+
+    def configure_node_to_run_gluster_node(self, storage_hostname):
+        glusterd_status_cmd = "systemctl is-active glusterd"
+        command.cmd_run(glusterd_status_cmd, storage_hostname)
+
+        ports = ("24010", "3260", "111", "22", "24007", "24008", "49152-49664")
+        add_port = " ".join(["--add-port=%s/tcp" % port for port in ports])
+        add_firewall_rule_cmd = "firewall-cmd --zone=public %s" % add_port
+        command.cmd_run(add_firewall_rule_cmd, storage_hostname)
+
+    def configure_node_to_run_gluster_pod(self, storage_hostname):
+        ports = (
+            "24010", "3260", "111", "2222", "24007", "24008", "49152:49664")
+        iptables_rule_pattern = (
+            "-p tcp -m state --state NEW -m %s --%s %s -j ACCEPT")
+        iptables_rule_chain = "OS_FIREWALL_ALLOW"
+        iptables_rules = []
+        for port in ports:
+            if ":" in port:
+                iptables_rules.append(
+                    iptables_rule_pattern % ("multiport", "dports", port))
+            else:
+                iptables_rules.append(
+                    iptables_rule_pattern % ("tcp", "dport", port))
+        node_add_iptables_rules(
+            storage_hostname, iptables_rule_chain, iptables_rules)
+        self.addCleanup(
+            node_delete_iptables_rules,
+            storage_hostname, iptables_rule_chain, iptables_rules)
+
+        gluster_host_label = "glusterfs=storage-host"
+        gluster_pod_label = "glusterfs=storage-pod"
+        oc_label(
+            self.ocp_client[0], "node", storage_hostname, gluster_host_label)
+        self.addCleanup(
+            wait_for_pods_be_ready,
+            self.ocp_client[0], len(self.gluster_servers),
+            selector=gluster_pod_label)
+        self.addCleanup(
+            oc_label,
+            self.ocp_client[0], "node", storage_hostname, "glusterfs-")
+
+        wait_for_pods_be_ready(
+            self.ocp_client[0], len(self.gluster_servers) + 1,
+            selector=gluster_pod_label)
 
     def is_containerized_gluster(self):
         cmd = ("oc get pods --no-headers -l glusterfs-node=pod "

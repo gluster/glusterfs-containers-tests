@@ -804,6 +804,55 @@ def heketi_device_remove(heketi_client_node, heketi_server_url, device_id,
     return out
 
 
+def heketi_node_add(heketi_client_node, heketi_server_url, zone, cluster_id,
+                    management_host_name, storage_host_name, **kwargs):
+    """Executes heketi node add command.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed
+        heketi_server_url (str): Heketi server url
+        zone (int): The zone in which the node should reside
+        cluster_id (str): The cluster in which the node should reside
+        management_host_name (str): Management host name
+        storage_host_name (str): Sotage host name
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - json : (bool)
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        Str: Node info as raw CLI output if "json" arg is not provided.
+        Dict: Node info parsed to dict if "json" arg is provided.
+
+    Raises:
+        exceptions.AssertionError: if command fails.
+
+    Example:
+        heketi_node_add(
+            heketi_client_node, heketi_server_url,
+            zone, cluster_id, management_host_name, storage_host_name)
+    """
+
+    heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+
+    cmd = (
+        "heketi-cli -s %s node add %s %s %s "
+        "--zone=%d --cluster=%s --management-host-name=%s "
+        "--storage-host-name=%s" % (
+            heketi_server_url, json_arg, admin_key, user,
+            zone, cluster_id, management_host_name, storage_host_name))
+
+    cmd = TIMEOUT_PREFIX + cmd
+    out = heketi_cmd_run(heketi_client_node, cmd)
+    if json_arg:
+        return json.loads(out)
+    else:
+        return out
+
+
 def heketi_node_delete(heketi_client_node, heketi_server_url, node_id,
                        **kwargs):
     """Executes heketi node delete command.

@@ -570,6 +570,22 @@ def oc_get_all_pvs(ocp_node):
     return oc_get_yaml(ocp_node, 'pv', None)
 
 
+def oc_label(hostname, rtype, rname, label):
+    """Add label for given resource
+    Args:
+        hostname (str): Node where we want to run our commands.
+        rtype (str): Type of resource.
+        rname (str): Name of resource.
+
+    Raises:
+        AssertionError: In case adding label to resource fails.
+    """
+    cmd = "oc label %s %s %s" % (rtype, rname, label)
+    out = command.cmd_run(cmd, hostname=hostname)
+
+    return out
+
+
 def wait_for_resources_absence(ocp_node, rtype, names,
                                interval=5, timeout=600):
     """Wait for an absence of any set of resources of one type.
@@ -959,6 +975,54 @@ def wait_for_pod_be_ready(hostname, pod_name,
                    "to be in ready state" % (timeout, pod_name))
         g.log.error(err_msg)
         raise exceptions.ExecutionError(err_msg)
+
+
+def wait_for_pods_be_ready(
+        hostname, pod_count, selector, timeout=600, wait_step=10):
+    """Wait to 'pod_count' gluster pods be in Ready state.
+
+    Args:
+        hostname (str): Node where we want to run our commands.
+        pod_count (int): No of pods to be waited for.
+        selector (str): Selector to select pods of given label.
+        timeout (int): Seconds to wait for Node to be Ready.
+        wait_step (int): Interval in seconds to wait before checking
+                         status again.
+
+    Raises:
+        AssertionError: In case it fails to get pods.
+        ExecutionError: In case pods won't get in ready state for given time.
+    """
+    if not selector:
+        raise exceptions.ExecutionError(
+            "selector parameter should be provided")
+
+    custom = (
+        r':.metadata.name,":.status.conditions[?(@.type==\"Ready\")]".status')
+    pod_status = None
+    for w in waiter.Waiter(timeout, wait_step):
+        pod_status = oc_get_custom_resource(
+            hostname, "pod", custom, selector=selector)
+
+        if not pod_status:
+            raise exceptions.ExecutionError(
+                "Unable to find pod with selector %s" % selector)
+        status = [status for _, status in pod_status]
+        if len(status) == pod_count == status.count("True"):
+            return
+    try:
+        pod_events = ""
+        for pod_name, _ in pod_status:
+            pod_events += (
+                "\n" + get_events(hostname, obj_name=pod_name, obj_type="Pod"))
+    except Exception:
+        pod_events = "?"
+
+    err_msg = (
+        "Failed to wait %s sec for pods be in ready state.\n"
+        "Events info: %s" % (timeout, pod_events))
+    g.log.error(err_msg)
+    raise exceptions.ExecutionError(err_msg)
 
 
 def get_pod_names_from_dc(hostname, dc_name, timeout=180, wait_step=3):

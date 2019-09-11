@@ -1,3 +1,4 @@
+from glusto.core import Glusto as g
 from glustolibs.gluster import peer_ops
 
 from openshiftstoragelibs import baseclass
@@ -106,3 +107,70 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
         vol_info = heketi_ops.heketi_volume_create(
             h_client, h_server, vol_size, json=True)
         heketi_ops.heketi_volume_delete(h_client, h_server, vol_info['id'])
+
+    def test_heketi_node_add_with_valid_cluster(self):
+        """Test heketi node add operation with valid cluster id"""
+        storage_host_info = g.config.get("additional_gluster_servers")
+        if not storage_host_info:
+            self.skipTest(
+                "Skip test case as 'additional_gluster_servers' option is "
+                "not provided in config file")
+
+        h_client, h_server = self.heketi_client_node, self.heketi_server_url
+
+        storage_host_info = list(storage_host_info.values())[0]
+        storage_host_manage = storage_host_info["manage"]
+        storage_host_name = storage_host_info["storage"]
+        storage_device = storage_host_info["additional_devices"][0]
+        storage_zone = 1
+
+        cluster_info = heketi_ops.heketi_cluster_list(
+            h_client, h_server, json=True)
+        cluster_id = cluster_info["clusters"][0]
+
+        if self.is_containerized_gluster():
+            self.configure_node_to_run_gluster_pod(storage_host_manage)
+        else:
+            self.configure_node_to_run_gluster_node(storage_host_manage)
+
+        heketi_node_info = heketi_ops.heketi_node_add(
+            h_client, h_server, storage_zone, cluster_id,
+            storage_host_manage, storage_host_name, json=True)
+        heketi_node_id = heketi_node_info["id"]
+        self.addCleanup(
+            heketi_ops.heketi_node_delete, h_client, h_server, heketi_node_id)
+        self.addCleanup(
+            heketi_ops.heketi_node_remove, h_client, h_server, heketi_node_id)
+        self.addCleanup(
+            heketi_ops.heketi_node_disable, h_client, h_server, heketi_node_id)
+        self.assertEqual(
+            heketi_node_info["cluster"], cluster_id,
+            "Node got added in unexpected cluster exp: %s, act: %s" % (
+                cluster_id, heketi_node_info["cluster"]))
+
+        heketi_ops.heketi_device_add(
+            h_client, h_server, storage_device, heketi_node_id)
+        heketi_node_info = heketi_ops.heketi_node_info(
+            h_client, h_server, heketi_node_id, json=True)
+        device_id = None
+        for device in heketi_node_info["devices"]:
+            if device["name"] == storage_device:
+                device_id = device["id"]
+                break
+        err_msg = ("Failed to add device %s on node %s" % (
+            storage_device, heketi_node_id))
+        self.assertTrue(device_id, err_msg)
+
+        self.addCleanup(
+            heketi_ops.heketi_device_delete, h_client, h_server, device_id)
+        self.addCleanup(
+            heketi_ops.heketi_device_remove, h_client, h_server, device_id)
+        self.addCleanup(
+            heketi_ops.heketi_device_disable, h_client, h_server, device_id)
+
+        cluster_info = heketi_ops.heketi_cluster_info(
+            h_client, h_server, cluster_id, json=True)
+        self.assertIn(
+            heketi_node_info["id"], cluster_info["nodes"],
+            "Newly added node %s not found in cluster %s, cluster info %s" % (
+                heketi_node_info["id"], cluster_id, cluster_info))
