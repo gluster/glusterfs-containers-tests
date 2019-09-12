@@ -166,6 +166,7 @@ class BaseClass(unittest.TestCase):
                              allow_volume_expansion=False,
                              reclaim_policy="Delete",
                              set_hacount=None,
+                             clusterid=None,
                              hacount=None,
                              is_arbiter_vol=False, arbiter_avg_file_size=None,
                              heketi_zone_checking=None):
@@ -188,7 +189,8 @@ class BaseClass(unittest.TestCase):
             secret_namespace_option: self.sc.get(
                 "secretnamespace", self.sc.get("restsecretnamespace")),
         }
-
+        if clusterid:
+            parameters["clusterid"] = clusterid
         if hacount:
             parameters["hacount"] = six.text_type(hacount)
         elif set_hacount:

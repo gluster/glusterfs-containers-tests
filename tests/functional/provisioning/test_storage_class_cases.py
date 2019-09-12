@@ -3,6 +3,8 @@ from glusto.core import Glusto as g
 
 from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_info,
+    heketi_cluster_list,
+    heketi_volume_info,
     verify_volume_name_prefix,
 )
 from openshiftstoragelibs.baseclass import BaseClass
@@ -383,3 +385,27 @@ class TestStorageClassCases(BaseClass):
         # Verify PVC did not get bound
         with self.assertRaises(AssertionError):
             verify_pvc_status_is_bound(node, pvc_name, timeout=1)
+
+    def test_sc_create_with_clusterid(self):
+        """Create storage class with 'cluster id'"""
+        h_cluster_list = heketi_cluster_list(
+            self.heketi_client_node, self.heketi_server_url, json=True)
+        self.assertTrue(h_cluster_list, "Failed to list heketi cluster")
+        cluster_id = h_cluster_list["clusters"][0]
+        sc = self.create_storage_class(clusterid=cluster_id)
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc)
+
+        # Validate if cluster id is correct in the heketi volume info
+        pv_name = get_pv_name_from_pvc(self.ocp_master_node[0], pvc_name)
+        volume_id = oc_get_custom_resource(
+            self.ocp_master_node[0], 'pv',
+            r':metadata.annotations."gluster\.kubernetes\.io'
+            r'\/heketi-volume-id"', name=pv_name)[0]
+        volume_info = heketi_volume_info(
+            self.heketi_client_node, self.heketi_server_url, volume_id,
+            json=True)
+
+        self.assertEqual(cluster_id, volume_info["cluster"],
+                         "Cluster ID %s has NOT been used to"
+                         "create the PVC %s. Found %s" %
+                         (cluster_id, pvc_name, volume_info["cluster"]))
