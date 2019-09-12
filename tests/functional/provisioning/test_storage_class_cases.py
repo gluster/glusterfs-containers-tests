@@ -24,6 +24,7 @@ from openshiftstoragelibs.openshift_ops import (
     oc_get_custom_resource,
     oc_get_pods,
     scale_dc_pod_amount_and_wait,
+    verify_pvc_status_is_bound,
     wait_for_events,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
@@ -353,3 +354,32 @@ class TestStorageClassCases(BaseClass):
         self.create_and_wait_for_pvc(sc_name=sc_name)
         with self.assertRaises(AssertionError):
             self.create_storage_class(sc_name=sc_name)
+
+    @ddt.data('secretName', 'secretNamespace', None)
+    def test_sc_glusterfile_missing_parameter(self, parameter):
+        """Validate glusterfile storage with missing parameters"""
+        node, sc = self.ocp_master_node[0], self.sc
+        secret_name = self.create_secret()
+
+        parameters = {'resturl': sc['resturl'], 'restuser': sc['restuser']}
+        if parameter == 'secretName':
+            parameters['secretName'] = secret_name
+        elif parameter == 'secretNamespace':
+            parameters['secretNamespace'] = sc['secretnamespace']
+
+        sc_name = oc_create_sc(node, **parameters)
+        self.addCleanup(oc_delete, node, 'sc', sc_name)
+
+        # Create PVC
+        pvc_name = oc_create_pvc(node, sc_name)
+        self.addCleanup(wait_for_resource_absence, node, 'pvc', pvc_name)
+        self.addCleanup(oc_delete, node, 'pvc', pvc_name)
+
+        # Wait for event with error
+        wait_for_events(
+            node, obj_name=pvc_name, obj_type='PersistentVolumeClaim',
+            event_reason='ProvisioningFailed')
+
+        # Verify PVC did not get bound
+        with self.assertRaises(AssertionError):
+            verify_pvc_status_is_bound(node, pvc_name, timeout=1)
