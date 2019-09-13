@@ -124,6 +124,9 @@ def get_ocp_gluster_pod_details(ocp_node):
     gluster_pods = oc_get_custom_resource(
         ocp_node, "pod", pod_columns, selector=pod_selector)
 
+    if not gluster_pods[0]:
+        return []
+
     gluster_pod_details = map(
         lambda pod: {
             "pod_name": pod[0],
