@@ -383,18 +383,19 @@ class GlusterBlockBaseClass(BaseClass):
         gluster_ips.sort()
 
         # Find iqn and hacount from volume info
-        pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+        pv_name = get_pv_name_from_pvc(self.ocp_client[0], pvc_name)
         custom = [r':.metadata.annotations."gluster\.org\/volume\-id"']
-        vol_id = oc_get_custom_resource(self.node, 'pv', custom, pv_name)[0]
+        vol_id = oc_get_custom_resource(
+            self.ocp_client[0], 'pv', custom, pv_name)[0]
         vol_info = heketi_blockvolume_info(
             self.heketi_client_node, self.heketi_server_url, vol_id, json=True)
         iqn = vol_info['blockvolume']['iqn']
         hacount = int(vol_info['hacount'])
 
         # Find node on which pod is running
-        pod_name = get_pod_name_from_dc(self.node, dc_name)
+        pod_name = get_pod_name_from_dc(self.ocp_client[0], dc_name)
         pod_info = oc_get_pods(
-            self.node, selector='deploymentconfig=%s' % dc_name)
+            self.ocp_client[0], selector='deploymentconfig=%s' % dc_name)
         node = pod_info[pod_name]['node']
 
         # Get the iscsi sessions info from the node
@@ -423,7 +424,7 @@ class GlusterBlockBaseClass(BaseClass):
         self.assertEqual(1, len(mpaths), msg)
 
         validate_multipath_pod(
-            self.node, pod_name, hacount, mpath=list(mpaths)[0])
+            self.ocp_client[0], pod_name, hacount, mpath=list(mpaths)[0])
 
         return iqn, hacount, node
 
@@ -451,9 +452,9 @@ class GlusterBlockBaseClass(BaseClass):
             pvc_name (str): pvc name for which the BHV name needs
                             to be returned
         """
-        pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+        pv_name = get_pv_name_from_pvc(self.ocp_client[0], pvc_name)
         block_volume = oc_get_custom_resource(
-            self.node, 'pv',
+            self.ocp_client[0], 'pv',
             r':.metadata.annotations."gluster\.org\/volume\-id"',
             name=pv_name
         )[0]
