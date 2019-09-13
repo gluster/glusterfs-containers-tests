@@ -29,6 +29,24 @@ gluster_servers:
         manage: gluster_server2_hostname
         storage: gluster_server2_ip
         additional_devices: [device3, device4]
+    gluster_server3_ip:
+        manage: gluster_server3_hostname
+        storage: gluster_server3_ip
+        additional_devices: [device3, device4]
+
+
+# 'additional_gluster_servers' section covers the details of the nodes where
+# we can run gluster servers. In the case of CNS, these are the nodes where
+# gluster pods can be run. In the case of CRS, these are the nodes where
+# gluster servers can be configured.
+# Note: These nodes are not part of gluster pool. These can be added into
+# gluster pool. These can be used where we want to perform node add and remove
+# operations.
+additional_gluster_servers:
+    gluster_server4_ip:
+        manage: gluster_server4_hostname
+        storage: gluster_server4_ip
+        devices: [device1, device2]
 
 openshift:
     storage_project_name: "<storage-project-name>"
