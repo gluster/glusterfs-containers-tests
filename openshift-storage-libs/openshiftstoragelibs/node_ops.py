@@ -160,6 +160,9 @@ def power_on_vm_by_name(name, timeout=600, interval=10):
     for w in _waiter:
         try:
             hostname = cloudProvider.wait_for_hostname(name, 1, 1)
+            # NOTE(vponomar): Reset attempts for waiter to avoid redundant
+            # sleep equal to 'interval' on the next usage.
+            _waiter._attempt = 0
             break
         except Exception as e:
             g.log.info(e)

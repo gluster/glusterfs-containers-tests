@@ -36,6 +36,9 @@ def wait_to_heal_complete(timeout=300, wait_step=5):
     for gluster_vol in gluster_vol_list:
         for w in _waiter:
             if is_heal_complete("auto_get_gluster_endpoint", gluster_vol):
+                # NOTE(vponomar): Reset attempts for waiter to avoid redundant
+                # sleep equal to 'interval' on the next usage.
+                _waiter._attempt = 0
                 break
 
     if w.expired:

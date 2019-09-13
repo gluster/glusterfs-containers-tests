@@ -575,6 +575,9 @@ def wait_for_resource_absence(ocp_node, rtype, name,
         try:
             resource = oc_get_yaml(ocp_node, rtype, name, raise_on_error=True)
         except AssertionError:
+            # NOTE(vponomar): Reset attempts for waiter to avoid redundant
+            # sleep equal to 'interval' on the next usage.
+            _waiter._attempt = 0
             break
     if rtype == 'pvc':
         cmd = "oc get pv -o=custom-columns=:.spec.claimRef.name | grep %s" % (
@@ -583,6 +586,7 @@ def wait_for_resource_absence(ocp_node, rtype, name,
             try:
                 _pv_name = command.cmd_run(cmd, hostname=ocp_node)
             except AssertionError:
+                _waiter._attempt = 0
                 break
             finally:
                 if _pv_name and not pv_name:
@@ -639,23 +643,20 @@ def scale_dcs_pod_amount_and_wait(hostname, dc_names, pod_amount=1,
 
     command.cmd_run(scale_cmd, hostname=hostname)
 
-    _start_time = time.time()
     for dc_name in dc_names:
         dc_and_pod_names[dc_name] = get_pod_names_from_dc(hostname, dc_name)
-        for pod_name in dc_and_pod_names[dc_name]:
+    _start_time, _timeout = time.time(), timeout
+    for pod_names in dc_and_pod_names.values():
+        for pod_name in pod_names:
             if pod_amount == 0:
                 wait_for_resource_absence(
                     hostname, 'pod', pod_name,
-                    interval=wait_step, timeout=timeout)
+                    interval=wait_step, timeout=_timeout)
             else:
                 wait_for_pod_be_ready(
-                    hostname, pod_name,
-                    timeout=timeout, wait_step=wait_step)
-            time_diff = time.time() - _start_time
-            if time_diff > timeout:
-                timeout = wait_step
-            else:
-                timeout -= time_diff
+                    hostname, pod_name, timeout=_timeout, wait_step=wait_step)
+            _diff = time.time() - _start_time
+            _timeout = wait_step if _diff > timeout else timeout - _diff
     return dc_and_pod_names
 
 
