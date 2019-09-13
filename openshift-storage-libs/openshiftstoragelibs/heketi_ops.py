@@ -1845,3 +1845,41 @@ def get_vol_file_servers_and_hosts(
         glusterfs['device'].split(":")[:1]
         + glusterfs['options']['backup-volfile-servers'].split(","))
     return {'vol_servers': vol_servers, 'vol_hosts': glusterfs['hosts']}
+
+
+def get_bricks_on_heketi_node(
+        heketi_client_node, heketi_server_url, node_id, **kwargs):
+    """Get bricks on heketi node.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+        node_id (str): Node ID
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        list: list of bricks.
+
+    Raises:
+        AssertionError: if command fails.
+    """
+
+    if 'json' in kwargs:
+        raise AssertionError("json is not expected parameter")
+
+    kwargs['json'] = True
+
+    node_info = heketi_node_info(
+        heketi_client_node, heketi_server_url, node_id, **kwargs)
+
+    if len(node_info['devices']) < 1:
+        raise AssertionError("No device found on node %s" % node_info)
+
+    bricks = []
+    for device in node_info['devices']:
+        bricks += device['bricks']
+    return bricks

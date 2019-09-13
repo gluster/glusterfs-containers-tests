@@ -1,9 +1,11 @@
+import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster import peer_ops
 import six
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
+from openshiftstoragelibs import gluster_ops
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import openshift_storage_version
@@ -11,9 +13,16 @@ from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import utils
 
 
+@ddt.ddt
 class TestHeketiNodeOperations(baseclass.BaseClass):
     """Class to test heketi node operations
     """
+
+    def setUp(self):
+        super(TestHeketiNodeOperations, self).setUp()
+        self.node = self.ocp_master_node[0]
+        self.h_node = self.heketi_client_node
+        self.h_url = self.heketi_server_url
 
     @podcmd.GlustoPod()
     def test_heketi_node_list(self):
@@ -245,3 +254,273 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
         err_msg = ("Unexpectedly node %s got added to cluster %s" % (
             storage_hostname, cluster_id))
         self.assertFalse(storage_hostname, err_msg)
+
+    def get_node_to_be_added(self):
+        try:
+            # Initializes additional gluster nodes variables
+            self.additional_gluster_servers = list(
+                g.config['additional_gluster_servers'].keys())
+            self.additional_gluster_servers_info = (
+                g.config['additional_gluster_servers'])
+            return list(self.additional_gluster_servers_info.values())[0]
+        except (KeyError, AttributeError):
+            self.skipTest("Required 'additional_gluster_servers' option is "
+                          "not set in the config file.")
+
+    def get_vol_ids_by_pvc_names(self, pvc_names):
+        vol_ids = []
+        custom = (r':.metadata.annotations."gluster\.kubernetes\.io\/'
+                  'heketi-volume-id"')
+        for pvc in pvc_names:
+            pv = openshift_ops.get_pv_name_from_pvc(self.node, pvc)
+            vol_id = openshift_ops.oc_get_custom_resource(
+                self.node, 'pv', custom, pv)
+            vol_ids.append(vol_id[0])
+        return vol_ids
+
+    def get_vol_names_from_vol_ids(self, vol_ids):
+        vol_names = []
+        for vol_id in vol_ids:
+            vol_info = heketi_ops.heketi_volume_info(
+                self.h_node, self.h_url, vol_id, json=True)
+            vol_names.append(vol_info['name'])
+        return vol_names
+
+    def verify_gluster_peer_status(
+            self, gluster_node, new_node_manage, new_node_storage,
+            state='present'):
+
+        # Verify gluster peer status
+        peer_status = openshift_ops.cmd_run_on_gluster_pod_or_node(
+            self.node, 'gluster peer status', gluster_node)
+        found = (new_node_manage in peer_status
+                 or new_node_storage in peer_status)
+        if state == 'present':
+            msg = ('Node %s did not get attached in gluster peer status %s'
+                   % (new_node_manage, peer_status))
+            self.assertTrue(found, msg)
+        elif state == 'absent':
+            msg = ('Node %s did not get deattached in gluster peer status %s'
+                   % (new_node_manage, peer_status))
+            self.assertFalse(found, msg)
+        else:
+            msg = "State %s is other than present, absent" % state
+            raise AssertionError(msg)
+
+    def verify_node_is_present_or_not_in_heketi(
+            self, node_id, manage_hostname, storage_ip, state='present'):
+
+        topology = heketi_ops.heketi_topology_info(
+            self.h_node, self.h_url, json=True)
+        if state == 'present':
+            present = False
+            for node in topology['clusters'][0]['nodes']:
+                if node_id == node['id']:
+                    self.assertEqual(
+                        manage_hostname, node['hostnames']['manage'][0])
+                    self.assertEqual(
+                        storage_ip, node['hostnames']['storage'][0])
+                    present = True
+                    break
+            self.assertTrue(present, 'Node %s not found in heketi' % node_id)
+
+        elif state == 'absent':
+            for node in topology['clusters'][0]['nodes']:
+                self.assertNotEqual(
+                    manage_hostname, node['hostnames']['manage'][0])
+                self.assertNotEqual(
+                    storage_ip, node['hostnames']['storage'][0])
+                self.assertNotEqual(node_id, node['id'])
+        else:
+            msg = "State %s is other than present, absent" % state
+            raise AssertionError(msg)
+
+    def verify_gluster_server_present_in_heketi_vol_info_or_not(
+            self, vol_ids, gluster_server, state='present'):
+
+        # Verify gluster servers in vol info
+        for vol_id in vol_ids:
+            g_servers = heketi_ops.get_vol_file_servers_and_hosts(
+                self.h_node, self.h_url, vol_id)
+            g_servers = (g_servers['vol_servers'] + g_servers['vol_hosts'])
+            if state == 'present':
+                self.assertIn(gluster_server, g_servers)
+            elif state == 'absent':
+                self.assertNotIn(gluster_server, g_servers)
+            else:
+                msg = "State %s is other than present, absent" % state
+                raise AssertionError(msg)
+
+    def verify_volume_bricks_are_present_or_not_on_heketi_node(
+            self, vol_ids, node_id, state='present'):
+
+        for vol_id in vol_ids:
+            vol_info = heketi_ops.heketi_volume_info(
+                self.h_node, self.h_url, vol_id, json=True)
+            bricks = vol_info['bricks']
+            self.assertFalse((len(bricks) % 3))
+            if state == 'present':
+                found = False
+                for brick in bricks:
+                    if brick['node'] == node_id:
+                        found = True
+                        break
+                self.assertTrue(
+                    found, 'Bricks of vol %s does not present on node %s'
+                    % (vol_id, node_id))
+            elif state == 'absent':
+                for brick in bricks:
+                    self.assertNotEqual(
+                        brick['node'], node_id, 'Bricks of vol %s is present '
+                        'on node %s' % (vol_id, node_id))
+            else:
+                msg = "State %s is other than present, absent" % state
+                raise AssertionError(msg)
+
+    def get_ready_for_node_add(self, hostname):
+        self.configure_node_to_run_gluster(hostname)
+
+        h_nodes = heketi_ops.heketi_node_list(self.h_node, self.h_url)
+
+        # Disable nodes except first two nodes
+        for node_id in h_nodes[2:]:
+            heketi_ops.heketi_node_disable(self.h_node, self.h_url, node_id)
+            self.addCleanup(
+                heketi_ops.heketi_node_enable, self.h_node, self.h_url,
+                node_id)
+
+    def add_device_on_heketi_node(self, node_id, device_name):
+
+        # Add Devices on heketi node
+        heketi_ops.heketi_device_add(
+            self.h_node, self.h_url, device_name, node_id)
+
+        # Get device id of newly added device
+        node_info = heketi_ops.heketi_node_info(
+            self.h_node, self.h_url, node_id, json=True)
+        for device in node_info['devices']:
+            if device['name'] == device_name:
+                return device['id']
+        raise AssertionError('Device %s did not found on node %s' % (
+            device_name, node_id))
+
+    def delete_node_and_devices_on_it(self, node_id):
+
+        heketi_ops.heketi_node_disable(self.h_node, self.h_url, node_id)
+        heketi_ops.heketi_node_remove(self.h_node, self.h_url, node_id)
+        node_info = heketi_ops.heketi_node_info(
+            self.h_node, self.h_url, node_id, json=True)
+        for device in node_info['devices']:
+            heketi_ops.heketi_device_delete(
+                self.h_node, self.h_url, device['id'])
+        heketi_ops.heketi_node_delete(self.h_node, self.h_url, node_id)
+
+    @ddt.data('remove', 'delete')
+    def test_heketi_node_remove_or_delete(self, operation='delete'):
+        """Test node remove and delete functionality of heketi and validate
+        gluster peer status and heketi topology.
+        """
+        # Get node info to be added in heketi cluster
+        new_node = self.get_node_to_be_added()
+        new_node_manage = new_node['manage']
+        new_node_storage = new_node['storage']
+
+        self.get_ready_for_node_add(new_node_manage)
+
+        h, h_node, h_url = heketi_ops, self.h_node, self.h_url
+
+        # Get cluster id where node needs to be added.
+        cluster_id = h.heketi_cluster_list(h_node, h_url, json=True)
+        cluster_id = cluster_id['clusters'][0]
+
+        h_nodes_list = h.heketi_node_list(h_node, h_url)
+
+        node_needs_cleanup = False
+        try:
+            # Add new node
+            h_new_node = h.heketi_node_add(
+                h_node, h_url, 1, cluster_id, new_node_manage,
+                new_node_storage, json=True)['id']
+            node_needs_cleanup = True
+
+            # Get hostname of first gluster node
+            g_node = h.heketi_node_info(
+                h_node, h_url, h_nodes_list[0],
+                json=True)['hostnames']['manage'][0]
+
+            # Verify gluster peer status
+            self.verify_gluster_peer_status(
+                g_node, new_node_manage, new_node_storage)
+
+            # Add Devices on newly added node
+            device_id = self.add_device_on_heketi_node(
+                h_new_node, new_node['devices'][0])
+
+            # Create PVC's and DC's
+            vol_count = 5
+            pvcs = self.create_and_wait_for_pvcs(pvc_amount=vol_count)
+            dcs = self.create_dcs_with_pvc(pvcs)
+
+            # Get vol id's
+            vol_ids = self.get_vol_ids_by_pvc_names(pvcs)
+
+            # Get bricks count on newly added node
+            bricks = h.get_bricks_on_heketi_node(
+                h_node, h_url, h_new_node)
+            self.assertGreaterEqual(len(bricks), vol_count)
+
+            # Enable the nodes back, which were disabled earlier
+            for node_id in h_nodes_list[2:]:
+                h.heketi_node_enable(h_node, h_url, node_id)
+
+            if operation == 'remove':
+                # Remove the node
+                h.heketi_node_disable(h_node, h_url, h_new_node)
+                h.heketi_node_remove(h_node, h_url, h_new_node)
+                # Delete the device
+                h.heketi_device_delete(h_node, h_url, device_id)
+            elif operation == 'delete':
+                # Remove and delete device
+                h.heketi_device_disable(h_node, h_url, device_id)
+                h.heketi_device_remove(h_node, h_url, device_id)
+                h.heketi_device_delete(h_node, h_url, device_id)
+                # Remove node
+                h.heketi_node_disable(h_node, h_url, h_new_node)
+                h.heketi_node_remove(h_node, h_url, h_new_node)
+            else:
+                msg = "Operation %s is other than remove, delete." % operation
+                raise AssertionError(msg)
+
+            # Delete Node
+            h.heketi_node_delete(h_node, h_url, h_new_node)
+            node_needs_cleanup = False
+
+            # Verify node is deleted from heketi
+            self.verify_node_is_present_or_not_in_heketi(
+                h_new_node, new_node_manage, new_node_storage, state='absent')
+
+            # Verify gluster peer status
+            self.verify_gluster_peer_status(
+                g_node, new_node_manage, new_node_storage, state='absent')
+
+            # Verify gluster servers are not present in vol info
+            self.verify_gluster_server_present_in_heketi_vol_info_or_not(
+                vol_ids, new_node_storage, state='absent')
+
+            # Verify vol bricks are not present on deleted nodes
+            self.verify_volume_bricks_are_present_or_not_on_heketi_node(
+                vol_ids, new_node_storage, state='absent')
+
+            # Wait for heal to complete
+            gluster_ops.wait_to_heal_complete(g_node=g_node)
+
+            for _, pod in dcs.values():
+                openshift_ops.wait_for_pod_be_ready(self.node, pod, timeout=1)
+        finally:
+            # Cleanup newly added Node
+            if node_needs_cleanup:
+                self.addCleanup(self.delete_node_and_devices_on_it, h_new_node)
+
+            # Enable the nodes back, which were disabled earlier
+            for node_id in h_nodes_list[2:]:
+                self.addCleanup(h.heketi_node_enable, h_node, h_url, node_id)

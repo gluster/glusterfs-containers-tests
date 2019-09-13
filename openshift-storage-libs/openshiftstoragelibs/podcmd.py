@@ -49,6 +49,7 @@ from collections import namedtuple
 from functools import partial, wraps
 
 from glusto.core import Glusto as g
+import mock
 import six
 
 from openshiftstoragelibs import openshift_ops
@@ -85,14 +86,21 @@ def run(target, command, user=None, log_level=None, orig_run=g.run):
     # definition time in order to capture the method before
     # any additional monkeypatching by other code
 
-    if target == 'auto_get_gluster_endpoint':
-        ocp_client_node = list(g.config['ocp_servers']['client'].keys())[0]
+    ocp_client_node = list(g.config['ocp_servers']['client'].keys())[0]
+    with mock.patch.object(g, 'run', new=orig_run):
         gluster_pods = openshift_ops.get_ocp_gluster_pod_details(
             ocp_client_node)
+
+    if target == 'auto_get_gluster_endpoint':
         if gluster_pods:
             target = Pod(ocp_client_node, gluster_pods[0]["pod_name"])
         else:
             target = list(g.config.get("gluster_servers", {}).keys())[0]
+    elif not isinstance(target, Pod) and gluster_pods:
+        for g_pod in gluster_pods:
+            if target in (g_pod['pod_host_ip'], g_pod['pod_hostname']):
+                target = Pod(ocp_client_node, g_pod['pod_name'])
+                break
 
     if isinstance(target, Pod):
         prefix = ['oc', 'rsh', target.podname]

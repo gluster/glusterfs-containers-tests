@@ -26,16 +26,17 @@ from openshiftstoragelibs import waiter
 
 
 @podcmd.GlustoPod()
-def wait_to_heal_complete(timeout=300, wait_step=5):
+def wait_to_heal_complete(
+        timeout=300, wait_step=5, g_node="auto_get_gluster_endpoint"):
     """Monitors heal for volumes on gluster"""
-    gluster_vol_list = get_volume_list("auto_get_gluster_endpoint")
+    gluster_vol_list = get_volume_list(g_node)
     if not gluster_vol_list:
         raise AssertionError("failed to get gluster volume list")
 
     _waiter = waiter.Waiter(timeout=timeout, interval=wait_step)
     for gluster_vol in gluster_vol_list:
         for w in _waiter:
-            if is_heal_complete("auto_get_gluster_endpoint", gluster_vol):
+            if is_heal_complete(g_node, gluster_vol):
                 # NOTE(vponomar): Reset attempts for waiter to avoid redundant
                 # sleep equal to 'interval' on the next usage.
                 _waiter._attempt = 0
