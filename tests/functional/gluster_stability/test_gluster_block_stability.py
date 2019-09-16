@@ -1088,3 +1088,53 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         for pvc_name, dc_with_pod in dc_and_pod_names.items():
             self.verify_iscsi_sessions_and_multipath(pvc_name, dc_with_pod[0])
             oc_rsh(self.node, dc_with_pod[1], cmd_run_io % 'file3')
+
+    @ddt.data('active', 'passive', 'all_passive')
+    def test_run_io_and_block_port_on_active_path_network_failure(
+            self, path='active'):
+        """Run I/O and block port on active or passive path."""
+        rules = '-p tcp -m state --state NEW -m tcp --dport %s -j ACCEPT'
+        path_nodes, file1, chain = [], 'file1', 'OS_FIREWALL_ALLOW'
+        tcmu_port, gluster_blockd_port = 3260, 24010
+
+        # Create storage class and PVC
+        self.create_storage_class(hacount=len(self.gluster_servers))
+        self.create_and_wait_for_pvc()
+
+        # Create app pod and run I/0
+        dc_name, pod_name = self.create_dc_with_pvc(self.pvc_name)
+        cmd_run_io = 'dd if=/dev/urandom of=/mnt/%s bs=4k count=10000'
+        oc_rsh(self.node, pod_name, cmd_run_io % file1)
+
+        # Verify multipath and iscsi
+        iqn, hacount, node = self.verify_iscsi_sessions_and_multipath(
+            self.pvc_name, dc_name)
+
+        # Get the active or passive(enabled) node ip
+        devices = get_iscsi_block_devices_by_path(node, iqn)
+        mpath = get_mpath_name_from_device_name(node, list(devices.keys())[0])
+        active_passive_dict = get_active_and_enabled_devices_from_mpath(
+            node, mpath)
+        if path == 'active':
+            path_nodes.append(devices[active_passive_dict['active'][0]])
+        elif path == 'passive':
+            path_nodes.append(devices[active_passive_dict['enabled'][0]])
+        else:
+            for passive_device in active_passive_dict['enabled']:
+                path_nodes.append(devices[passive_device])
+
+        # Close the port  3260 and 24010 and Run I/O
+        for path_node in path_nodes:
+            for port in (tcmu_port, gluster_blockd_port):
+                node_delete_iptables_rules(path_node, chain, rules % port)
+                self.addCleanup(
+                    node_add_iptables_rules, path_node, chain, rules % port)
+        oc_rsh(self.node, pod_name, cmd_run_io % file1)
+
+        # Open the Ports, Run I/O and verify multipath
+        for path_node in path_nodes:
+            node_add_iptables_rules(
+                path_node, chain, rules % gluster_blockd_port)
+            node_add_iptables_rules(path_node, chain, rules % tcmu_port)
+        oc_rsh(self.node, pod_name, cmd_run_io % file1)
+        self.verify_iscsi_sessions_and_multipath(self.pvc_name, dc_name)
