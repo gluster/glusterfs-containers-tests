@@ -37,6 +37,7 @@ from openshiftstoragelibs.openshift_ops import (
     get_ocp_gluster_pod_details,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
+    get_vol_names_from_pv,
     kill_service_on_gluster_pod_or_node,
     match_pv_and_heketi_block_volumes,
     oc_adm_manage_node,
@@ -1245,3 +1246,82 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
             self.verify_all_paths_are_up_in_multipath(
                 list(mpaths)[0], hacount, ini_node, timeout=1)
+
+    def get_vol_id_and_vol_names_from_pvc_names(self, pvc_names):
+        vol_details = []
+        for pvc_name in pvc_names:
+            pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+            volume = get_vol_names_from_pv(
+                self.node, pv_name, vol_type='block')
+            vol_details.append(volume)
+        return vol_details
+
+    def check_errors_in_heketi_pod_network_failure_after_deletion(
+            self, since_time, vol_names):
+        # Get name of heketi pod
+        heketi_pod_name = get_pod_name_from_dc(self.node, self.heketi_dc_name)
+
+        # Check for errors in heketi pod logs
+        err_cmd = (
+            r'oc logs %s --since-time="%s" | grep " Failed to run command '
+            r'\[gluster-block delete*"' % (heketi_pod_name, since_time))
+
+        for w in Waiter(30, 5):
+            err_out = cmd_run(err_cmd, self.node)
+            if any(vol_name in err_out for vol_name in vol_names):
+                break
+        if w.expired:
+            err_msg = ("Expected ERROR for volumes '%s' not generated in "
+                       "heketi pod logs" % vol_names)
+            raise AssertionError(err_msg)
+
+    def test_delete_block_pvcs_with_network_failure(self):
+        """Block port 24010 while deleting PVC's"""
+        pvc_amount, pvc_delete_amount = 10, 5
+        gluster_node = self.gluster_servers[0]
+        chain = 'OS_FIREWALL_ALLOW'
+        rules = '-p tcp -m state --state NEW -m tcp --dport 24010 -j ACCEPT'
+
+        sc_name = self.create_storage_class(hacount=len(self.gluster_servers))
+
+        # Get the total free space available
+        initial_free_storage = get_total_free_space(
+            self.heketi_client_node, self.heketi_server_url)
+
+        # Create  10 PVC's, get their PV names and volume ids
+        pvc_names = self.create_and_wait_for_pvcs(
+            sc_name=sc_name, pvc_amount=pvc_amount, timeout=240)
+        vol_details = self.get_vol_id_and_vol_names_from_pvc_names(pvc_names)
+        vol_names = [vol_name['gluster_vol'] for vol_name in vol_details]
+
+        # Delete 5 PVCs not waiting for the results
+        oc_delete(self.node, 'pvc', " ".join(pvc_names[:pvc_delete_amount]))
+
+        # Get time to collect logs
+        since_time = cmd_run(
+            'date -u --rfc-3339=ns| cut -d  "+" -f 1', self.node).replace(
+                " ", "T") + "Z"
+
+        try:
+            # Close the port #24010 on gluster node and then delete other 5 PVC
+            # without wait
+            node_delete_iptables_rules(gluster_node, chain, rules)
+            oc_delete(
+                self.node, 'pvc', ' '.join(pvc_names[pvc_delete_amount:]))
+            self.addCleanup(
+                wait_for_resources_absence,
+                self.node, 'pvc', pvc_names[pvc_delete_amount:])
+
+            # Check  errors in heketi pod logs
+            self.check_errors_in_heketi_pod_network_failure_after_deletion(
+                since_time, vol_names[pvc_delete_amount:])
+        finally:
+            # Open port 24010
+            node_add_iptables_rules(gluster_node, chain, rules)
+
+        # validate available free space is same
+        final_free_storage = get_total_free_space(
+            self.heketi_client_node, self.heketi_server_url)
+        msg = ("Available free space %s is not same as expected %s"
+               % (initial_free_storage, final_free_storage))
+        self.assertEqual(initial_free_storage, final_free_storage, msg)

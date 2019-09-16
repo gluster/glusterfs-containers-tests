@@ -1358,7 +1358,7 @@ def get_pv_name_from_pvc(hostname, pvc_name):
     return pv_name
 
 
-def get_vol_names_from_pv(hostname, pv_name):
+def get_vol_names_from_pv(hostname, pv_name, vol_type='file'):
     '''
      Returns the heketi and gluster
      vol names of the corresponding PV
@@ -1368,6 +1368,7 @@ def get_vol_names_from_pv(hostname, pv_name):
          pv_name (str): pv_name for which we
                         want to find corresponding
                         vol names
+         vol_type (str): volume type block or file
      Returns:
          volname (dict): dict if successful
                       {"heketi_vol": heketi_vol_name,
@@ -1377,10 +1378,15 @@ def get_vol_names_from_pv(hostname, pv_name):
                     otherwise raise Exception
     '''
     vol_dict = {}
-    cmd = (r"oc get pv %s -o=custom-columns="
-           r":.metadata.annotations."
-           r"'gluster\.kubernetes\.io\/heketi\-volume\-id',"
-           r":.spec.glusterfs.path" % pv_name)
+    if vol_type == 'block':
+        cmd = (r"oc get pv %s -o=custom-columns="
+               r":.metadata.annotations.'gluster\.org\/volume-id',"
+               r":.metadata.annotations.glusterBlockShare" % pv_name)
+    else:
+        cmd = (r"oc get pv %s -o=custom-columns="
+               r":.metadata.annotations."
+               r"'gluster\.kubernetes\.io\/heketi\-volume\-id',"
+               r":.spec.glusterfs.path" % pv_name)
     vol_list = command.cmd_run(cmd, hostname=hostname).split()
     vol_dict = {"heketi_vol": vol_list[0],
                 "gluster_vol": vol_list[1]}
