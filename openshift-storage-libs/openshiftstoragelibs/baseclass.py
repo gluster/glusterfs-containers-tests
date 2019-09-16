@@ -33,6 +33,7 @@ from openshiftstoragelibs.node_ops import (
 from openshiftstoragelibs.openshift_ops import (
     get_block_provisioner,
     get_pod_name_from_dc,
+    get_pod_name_from_rc,
     get_pv_name_from_pvc,
     oc_create_app_dc_with_io,
     oc_create_pvc,
@@ -631,12 +632,20 @@ class GlusterBlockBaseClass(BaseClass):
     def get_provisioner_for_sc(self):
         return self.get_block_provisioner_for_sc()
 
-    def verify_iscsi_sessions_and_multipath(self, pvc_name, rname, rtype="dc"):
+    def verify_iscsi_sessions_and_multipath(
+            self, pvc_name, rname, rtype='dc', heketi_server_url=None,
+            is_registry_gluster=False):
+        if not heketi_server_url:
+            heketi_server_url = self.heketi_server_url
+
         # Get storage ips of glusterfs pods
-        keys = self.gluster_servers
+        keys = (list(g.config['gluster_registry_servers'].keys()) if
+                is_registry_gluster else self.gluster_servers)
+        servers_info = (g.config['gluster_registry_servers'] if
+                        is_registry_gluster else self.gluster_servers_info)
         gluster_ips = []
         for key in keys:
-            gluster_ips.append(self.gluster_servers_info[key]['storage'])
+            gluster_ips.append(servers_info[key]['storage'])
         gluster_ips.sort()
 
         # Find iqn and hacount from volume info
@@ -645,7 +654,7 @@ class GlusterBlockBaseClass(BaseClass):
         vol_id = oc_get_custom_resource(
             self.ocp_client[0], 'pv', custom, pv_name)[0]
         vol_info = heketi_blockvolume_info(
-            self.heketi_client_node, self.heketi_server_url, vol_id, json=True)
+            self.heketi_client_node, heketi_server_url, vol_id, json=True)
         iqn = vol_info['blockvolume']['iqn']
         hacount = int(vol_info['hacount'])
 
@@ -657,6 +666,10 @@ class GlusterBlockBaseClass(BaseClass):
         elif rtype == 'pod':
             pod_info = oc_get_pods(self.ocp_client[0], name=rname)
             pod_name = rname
+        elif rtype == 'rc':
+            pod_name = get_pod_name_from_rc(self.ocp_client[0], rname)
+            pod_info = oc_get_pods(
+                self.ocp_client[0], selector='name=%s' % rname)
         else:
             raise NameError("Value of rtype should be either 'dc' or 'pod'")
 

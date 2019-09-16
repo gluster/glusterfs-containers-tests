@@ -35,6 +35,22 @@ gluster_servers:
         additional_devices: [device3, device4]
 
 
+# 'gluster_registry_servers' section covers the details of the nodes where
+# gluster registry servers are run. In the case of CNS, these are the nodes
+# where gluster pods are run under the registry namespace. In the case of CRS,
+# these are the nodes where registry servers are configured.
+gluster_registry_servers:
+    gluster_registry_server1_ip:
+        manage: gluster_registry_server1_hostname
+        storage: registry_server1_ip
+    gluster_registry_server2_ip:
+        manage: gluster_registry_server2_hostname
+        storage: registry_server2_ip
+    gluster_registry_server3_ip:
+        manage: gluster_registry_server3_hostname
+        storage: registry_server3_ip
+
+
 # 'additional_gluster_servers' section covers the details of the nodes where
 # we can run gluster servers. In the case of CNS, these are the nodes where
 # gluster pods can be run. In the case of CRS, these are the nodes where
@@ -57,6 +73,8 @@ openshift:
         heketi_server_url: "<fake-heketi-server-url>"
         heketi_cli_user: "<fake-heketi-cli-user>"
         heketi_cli_key: "<fake-heketi-cli-secret>"
+    registry_heketi_config:
+        heketi_server_url: "<fake-heketi-server-url>"
     dynamic_provisioning:
         storage_classes:
             file_storage_class:
@@ -75,6 +93,11 @@ openshift:
                 hacount: "3"
                 chapauthenabled: "true"
                 volumenameprefix: "autotests-block"
+    metrics:
+        metrics_project_name: "<metrics-project-name>"
+        metrics_rc_hawkular_cassandra: "<hawkular-cassandra-rc-name>"
+        metrics_rc_hawkular_metrics: "<hawkular-metrics-rc-name>"
+        metrics_rc_heapster: "<heapster-rc-name>"
 
 common:
     allow_heketi_zones_update: False

@@ -1102,36 +1102,39 @@ def wait_for_pods_be_ready(
     raise exceptions.ExecutionError(err_msg)
 
 
-def get_pod_names_from_dc(hostname, dc_name, timeout=180, wait_step=3):
+def get_pod_names_from_dc_or_rc(
+        hostname, rname, rtype='dc', timeout=180, wait_step=3):
     """Return list of POD names by their DC.
 
     Args:
         hostname (str): hostname on which 'oc' commands will be executed.
-        dc_name (str): deployment_confidg name
+        rname (str): deployment_config name or replication_controller name
+        rtype (str): resource type, 'dc' or 'rc', Default value is 'rc'
         timeout (int): timeout value. Default value is 180 sec.
         wait_step( int): Wait step, default value is 3 sec.
     Returns:
          list: list of strings which are POD names
     Raises: exceptions.ExecutionError
     """
+    if rtype not in ('dc', 'rc'):
+        raise NameError("Value of rtype should be either 'dc' or 'rc'.")
     get_replicas_amount_cmd = (
-        "oc get dc --no-headers --all-namespaces "
+        "oc get %s --no-headers --all-namespaces "
         "-o=custom-columns=:.spec.replicas,:.metadata.name "
-        "| grep '%s' | awk '{print $1}'" % dc_name)
-    replicas = int(command.cmd_run(
-        get_replicas_amount_cmd, hostname=hostname))
-
+        "| grep '%s' | awk '{print $1}'" % (rtype, rname))
     get_pod_names_cmd = (
         "oc get pods --all-namespaces -o=custom-columns=:.metadata.name "
-        "--no-headers=true --selector deploymentconfig=%s" % dc_name)
+        "--no-headers=true --selector %s=%s" % (
+            "deploymentconfig" if rtype == "dc" else "name", rname))
+    replicas = int(command.cmd_run(get_replicas_amount_cmd, hostname=hostname))
     for w in waiter.Waiter(timeout, wait_step):
         out = command.cmd_run(get_pod_names_cmd, hostname=hostname)
         pod_names = [o.strip() for o in out.split('\n') if o.strip()]
         if len(pod_names) != replicas:
             continue
         g.log.info(
-            "POD names for '%s' DC are '%s'. "
-            "Expected amount of PODs is '%s'.", dc_name, out, replicas)
+            "POD names for '%s %s' are '%s'. "
+            "Expected amount of PODs is '%s'.", rname, rtype, out, replicas)
         return pod_names
     if w.expired:
         err_msg = ("Exceeded %s sec timeout waiting for PODs to appear "
@@ -1140,9 +1143,19 @@ def get_pod_names_from_dc(hostname, dc_name, timeout=180, wait_step=3):
         raise exceptions.ExecutionError(err_msg)
 
 
+def get_pod_names_from_dc(hostname, rname, timeout=180, wait_step=3):
+    return get_pod_names_from_dc_or_rc(
+        hostname, rname, timeout=timeout, wait_step=wait_step)
+
+
 def get_pod_name_from_dc(hostname, dc_name, timeout=180, wait_step=3):
-    return get_pod_names_from_dc(
+    return get_pod_names_from_dc_or_rc(
         hostname, dc_name, timeout=timeout, wait_step=wait_step)[0]
+
+
+def get_pod_name_from_rc(hostname, rc_name, timeout=180, wait_step=3):
+    return get_pod_names_from_dc_or_rc(
+        hostname, rc_name, rtype='rc', timeout=timeout, wait_step=wait_step)[0]
 
 
 def get_pvc_status(hostname, pvc_name):
