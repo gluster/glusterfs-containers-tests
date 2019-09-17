@@ -1,4 +1,5 @@
 from glusto.core import Glusto as g
+from glustolibs.gluster import snap_ops
 from glustolibs.gluster import volume_ops
 
 from openshiftstoragelibs.baseclass import BaseClass
@@ -175,3 +176,41 @@ class TestVolumeCreationTestCases(BaseClass):
         self.assertEqual(brick_amount, 2,
                          "Brick amount is expected to be 2. "
                          "Actual amount is '%s'" % brick_amount)
+
+    @podcmd.GlustoPod()
+    def test_volume_create_snapshot_enabled(self):
+        """Validate volume creation with snapshot enabled"""
+        factor = 1.5
+        vol_create_info = heketi_ops.heketi_volume_create(
+            self.heketi_client_node, self.heketi_server_url, 1,
+            snapshot_factor=factor, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_create_info["id"])
+        snap_factor_count = vol_create_info["snapshot"]["factor"]
+        self.assertEqual(
+            snap_factor_count, factor,
+            "snapshot factor %s is not same as %s" % (
+                snap_factor_count, factor))
+
+        vol_name, snap_name = vol_create_info["name"], "snap1"
+        try:
+            ret, out, err = snap_ops.snap_create(
+                'auto_get_gluster_endpoint', vol_name,
+                snap_name, timestamp=False)
+            self.assertEqual(
+                ret, 0, "Failed to create snapshot %s" % snap_name)
+
+            # Get gluster volume info
+            gluster_vol = volume_ops.get_volume_info(
+                'auto_get_gluster_endpoint', volname=vol_name)
+            self.assertTrue(
+                gluster_vol, "Failed to get volume '%s' info" % vol_name)
+            self.assertEqual(
+                gluster_vol[vol_name]['snapshotCount'], "1",
+                "Failed to get snapshot count for volume %s" % vol_name)
+        finally:
+            ret, out, err = snap_ops.snap_delete(
+                'auto_get_gluster_endpoint', snap_name)
+            self.assertEqual(
+                ret, 0, "Failed to delete snapshot %s" % snap_name)
