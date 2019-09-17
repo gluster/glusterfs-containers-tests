@@ -1,6 +1,7 @@
 import re
 from unittest import skip
 
+from glusto.core import Glusto as g
 import six
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
@@ -14,6 +15,8 @@ from openshiftstoragelibs.gluster_ops import (
 )
 from openshiftstoragelibs.heketi_ops import (
     get_total_free_space,
+    heketi_blockvolume_create,
+    heketi_blockvolume_delete,
     heketi_blockvolume_info,
     heketi_blockvolume_list,
     heketi_node_info,
@@ -1057,3 +1060,43 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
         # Create and validate 100 app pod creations with block PVs attached
         self.bulk_app_pods_creation_with_block_pv(app_pod_count=100)
+
+    def test_delete_block_volume_with_one_node_down(self):
+        """Validate deletion of block volume when one node is down"""
+
+        heketi_node_count = len(
+            heketi_node_list(
+                self.heketi_client_node, self.heketi_server_url))
+        if heketi_node_count < 4:
+            self.skipTest(
+                "At least 4 nodes are required, found %s." % heketi_node_count)
+
+        # Power off one of the node
+        try:
+            vm_name = find_vm_name_by_ip_or_hostname(self.gluster_servers[3])
+        except (NotImplementedError, ConfigError) as e:
+            self.skipTest(e)
+        power_off_vm_by_name(vm_name)
+        self.addCleanup(power_on_vm_by_name, vm_name)
+
+        # Create block volume with hacount 4
+        try:
+            block_vol_ha4 = heketi_blockvolume_create(
+                self.heketi_client_node, self.heketi_server_url, 2,
+                ha=heketi_node_count, json=True)
+            self.addCleanup(
+                heketi_blockvolume_delete, self.heketi_client_node,
+                self.heketi_server_url, block_vol_ha4["id"])
+        except Exception as e:
+            if ("insufficient block hosts online" not in six.text_type(e)):
+                raise
+            g.log.error("ha=4 Block volume is not created on 3 available "
+                        "nodes as expected.")
+
+        # Create block volume with hacount 3
+        block_volume = heketi_blockvolume_create(
+            self.heketi_client_node, self.heketi_server_url,
+            2, ha=3, json=True)
+        heketi_blockvolume_delete(
+            self.heketi_client_node, self.heketi_server_url,
+            block_volume["id"])
