@@ -35,7 +35,7 @@ from openshiftstoragelibs.openshift_ops import (
     scale_dcs_pod_amount_and_wait,
     switch_oc_project,
     verify_pvc_status_is_bound,
-    wait_for_resource_absence,
+    wait_for_resources_absence,
 )
 from openshiftstoragelibs.openshift_storage_libs import (
     get_iscsi_block_devices_by_path,
@@ -245,8 +245,8 @@ class BaseClass(unittest.TestCase):
                 node, sc_name, pvc_name_prefix=pvc_name_prefix,
                 pvc_size=pvc_size)
             pvc_names.append(pvc_name)
-            self.addCleanup(
-                wait_for_resource_absence, node, 'pvc', pvc_name)
+        self.addCleanup(
+            wait_for_resources_absence, node, 'pvc', pvc_names)
 
         # Wait for PVCs to be in bound state
         try:

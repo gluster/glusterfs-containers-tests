@@ -567,50 +567,74 @@ def oc_get_all_pvs(ocp_node):
     return oc_get_yaml(ocp_node, 'pv', None)
 
 
-def wait_for_resource_absence(ocp_node, rtype, name,
-                              interval=5, timeout=600):
+def wait_for_resources_absence(ocp_node, rtype, names,
+                               interval=5, timeout=600):
+    """Wait for an absence of any set of resources of one type.
+
+    If provided resource type is 'pvc' then 'pv's are also checked.
+
+    Args:
+        ocp_node (str): OCP node to perform oc client operations on.
+        rtype (str): type of a resource(s) such as 'pvc', 'pv' and 'pod'.
+        names (iterable): any iterable with names of objects to wait for.
+        interval (int): interval in seconds between waiting attempts.
+        timeout (int): overall timeout for waiting.
+    """
     _waiter = waiter.Waiter(timeout=timeout, interval=interval)
-    resource, pv_name, _pv_name = None, None, None
-    for w in _waiter:
-        try:
-            resource = oc_get_yaml(ocp_node, rtype, name, raise_on_error=True)
-        except AssertionError:
-            # NOTE(vponomar): Reset attempts for waiter to avoid redundant
-            # sleep equal to 'interval' on the next usage.
-            _waiter._attempt = 0
-            break
-    if rtype == 'pvc':
-        cmd = "oc get pv -o=custom-columns=:.spec.claimRef.name | grep %s" % (
-            name)
+    if len(names[0]) == 1:
+        names = (names, )
+    resources = {name: {'resource': 'not_checked'} for name in names}
+    for name in names:
         for w in _waiter:
             try:
-                _pv_name = command.cmd_run(cmd, hostname=ocp_node)
+                resources[name]['resource'] = oc_get_yaml(
+                    ocp_node, rtype, name, raise_on_error=True)
             except AssertionError:
+                # NOTE(vponomar): Reset attempts for waiter to avoid redundant
+                # sleep equal to 'interval' on the next usage.
                 _waiter._attempt = 0
+                resources[name]['resource'] = 'absent'
                 break
-            finally:
-                if _pv_name and not pv_name:
-                    pv_name = _pv_name
-    if w.expired:
+    if rtype == 'pvc':
+        for name in names:
+            resources[name]['pv_name'] = '?'
+            for w in _waiter:
+                try:
+                    _pv_name = get_pv_name_from_pvc(ocp_node, name)
+                    if resources[name]['pv_name'] == '?':
+                        resources[name]['pv_name'] = _pv_name
+                except AssertionError:
+                    _waiter._attempt = 0
+                    resources[name]['pv_name'] = 'absent'
+                    break
+    if _waiter.expired:
         # Gather more info for ease of debugging
-        try:
-            r_events = get_events(ocp_node, obj_name=name)
-        except Exception:
-            r_events = '?'
-        error_msg = (
-            "%s '%s' still exists after waiting for it %d seconds.\n"
-            "Resource info: %s\n"
-            "Resource related events: %s" % (
-                rtype, name, timeout, resource, r_events))
-        if rtype == 'pvc' and pv_name:
+        for name in names:
             try:
-                pv_events = get_events(ocp_node, obj_name=pv_name)
+                r_events = get_events(ocp_node, obj_name=name)
             except Exception:
-                pv_events = '?'
-            error_msg += "\nPV events: %s" % pv_events
-
+                r_events = '?'
+            resources[name]['events'] = r_events
+            if rtype == 'pvc' and resources[name]['pv_name'] != '?':
+                try:
+                    pv_events = get_events(
+                        ocp_node, obj_name=resources[name]['pv_name'])
+                except Exception:
+                    pv_events = '?'
+                resources[name]['pv_events'] = pv_events
+        error_msg = (
+            "Failed to wait %d seconds for some of the provided resources "
+            "to be absent.\nResource type: '%s'\nResource names:  %s\n"
+            "Resources info: \n%s" % (
+                timeout, rtype, ' | '.join(names),
+                '\n'.join([six.text_type(r) for r in resources.items()])))
         g.log.error(error_msg)
         raise exceptions.ExecutionError(error_msg)
+
+
+def wait_for_resource_absence(ocp_node, rtype, name, interval=5, timeout=600):
+    return wait_for_resources_absence(
+        ocp_node, rtype, name, interval=interval, timeout=timeout)
 
 
 def scale_dcs_pod_amount_and_wait(hostname, dc_names, pod_amount=1,
@@ -1166,9 +1190,12 @@ def get_pv_name_from_pvc(hostname, pvc_name):
          pv_name (str): pv name if successful,
                         otherwise raise Exception
     '''
-    cmd = ("oc get pvc %s -o=custom-columns=:."
-           "spec.volumeName" % pvc_name)
+    # NOTE(vponomar): following command allows to get PV even if PVC is deleted
+    cmd = ("oc get pv -o jsonpath='{.items[?(@.spec.claimRef.name==\"%s\")]"
+           ".metadata.name}'" % pvc_name)
     pv_name = command.cmd_run(cmd, hostname=hostname)
+    assert pv_name.strip(), (
+        "Failed to find PV with PVC name '%s' as filter" % pvc_name)
     g.log.info("pv name is %s for pvc %s" % (pv_name, pvc_name))
 
     return pv_name
