@@ -999,3 +999,37 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                     self.node, cmd, gluster_node_ip)
                 self.assertEqual(
                     out, err_msg, "LV {} still present".format(lv))
+
+    @pytest.mark.tier0
+    @podcmd.GlustoPod()
+    def test_arbiter_volume_create_device_size_greater_than_volume_size(self):
+        """Validate creation of arbiter volume through heketi"""
+        size = 5
+        vol_create_info = heketi_ops.heketi_volume_create(
+            self.heketi_client_node, self.heketi_server_url, size,
+            gluster_volume_options="user.heketi.arbiter true", json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_create_info["id"])
+        vol_name = vol_create_info['name']
+
+        # calculating size of data and arbiter bricks
+        size_list = [size*1024*1024, size*1024*16]
+        for brick_size in vol_create_info['bricks']:
+            self.assertIn(
+                brick_size['size'], size_list, "Failed to check brick size")
+
+        # Get gluster volume info
+        gluster_vol = volume_ops.get_volume_info(
+            'auto_get_gluster_endpoint', volname=vol_name)
+        self.assertTrue(
+            gluster_vol, "Failed to get volume {} info".format(vol_name))
+        volume_name = gluster_vol[vol_name]
+        self.assertEqual(
+            volume_name['arbiterCount'], "1",
+            "arbiter count {} is different from actual count: 1".format(
+                volume_name['arbiterCount']))
+        self.assertEqual(volume_name['replicaCount'], "3", (
+            "replica count is different for volume {} Actual:{} "
+            "Expected : 3".format(
+                volume_name, volume_name['replicaCount'])))
