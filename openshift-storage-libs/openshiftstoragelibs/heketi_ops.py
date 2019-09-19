@@ -602,7 +602,6 @@ def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
 
     Kwargs:
         The keys, values in kwargs are:
-            - json : (bool)
             - secret : (str)|None
             - user : (str)|None
 
