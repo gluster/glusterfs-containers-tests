@@ -624,8 +624,6 @@ def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
         heketi_server_url, device_name, node_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
     out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
-        return json.loads(out)
     return out
 
 
