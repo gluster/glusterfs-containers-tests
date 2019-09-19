@@ -1,9 +1,12 @@
+import ddt
+
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import heketi_version
 from openshiftstoragelibs import openshift_ops
 
 
+@ddt.ddt
 class TestHeketiServerStateExamineGluster(BaseClass):
 
     def setUp(self):
@@ -45,24 +48,25 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             "heketi volume list matches with volume list of all nodes",
             out['report'])
 
-    def test_compare_real_vol_count_with_db_check_info(self):
-        """Validate volumes using heketi db check"""
+    @ddt.data('', 'block')
+    def test_compare_real_vol_count_with_db_check_info(self, vol_type):
+        """Validate file/block volumes using heketi db check."""
 
-        # Create volume
-        vol = heketi_ops.heketi_volume_create(
+        # Create File/Block volume
+        block_vol = getattr(heketi_ops, 'heketi_%svolume_create' % vol_type)(
             self.heketi_client_node, self.heketi_server_url, 1, json=True)
         self.addCleanup(
-            heketi_ops.heketi_volume_delete, self.heketi_client_node,
-            self.heketi_server_url, vol['id'])
+            getattr(heketi_ops, 'heketi_%svolume_delete' % vol_type),
+            self.heketi_client_node, self.heketi_server_url, block_vol["id"])
 
-        # Check heketi db
+        # Check Heketi DB using Heketi CLI
         db_result = heketi_ops.heketi_db_check(
             self.heketi_client_node, self.heketi_server_url)
-        vol_count = db_result["volumes"]["total"]
-        vol_list = heketi_ops.heketi_volume_list(
+        vol_count = db_result["%svolumes" % vol_type]["total"]
+        vol_list = getattr(heketi_ops, 'heketi_%svolume_list' % vol_type)(
             self.heketi_client_node, self.heketi_server_url, json=True)
-        count = len(vol_list["volumes"])
+        count = len(vol_list["%svolumes" % vol_type])
         self.assertEqual(
-            count, vol_count, "Volume count doesn't match expected"
-            " result %s, actual  result is %s" % (
-                count, vol_count))
+            count, vol_count,
+            "%svolume count doesn't match expected "
+            "result %s, actual result is %s" % (vol_type, count, vol_count))
