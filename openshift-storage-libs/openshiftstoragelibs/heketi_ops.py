@@ -839,6 +839,40 @@ def heketi_node_delete(heketi_client_node, heketi_server_url, node_id,
     return out
 
 
+def heketi_node_remove(heketi_client_node, heketi_server_url, node_id,
+                       **kwargs):
+    """Executes heketi node remove command.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+        node_id (str): Node id to remove node
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        str: heketi node remove command output on success.
+
+    Raises:
+        AssertionError: if command fails.
+
+    Example:
+        heketi_node_remove(heketi_client_node, heketi_server_url, node_id)
+    """
+
+    heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+
+    cmd = "heketi-cli -s %s node remove %s %s %s" % (
+        heketi_server_url, node_id, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
+    out = heketi_cmd_run(heketi_client_node, cmd)
+    return out
+
+
 def heketi_node_disable(heketi_client_node, heketi_server_url, node_id,
                         **kwargs):
     """Executes heketi node disable command.
