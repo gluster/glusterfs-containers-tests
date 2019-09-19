@@ -1591,3 +1591,36 @@ def heketi_server_operation_cleanup(
             "after %s second" % timeout)
         g.log.error(err_msg)
         raise exceptions.ExecutionError(err_msg)
+
+
+def heketi_db_check(heketi_client_node, heketi_server_url, **kwargs):
+    """Execute 'heketi db check' command.
+
+    Args:
+        - heketi_client_node (str): Node where we want to run our commands.
+        - heketi_server_url (str): This is a heketi server url.
+
+    Raises:
+        NotImplementedError: if heketi version is not expected
+        exceptions.AssertionError: if command fails.
+
+    Returns:
+        dictionary: if successful
+    """
+
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '8.0.0-7':
+        msg = "heketi-client package %s does not support db check" % (
+            version.v_str)
+        g.log.error(msg)
+        raise NotImplementedError(msg)
+
+    heketi_server_url, json_arg, secret, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+
+    # output is always json-like and we do not need to provide "--json" CLI arg
+    cmd = "heketi-cli db check %s %s %s" % (
+        heketi_server_url, user, secret)
+    cmd = TIMEOUT_PREFIX + cmd
+    out = heketi_cmd_run(heketi_client_node, cmd)
+    return json.loads(out)

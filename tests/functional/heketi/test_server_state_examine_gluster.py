@@ -43,3 +43,25 @@ class TestHeketiServerStateExamineGluster(BaseClass):
         self.assertNotIn(
             "heketi volume list matches with volume list of all nodes",
             out['report'])
+
+    def test_compare_real_vol_count_with_db_check_info(self):
+        """Validate volumes using heketi db check"""
+
+        # Create volume
+        vol = heketi_ops.heketi_volume_create(
+            self.heketi_client_node, self.heketi_server_url, 1, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol['id'])
+
+        # Check heketi db
+        db_result = heketi_ops.heketi_db_check(
+            self.heketi_client_node, self.heketi_server_url)
+        vol_count = db_result["volumes"]["total"]
+        vol_list = heketi_ops.heketi_volume_list(
+            self.heketi_client_node, self.heketi_server_url, json=True)
+        count = len(vol_list["volumes"])
+        self.assertEqual(
+            count, vol_count, "Volume count doesn't match expected"
+            " result %s, actual  result is %s" % (
+                count, vol_count))
