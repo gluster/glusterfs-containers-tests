@@ -1028,7 +1028,7 @@ def heketi_blockvolume_create(heketi_client_node, heketi_server_url, size,
     Kwargs:
         The keys, values in kwargs are:
             - name : (str)|None
-            - cluster : (str)|None
+            - clusters : (str)|None
             - ha : (int)|None
             - auth : (bool)
             - json : (bool)
