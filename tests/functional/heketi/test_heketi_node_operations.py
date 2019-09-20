@@ -524,3 +524,142 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             # Enable the nodes back, which were disabled earlier
             for node_id in h_nodes_list[2:]:
                 self.addCleanup(h.heketi_node_enable, h_node, h_url, node_id)
+
+    @ddt.data(
+        ("volume", "create"),
+        ("volume", "delete"),
+        ("volume", "expand"),
+        ("blockvolume", "create"),
+        ("blockvolume", "delete"),
+    )
+    @ddt.unpack
+    def test_volume_operations_while_node_removal_is_running(
+            self, vol_type, vol_operation):
+        """Test volume operations like create, delete and expand while node
+        removal is running parallely at backend.
+        """
+        # Get node info to be added in heketi cluster
+        new_node = self.get_node_to_be_added()
+        new_node_manage = new_node['manage']
+        new_node_storage = new_node['storage']
+
+        self.get_ready_for_node_add(new_node_manage)
+
+        h, h_node, h_url = heketi_ops, self.h_node, self.h_url
+
+        # Get cluster id where node needs to be added.
+        cluster_id = h.heketi_cluster_list(h_node, h_url, json=True)
+        cluster_id = cluster_id['clusters'][0]
+
+        h_nodes_list = h.heketi_node_list(h_node, h_url)
+
+        node_needs_cleanup = False
+        try:
+            # Add new node
+            h_new_node = h.heketi_node_add(
+                h_node, h_url, 1, cluster_id, new_node_manage,
+                new_node_storage, json=True)['id']
+            node_needs_cleanup = True
+
+            # Get hostname of first gluster node
+            g_node = h.heketi_node_info(
+                h_node, h_url, h_nodes_list[0],
+                json=True)['hostnames']['manage'][0]
+
+            # Verify gluster peer status
+            self.verify_gluster_peer_status(
+                g_node, new_node_manage, new_node_storage)
+
+            # Add Devices on newly added node
+            device_id = self.add_device_on_heketi_node(
+                h_new_node, new_node['devices'][0])
+
+            # Create Volumes
+            vol_count = 5
+            for i in range(vol_count):
+                vol_info = h.heketi_volume_create(
+                    h_node, h_url, 1, clusters=cluster_id, json=True)
+                self.addCleanup(
+                    h.heketi_volume_delete, h_node, h_url, vol_info['id'])
+
+            # Get bricks count on newly added node
+            bricks = h.get_bricks_on_heketi_node(
+                h_node, h_url, h_new_node)
+            self.assertGreaterEqual(len(bricks), vol_count)
+
+            # Enable the nodes back, which were disabled earlier
+            for node_id in h_nodes_list[2:]:
+                h.heketi_node_enable(h_node, h_url, node_id)
+
+            # Disable the node
+            h.heketi_node_disable(h_node, h_url, h_new_node)
+
+            vol_count = 2 if vol_type == 'volume' else 5
+            if vol_operation in ('delete', 'expand'):
+                # Create file/block volumes to delete or expand while node
+                # removal is running
+                vol_list = []
+                for i in range(vol_count):
+                    vol_info = getattr(h, "heketi_%s_create" % vol_type)(
+                        h_node, h_url, 1, clusters=cluster_id, json=True)
+                    self.addCleanup(
+                        getattr(h, "heketi_%s_delete" % vol_type),
+                        h_node, h_url, vol_info['id'], raise_on_error=False)
+                    vol_list.append(vol_info)
+
+            # Remove the node and devices on it
+            cmd = 'heketi-cli node remove %s -s %s --user %s --secret %s' % (
+                h_new_node, h_url, self.heketi_cli_user, self.heketi_cli_key)
+            proc = g.run_async(h_node, cmd)
+
+            if vol_operation == 'create':
+                # Create file/block volume while node removal is running
+                for i in range(vol_count):
+                    vol_info = getattr(h, "heketi_%s_create" % vol_type)(
+                        h_node, h_url, 1, clusters=cluster_id, json=True)
+                    self.addCleanup(
+                        getattr(h, "heketi_%s_delete" % vol_type),
+                        h_node, h_url, vol_info['id'])
+
+            elif vol_operation == 'delete':
+                # Delete file/block volume while node removal is running
+                for vol in vol_list:
+                    getattr(h, "heketi_%s_delete" % vol_type)(
+                        h_node, h_url, vol['id'])
+
+            elif vol_operation == 'expand':
+                # Expand file volume while node removal is running
+                for vol in vol_list:
+                    vol_info = h.heketi_volume_expand(
+                        h_node, h_url, vol['id'], '1', json=True)
+                    self.assertEquals(2, vol_info['size'])
+
+            else:
+                msg = "Invalid vol_operation %s" % vol_operation
+                raise AssertionError(msg)
+
+            # Get the status of node removal command
+            retcode, stdout, stderr = proc.async_communicate()
+            msg = 'Failed to remove node %s from heketi with error %s' % (
+                h_new_node, stderr)
+            self.assertFalse(retcode, msg)
+
+            h.heketi_device_delete(h_node, h_url, device_id)
+            h.heketi_node_delete(h_node, h_url, h_new_node)
+            node_needs_cleanup = False
+
+            # Verify node is deleted from heketi
+            self.verify_node_is_present_or_not_in_heketi(
+                h_new_node, new_node_manage, new_node_storage, state='absent')
+
+            # Verify gluster peer status
+            self.verify_gluster_peer_status(
+                g_node, new_node_manage, new_node_storage, state='absent')
+        finally:
+            # Cleanup newly added Node
+            if node_needs_cleanup:
+                self.addCleanup(self.delete_node_and_devices_on_it, h_new_node)
+
+            # Enable the nodes back, which were disabled earlier
+            for node_id in h_nodes_list[2:]:
+                self.addCleanup(h.heketi_node_enable, h_node, h_url, node_id)
