@@ -1019,59 +1019,75 @@ def get_pvc_status(hostname, pvc_name):
     return output
 
 
-def verify_pvc_status_is_bound(hostname, pvc_name, timeout=120, wait_step=3):
-    """Verify that PVC gets 'Bound' status in required time.
+def wait_for_pvcs_be_bound(hostname, pvc_names, timeout=120, wait_step=3):
+    """Wait for bunch of PVCs to be in 'Bound' state.
 
     Args:
-        hostname (str): hostname on which we will execute oc commands
-        pvc_name (str): name of PVC to check status of
-        timeout (int): total time in seconds we are ok to wait
-                       for 'Bound' status of a PVC
-        wait_step (int): time in seconds we will sleep before checking a PVC
-                         status again.
-    Returns: None
+        hostname (str): hostname on which oc commands will be executed.
+        pvc_names (iterable): bunch of PVC names to be waited for.
+        timeout (int): total time in seconds we should wait for 'Bound' state.
+        wait_step (int): seconds to sleep before checking PVCs again.
     Raises: exceptions.ExecutionError in case of errors.
+    Returns: None
     """
-    pvc_not_found_counter = 0
-    for w in waiter.Waiter(timeout, wait_step):
-        output = get_pvc_status(hostname, pvc_name)
-        if output == "":
-            g.log.info("PVC '%s' not found, sleeping for %s "
-                       "sec." % (pvc_name, wait_step))
-            if pvc_not_found_counter > 0:
-                msg = ("PVC '%s' has not been found 2 times already. "
-                       "Make sure you provided correct PVC name." % pvc_name)
-            else:
-                pvc_not_found_counter += 1
+    _waiter = waiter.Waiter(timeout=timeout, interval=wait_step)
+    if len(pvc_names[0]) == 1:
+        pvc_names = (pvc_names, )
+    pvc_data = {pvc_name: {'state': 'not_checked'} for pvc_name in pvc_names}
+    for pvc_name in pvc_names:
+        pvc_not_found_counter = 0
+        for w in _waiter:
+            output = get_pvc_status(hostname, pvc_name)
+            pvc_data[pvc_name]['state'] = output
+            if not output:
+                g.log.info("PVC '%s' not found, sleep for %ssec." % (
+                    pvc_name, wait_step))
+                pvc_data[pvc_name]['state'] = 'not_found'
+                if pvc_not_found_counter > 0:
+                    msg = ("PVC '%s' has not been found 2 times already. Make "
+                           "sure you provided correct PVC name." % pvc_name)
+                else:
+                    pvc_not_found_counter += 1
+                    continue
+            elif output == "Pending":
+                g.log.info("PVC '%s' is in Pending state, sleep for %ssec" % (
+                    pvc_name, wait_step))
                 continue
-        elif output == "Pending":
-            g.log.info("PVC '%s' is in Pending state, sleeping for %s "
-                       "sec" % (pvc_name, wait_step))
-            continue
-        elif output == "Bound":
-            g.log.info("PVC '%s' is in Bound state." % pvc_name)
-            return pvc_name
-        elif output == "Error":
-            msg = "PVC '%s' is in 'Error' state." % pvc_name
-            g.log.error(msg)
-        else:
-            msg = "PVC %s has different status - %s" % (pvc_name, output)
-            g.log.error(msg)
-        if msg:
-            raise AssertionError(msg)
-    if w.expired:
-        msg = ("Exceeded timeout of '%s' seconds for verifying PVC '%s' "
-               "to reach the 'Bound' state." % (timeout, pvc_name))
-
+            elif output == "Bound":
+                g.log.info("PVC '%s' is in Bound state." % pvc_name)
+                _waiter._attempt = 0
+                break
+            elif output == "Error":
+                msg = "PVC '%s' is in 'Error' state." % pvc_name
+                g.log.error(msg)
+            else:
+                msg = "PVC %s has different state - %s" % (pvc_name, output)
+                g.log.error(msg)
+            if msg:
+                raise AssertionError(msg)
+    if _waiter.expired:
         # Gather more info for ease of debugging
-        try:
-            pvc_events = get_events(hostname, obj_name=pvc_name)
-        except Exception:
-            pvc_events = '?'
-        msg += "\nPVC events: %s" % pvc_events
+        for pvc_name in pvc_names:
+            try:
+                pvc_events = get_events(hostname, obj_name=pvc_name)
+            except Exception:
+                pvc_events = '?'
+            pvc_data[pvc_name]['events'] = pvc_events
+        error_msg = (
+            "Failed to wait %d seconds for some of the provided PVCs "
+            "to be in 'Bound' state.\nPVC names: %s\nPVCs info: \n%s" % (
+                timeout, ' | '.join(pvc_names),
+                '\n'.join([six.text_type(pvc) for pvc in pvc_data.items()])))
+        g.log.error(error_msg)
+        raise exceptions.ExecutionError(error_msg)
 
-        g.log.error(msg)
-        raise AssertionError(msg)
+
+def wait_for_pvc_be_bound(hostname, pvc_name, timeout=120, wait_step=3):
+    return wait_for_pvcs_be_bound(
+        hostname, pvc_name, timeout=timeout, wait_step=wait_step)
+
+
+verify_pvc_status_is_bound = wait_for_pvc_be_bound
 
 
 def resize_pvc(hostname, pvc_name, size):

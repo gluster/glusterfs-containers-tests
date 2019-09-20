@@ -34,7 +34,7 @@ from openshiftstoragelibs.openshift_ops import (
     oc_get_pods,
     scale_dcs_pod_amount_and_wait,
     switch_oc_project,
-    verify_pvc_status_is_bound,
+    wait_for_pvcs_be_bound,
     wait_for_resources_absence,
 )
 from openshiftstoragelibs.openshift_storage_libs import (
@@ -250,8 +250,7 @@ class BaseClass(unittest.TestCase):
 
         # Wait for PVCs to be in bound state
         try:
-            for pvc_name in pvc_names:
-                verify_pvc_status_is_bound(node, pvc_name, timeout, wait_step)
+            wait_for_pvcs_be_bound(node, pvc_names, timeout, wait_step)
         finally:
             if get_openshift_version() < "3.9":
                 reclaim_policy = "Delete"
