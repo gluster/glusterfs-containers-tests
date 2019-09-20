@@ -179,11 +179,16 @@ class TestHeketiZones(baseclass.BaseClass):
                         continue
                     placement_zones.add(node_zone)
                     break
+            actual_zone_count = len(placement_zones)
+            # NOTE(vponomar): '3' is default amount of volume replicas.
+            # And it is just impossible to find more actual zones than amount
+            # of replicas/bricks.
+            expected_zone_count = 3 if zone_count > 3 else zone_count
             self.assertEqual(
-                zone_count, len(placement_zones),
+                expected_zone_count, actual_zone_count,
                 "PVC '%s' is incorrectly placed on the Heketi nodes "
                 "according to their zones. Expected '%s' unique zones, got "
-                "'%s'." % (pvc_name, zone_count, len(placement_zones)))
+                "'%s'." % (pvc_name, zone_count, actual_zone_count))
 
         # Make sure that gluster vol has appropriate option set
         vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
