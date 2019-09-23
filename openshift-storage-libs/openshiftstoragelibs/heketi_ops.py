@@ -1163,7 +1163,7 @@ def heketi_blockvolume_list(heketi_client_node, heketi_server_url, **kwargs):
 
 def verify_volume_name_prefix(hostname, prefix, namespace, pvc_name,
                               heketi_server_url, **kwargs):
-    """Checks whether heketi voluem is present with volname prefix or not.
+    """Check whether heketi volume is present with volname prefix or not.
 
     Args:
         hostname (str): hostname on which we want
