@@ -70,3 +70,18 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             count, vol_count,
             "%svolume count doesn't match expected "
             "result %s, actual result is %s" % (vol_type, count, vol_count))
+
+    def test_compare_node_count_with_db_check_info(self):
+        """Validate nodes count using heketi db check"""
+
+        # Check heketi db
+        db_result = heketi_ops.heketi_db_check(
+            self.heketi_client_node, self.heketi_server_url)
+        db_nodes_count = db_result["nodes"]["total"]
+        nodes_list = heketi_ops.heketi_node_list(
+            self.heketi_client_node, self.heketi_server_url, json=True)
+        calculated_nodes_count = len(nodes_list)
+        self.assertEqual(
+            calculated_nodes_count, db_nodes_count,
+            "Nodes count from 'DB check' (%s) doesn't match calculated nodes "
+            "count (%s)." % (db_nodes_count, calculated_nodes_count))
