@@ -4,6 +4,7 @@ from glustolibs.gluster.exceptions import ExecutionError
 from glusto.core import Glusto as g
 
 from openshiftstoragelibs.cloundproviders.vmware import VmWare
+from openshiftstoragelibs import command
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import waiter
 
@@ -178,3 +179,52 @@ def power_on_vm_by_name(name, timeout=600, interval=10):
             g.log.info(e)
     if w.expired:
         raise exceptions.CloudProviderError(e)
+
+
+def node_add_iptables_rules(node, chain, rules, raise_on_error=True):
+    """Append iptables rules
+
+    Args:
+        node (str): Node on which iptables rules should be added.
+        chain (str): iptables chain in which rule(s) need to be appended.
+        rules (str|tuple|list): Rule(s) which need(s) to be added to a chain.
+    Reuturns:
+        None
+    Exception:
+        AssertionError: In case command fails to execute and
+                        raise_on_error set to True
+    """
+    rules = rules if hasattr(rules, '__iter__') else [rules]
+
+    add_iptables_rule_cmd = "iptables --append %s %s"
+    check_iptables_rule_cmd = "iptables --check %s %s"
+    for rule in rules:
+        try:
+            command.cmd_run(check_iptables_rule_cmd % (chain, rule), node)
+        except AssertionError:
+            command.cmd_run(
+                add_iptables_rule_cmd % (chain, rule), node,
+                raise_on_error=raise_on_error)
+
+
+def node_delete_iptables_rules(node, chain, rules, raise_on_error=True):
+    """Delete iptables rules
+
+    Args:
+        node (str): Node on which iptables rules should be deleted.
+        chain (str): iptables chain from which rule(s) need to be deleted.
+        rules (str|tuple|list): Rule(s) which need(s) to be deleted from
+                                a chain.
+    Reuturns:
+        None
+    Exception:
+        AssertionError: In case command fails to execute and
+                        raise_on_error set to True
+    """
+    rules = rules if hasattr(rules, '__iter__') else [rules]
+
+    delete_iptables_rule_cmd = "iptables --delete %s %s"
+    for rule in rules:
+        command.cmd_run(
+            delete_iptables_rule_cmd % (chain, rule), node,
+            raise_on_error=raise_on_error)
