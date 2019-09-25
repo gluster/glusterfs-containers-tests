@@ -7,7 +7,12 @@ except ImportError:
 
 import ddt
 from glusto.core import Glusto as g
-from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
+from glustolibs.gluster.volume_ops import (
+    get_volume_info,
+    get_volume_list,
+    volume_start,
+    volume_stop,
+)
 import mock
 import pytest
 import six
@@ -801,3 +806,31 @@ class TestHeketiVolume(BaseClass):
                     h_db_check_bricks_after["total"],
                     h_db_check_bricks_before["total"] + (
                         len(total_bhvs) * 3)))
+
+    @pytest.mark.tier1
+    @podcmd.GlustoPod()
+    def test_volume_creation_after_stopping_heketidb_volume(self):
+        """Validate volume creation after stopping heketidb volume"""
+        # Stop heketidbstorage volume
+        ret, _, err = volume_stop(
+            "auto_get_gluster_endpoint", "heketidbstorage")
+        self.addCleanup(
+            podcmd.GlustoPod()(volume_start), "auto_get_gluster_endpoint",
+            "heketidbstorage")
+        self.assertFalse(
+            ret, "Failed to stop gluster volume "
+            "heketidbstorage. error: {}".format(err))
+
+        # Try to create heketi volume to make sure it fails
+        err_msg = (
+            "Unexpectedly: Volume has been created when gluster "
+            "volume heketidbstorage is stopped")
+        with self.assertRaises(AssertionError, msg=err_msg) as e:
+            volume_name = heketi_volume_create(
+                self.heketi_client_node, self.heketi_server_url,
+                self.volume_size, json=True)
+            self.addCleanup(
+                heketi_volume_delete, self.heketi_client_node,
+                self.heketi_server_url, volume_name["bricks"][0]["volume"])
+        self.assertIn(
+            "transport endpoint is not connected", six.text_type(e.exception))
