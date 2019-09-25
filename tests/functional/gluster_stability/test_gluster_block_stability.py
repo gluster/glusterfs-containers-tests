@@ -9,6 +9,9 @@ from openshiftstoragelibs.exceptions import (
     ConfigError,
     ExecutionError,
 )
+from openshiftstoragelibs.gluster_ops import (
+    match_heketi_and_gluster_block_volumes_by_prefix
+)
 from openshiftstoragelibs.heketi_ops import (
     get_total_free_space,
     heketi_blockvolume_info,
@@ -29,6 +32,7 @@ from openshiftstoragelibs.openshift_ops import (
     get_pv_name_from_pvc,
     get_pvc_status,
     kill_service_on_gluster_pod_or_node,
+    match_pv_and_heketi_block_volumes,
     oc_adm_manage_node,
     oc_create_pvc,
     oc_delete,
@@ -62,6 +66,8 @@ from openshiftstoragelibs.openshift_version import (
 from openshiftstoragelibs import utils
 from openshiftstoragelibs.waiter import Waiter
 
+HEKETI_BLOCK_VOLUME_REGEX = "^Id:(.*).Cluster:(.*).Name:%s_(.*)$"
+
 
 class TestGlusterBlockStability(GlusterBlockBaseClass):
     '''Class that contain gluster-block stability TC'''
@@ -80,6 +86,64 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.skipTest(
                 "Skipping this test case as multipath validation "
                 "is not supported in OCS 3.9")
+
+    def get_heketi_block_volumes(self, vol_prefix):
+        """Get list of heketi block volumes filtered by prefix
+
+        Args:
+            vol_prefix (str): volume name prefix used for the block PVC
+
+        Returns:
+            A tuple containing two lists of heketi block volume IDs and names
+        """
+
+        heketi_cmd_out = heketi_blockvolume_list(
+            self.heketi_client_node, self.heketi_server_url,
+            secret=self.heketi_cli_key, user=self.heketi_cli_user
+        )
+        heketi_block_volume_ids, heketi_block_volume_names = [], []
+
+        for block_vol in heketi_cmd_out.split("\n"):
+            heketi_vol_match = re.search(
+                HEKETI_BLOCK_VOLUME_REGEX % vol_prefix, block_vol.strip())
+            if heketi_vol_match:
+                heketi_block_volume_ids.append(
+                    (heketi_vol_match.group(1)).strip())
+                heketi_block_volume_names.append(
+                    (heketi_vol_match.group(3)).strip())
+
+        return (sorted(heketi_block_volume_ids), sorted(
+            heketi_block_volume_names))
+
+    def bulk_app_pods_creation_with_block_pv(self, app_pod_count):
+
+        prefix = "autotest-%s" % utils.get_random_str()
+        self.create_storage_class(sc_name_prefix=prefix,
+                                  create_vol_name_prefix=True, set_hacount=3)
+        size_of_pvc = 1
+
+        # Create pvs & dc's
+        pvc_names = self.create_and_wait_for_pvcs(
+            pvc_size=size_of_pvc, pvc_amount=app_pod_count)
+        dcs = self.create_dcs_with_pvc(pvc_names)
+
+        # Validate iscsi sessions & multipath for created pods
+        for pvc_name in pvc_names:
+            dc_name, pod_name = dcs[pvc_name]
+            wait_for_pod_be_ready(self.node, pod_name, wait_step=10)
+            iqn, _, ini_node = self.verify_iscsi_sessions_and_multipath(
+                pvc_name, dc_name)
+
+        heketi_block_volume_ids, heketi_block_volume_names = (
+            self.get_heketi_block_volumes(vol_prefix=prefix))
+
+        # validate block volumes listed by heketi and pvs
+        match_pv_and_heketi_block_volumes(
+            self.node, heketi_block_volume_ids, pvc_prefix=prefix)
+
+        # validate block volumes listed by heketi and gluster
+        match_heketi_and_gluster_block_volumes_by_prefix(
+            heketi_block_volume_names, block_vol_prefix=(prefix + "_"))
 
     def initiator_side_failures(self):
         self.create_storage_class()
@@ -962,3 +1026,34 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             'Wrong volume count in heketi blockvolume list %s and expected '
             'volume count is 9 ' % volume_count)
         self.assertEqual(9, volume_count, msg)
+
+    def test_initiator_side_failures_create_100_app_pods_with_block_pv(self):
+
+        # Skip test case if OCS version in lower than 3.11.4
+        if get_openshift_storage_version() < "3.11.4":
+            self.skipTest("Skipping test case due to BZ-1607520, which is"
+                          " fixed in OCS 3.11.4")
+
+        nodes = oc_get_schedulable_nodes(self.node)
+
+        # Get list of all gluster nodes
+        g_pods = get_ocp_gluster_pod_details(self.node)
+        g_nodes = [pod['pod_hostname'] for pod in g_pods]
+
+        # Skip test case if required schedulable node count not met
+        if len(set(nodes) - set(g_nodes)) < 1:
+            self.skipTest("skipping test case because it needs at least one"
+                          " node schedulable")
+
+        # Make containerized Gluster nodes unschedulable
+        if g_nodes:
+            # Make gluster nodes unschedulable
+            oc_adm_manage_node(self.node, '--schedulable=false', nodes=g_nodes)
+
+            # Make gluster nodes schedulable
+            self.addCleanup(
+                oc_adm_manage_node, self.node, '--schedulable=true',
+                nodes=g_nodes)
+
+        # Create and validate 100 app pod creations with block PVs attached
+        self.bulk_app_pods_creation_with_block_pv(app_pod_count=100)
