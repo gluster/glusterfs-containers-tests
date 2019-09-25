@@ -1704,3 +1704,141 @@ def wait_for_ocp_node_be_ready(
                "to be in Ready state" % (timeout, node_name))
     g.log.error(err_msg)
     raise exceptions.ExecutionError(err_msg)
+
+
+def restart_api_and_controller_services(hostname):
+    """Restart master api & controller services.
+
+    Args:
+        hostname (str): hostname on which the service
+                        restart commands needs to be
+                        executed.
+    """
+    cmd_api_restart = '/usr/local/bin/master-restart api'
+    cmd_ctrl_restart = '/usr/local/bin/master-restart controllers'
+    version = openshift_version.get_openshift_version()
+    if version <= "3.9":
+        cmd_api_restart = (
+            'systemctl restart atomic-openshift-master-api.service')
+        cmd_ctrl_restart = (
+            'systemctl restart atomic-openshift-master-controllers.service')
+    command.cmd_run(cmd_api_restart, hostname=hostname)
+    command.cmd_run(cmd_ctrl_restart, hostname=hostname)
+    cmd = 'oc get pods'
+    for w in waiter.Waiter(900, 10):
+        out = command.cmd_run(cmd, hostname=hostname, raise_on_error=False)
+        if out:
+            g.log.info("Sucessfully restarted master & controller services")
+            break
+    if w.expired:
+        err_msg = ("Could not restart api & controller services"
+                   "in specified timeout")
+        g.log.error(err_msg)
+        raise exceptions.ExecutionError(err_msg)
+
+
+def oc_annotate(hostname, rtype, rname, annotations):
+    """Annotate any resource.
+
+     Args:
+         hostname (str): Node where we want to run our commands.
+         rtype (str): Type of resource.
+         rname (str): Name of resource.
+         annotations (str/list): single annotations-str or list of
+            annotations-strings.
+            Examples:
+                'k1=v1'
+                'k1=v1 k2=v2'
+                ['k1=v1', 'k2=v2']
+    Raises:
+        AssertionError: In case adding annotations to resource fails.
+    """
+    annotations = annotations if hasattr(
+        annotations, '__iter__') else [annotations]
+    for annotation in annotations:
+        cmd = 'oc annotate %s %s %s --overwrite' % (rtype, rname, annotation)
+        command.cmd_run(cmd, hostname=hostname)
+
+
+def oc_adm_add_role_to_user(hostname, role, user,
+                            project_name=None, config=None):
+    """Add a role to a user using "oc adm" command.
+
+       Args:
+            hostname (str): Hostname where the "oc adm" command
+                            is executed.
+            role (str): Specify the role which  needs to be given to a user.
+            user (str): Name of the user to be updated with a role.
+            project_name (str): Openshift project inside which role and
+                                user are defined.
+            config (str): Name of the config file where the values are stored.
+     Raises:
+        AssertionError: In case adding role to the user fails.
+    """
+    cmd = "oc adm policy add-cluster-role-to-user %s %s" % (role, user)
+    if config:
+        cmd = cmd + " --config=%s" % config
+    if project_name:
+        cmd = cmd + " -n %s" % project_name
+    command.cmd_run(cmd, hostname=hostname)
+
+
+def oc_create_service_monitor(hostname, sm_name="heketi",
+                              sm_namespace="openshift-monitoring",
+                              sm_labels=None,
+                              ep_service_name="heketi",
+                              ep_namespace_selector_matchnames=None,
+                              ep_matchlabels=None):
+    """Create service monitor.
+
+    Args:
+        hostname (str): hostname on which 'oc create' command will run.
+        sm_name (str): name to be set for new service monitor.
+        sm_namespace (str): namespace where the new service monitor should
+            be created.
+        sm_labels (dict): key/value pairs which will be set to the new service
+            monitor. Example: {"k8s-app": "heketi"}
+        ep_service_name (str): name of the service which is going to be
+            monitored by the new service monitor. Example: "heketi".
+        ep_namespace_selector_matchnames (str/list): string or list of strings
+            with namespaces to be matched searching the endpoint of the
+            monitored service. Example: ['glusterfs']
+        ep_matchlabels (dict): label key/value pairs to match the searched
+            endpoint service by. Example: {"heketi": "storage-service"}
+    """
+    sm_labels = sm_labels if sm_labels else {"k8s-app": "heketi"}
+    ep_namespace_selector_matchnames = (
+        ep_namespace_selector_matchnames if ep_namespace_selector_matchnames
+        else ['glusterfs'])
+    ep_namespace_selector_matchnames = (
+        ep_namespace_selector_matchnames
+        if hasattr(ep_namespace_selector_matchnames, '__iter__')
+        else [ep_namespace_selector_matchnames])
+    ep_matchlabels = (
+        ep_matchlabels if ep_matchlabels else {"heketi": "storage-service"})
+    sm_data = json.dumps({
+        "apiVersion": "monitoring.coreos.com/v1",
+        "kind": "ServiceMonitor",
+        "metadata": {
+            "generation": 1,
+            "labels": sm_labels,
+            "name": sm_name,
+            "namespace": sm_namespace,
+        },
+        "spec": {
+            "endpoints": [{
+                "bearerTokenFile":
+                "/var/run/secrets/kubernetes.io/serviceaccount/token",
+                "interval": "30s",
+                "port": ep_service_name,
+                "scheme": "http",
+                "targetPort": 0
+            }],
+            "namespaceSelector": {
+                "matchNames": ep_namespace_selector_matchnames,
+            },
+            "selector": {"matchLabels": ep_matchlabels}
+        }
+    })
+    oc_create(hostname, sm_data, 'stdin')
+    return sm_name
