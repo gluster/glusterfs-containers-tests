@@ -1,16 +1,10 @@
-try:
-    # py2/3
-    import simplejson as json
-except ImportError:
-    # py2
-    import json
-
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 import six
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
+    get_heketi_volume_and_brick_count_list,
     heketi_blockvolume_create,
     heketi_blockvolume_delete,
     heketi_cluster_delete,
@@ -18,7 +12,6 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_node_delete,
     heketi_node_info,
     heketi_node_list,
-    heketi_topology_info,
     heketi_volume_create,
     heketi_volume_delete,
     heketi_volume_expand,
@@ -112,19 +105,6 @@ class TestHeketiVolume(BaseClass):
         self.assertTrue(vol_info, "Failed to get volume info %s" % name)
         g.log.info("Successfully got the volume info %s" % name)
 
-    def topology_volumes_with_bricks(self):
-        g.log.info("Retrieving heketi topology info")
-        topology_info_out = heketi_topology_info(self.heketi_client_node,
-                                                 self.heketi_server_url,
-                                                 json=True)
-        indented_topology = json.dumps(topology_info_out, indent=4)
-        g.log.info("Successfully got the heketi topology info")
-        topology_volumes = dict()
-        for c in topology_info_out['clusters']:
-            for v in c['volumes']:
-                topology_volumes.update({v['name']: len(v['bricks'])})
-        return topology_volumes, indented_topology
-
     def test_create_vol_and_retrieve_topology_info(self):
         volume_names = []
         volume_ids = []
@@ -145,35 +125,38 @@ class TestHeketiVolume(BaseClass):
                              self.heketi_server_url, volume_ids[1], 1)
 
         # Check if volume is shown in the heketi topology
-        topology_volumes, indented_topology = (
-            self.topology_volumes_with_bricks())
-        for vol_name in volume_names:
-            self.assertIn(vol_name, topology_volumes.keys(), (
-                "volume %s  not found in the heketi topology\n Topology "
-                "info:\n%s" % (vol_name, indented_topology)))
-            bricks = 6 if vol_name == volume_names[1] else 3
+        topology_volumes = get_heketi_volume_and_brick_count_list(
+            self.heketi_client_node, self.heketi_server_url)
+        existing_volumes = [v for v, _ in topology_volumes]
+        for v in volume_names:
+            self.assertIn(v, existing_volumes)
+        for v, b_count in topology_volumes:
+            expected_bricks_count = 6 if v == volume_names[1] else 3
             self.assertGreaterEqual(
-                topology_volumes[vol_name], bricks, 'Bricks of the volume:'
-                '%s are %s and it should be more or equal to %s' %
-                (vol_name, topology_volumes[vol_name], bricks))
+                b_count, expected_bricks_count,
+                'Bricks number of the %s volume is %s and it is expected '
+                'to be greater or equal to %s' % (
+                    v, b_count, expected_bricks_count))
 
         # Delete first 2 volumes and verify their deletion in the topology
         for vol_id in volume_ids[:2]:
             g.log.info("Deleting volume %s" % vol_id)
             heketi_volume_delete(self.heketi_client_node,
                                  self.heketi_server_url, vol_id)
-        topology_volumes.clear()
-        topology_volumes, indented_topology = (
-            self.topology_volumes_with_bricks())
+        topology_volumes = get_heketi_volume_and_brick_count_list(
+            self.heketi_client_node, self.heketi_server_url)
+        existing_volumes = [v for v, _ in topology_volumes]
         for vol_name in volume_names[:2]:
-            self.assertNotIn(vol_name, topology_volumes.keys(), (
+            self.assertNotIn(vol_name, existing_volumes, (
                 "volume %s shown in the heketi topology after deletion"
-                "\nTopology info:\n%s" % (vol_name, indented_topology)))
+                "\nTopology info:\n%s" % (
+                    vol_name, existing_volumes)))
 
         # Check the existence of third volume
-        self.assertIn(volume_names[2], topology_volumes.keys(), ("volume %s "
-                      "not shown in the heketi topology\nTopology info\n%s" % (
-                          volume_ids[2], indented_topology)))
+        self.assertIn(
+            volume_names[2], existing_volumes, "volume %s not "
+            "shown in the heketi topology\nTopology info"
+            "\n%s" % (volume_ids[2], existing_volumes))
         g.log.info("Sucessfully verified the topology info")
 
     def test_to_check_deletion_of_cluster(self):

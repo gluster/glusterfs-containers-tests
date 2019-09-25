@@ -1778,3 +1778,35 @@ def heketi_volume_endpoint_patch(
     out = heketi_cmd_run(heketi_client_node, cmd)
 
     return json.loads(out)
+
+
+def get_heketi_volume_and_brick_count_list(
+        heketi_client_node, heketi_server_url, **kwargs):
+    """Calculate amount of volumes and bricks.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        list of tuples containing volume name and brick count
+
+        example:
+        [('heketidbstorage', 3), ('vol_dcedb64fae938d8a72d0749c2159fcdb', 6)]
+
+    Raises:
+        AssertionError: if command fails.
+
+    """
+    topology_info = heketi_topology_info(
+        heketi_client_node, heketi_server_url, json=True, **kwargs)
+    volume_name_brick_count = []
+    for c in topology_info['clusters']:
+        volume_name_brick_count = [
+            (v['name'], len(v['bricks'])) for v in c['volumes']]
+    return volume_name_brick_count
