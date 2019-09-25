@@ -1244,6 +1244,38 @@ def heketi_blockvolume_list(heketi_client_node, heketi_server_url, **kwargs):
     return out
 
 
+def heketi_blockvolume_list_by_name_prefix(
+        heketi_client_node, heketi_server_url, prefix, **kwargs):
+    """Get block volume id, cluster and name by name prefix.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url.
+        prefix (str): Block volume name prefix.
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        list: tuple of bv id, cluster id and name
+
+    Raises:
+        exceptions.AssertionError: if command fails to execute on
+                                   heketi server.
+    """
+    # Delete json key from kwargs
+    kwargs.pop("json", None)
+
+    block_vols = heketi_blockvolume_list(
+        heketi_client_node, heketi_server_url, **kwargs)
+
+    block_vol_regex = re.compile(
+        r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(%s_\S+)" % prefix)
+    return block_vol_regex.findall(block_vols.strip())
+
+
 def verify_volume_name_prefix(hostname, prefix, namespace, pvc_name,
                               heketi_server_url, **kwargs):
     """Check whether heketi volume is present with volname prefix or not.

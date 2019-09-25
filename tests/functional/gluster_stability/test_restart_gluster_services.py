@@ -1,5 +1,4 @@
 from datetime import datetime
-import re
 import time
 from unittest import skip
 
@@ -15,7 +14,7 @@ from openshiftstoragelibs.gluster_ops import (
     wait_to_heal_complete,
 )
 from openshiftstoragelibs.heketi_ops import (
-    heketi_blockvolume_list,
+    heketi_blockvolume_list_by_name_prefix,
     heketi_server_operation_cleanup,
     heketi_server_operations_list,
 )
@@ -87,35 +86,6 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
         for pvc_name in self.pvc_list:
             self.addCleanup(oc_delete, self.oc_node, "pvc", pvc_name)
 
-    def get_heketi_block_volumes(self):
-        """lists heketi block volumes
-
-        Returns:
-            list : list of ids of heketi block volumes
-        """
-        heketi_cmd_out = heketi_blockvolume_list(
-            self.heketi_client_node, self.heketi_server_url)
-
-        self.assertTrue(heketi_cmd_out, "failed to get block volume list")
-
-        heketi_block_volume_ids = []
-        heketi_block_volume_names = []
-        for block_vol in heketi_cmd_out.split("\n"):
-            heketi_vol_match = re.search(
-                HEKETI_BLOCK_VOLUME_REGEX % self.prefix, block_vol.strip()
-            )
-            if heketi_vol_match:
-                heketi_block_volume_ids.append(
-                    (heketi_vol_match.group(1)).strip()
-                )
-                heketi_block_volume_names.append(
-                    (heketi_vol_match.group(3)).strip()
-                )
-
-        return (sorted(heketi_block_volume_ids), sorted(
-            heketi_block_volume_names)
-        )
-
     def validate_volumes_and_blocks(self):
         """Validates PVC and block volumes generated through heketi and OCS
         """
@@ -141,18 +111,19 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
         match_pvc_and_pv(self.oc_node, self.prefix)
 
         # get list of block volumes using heketi
-        heketi_block_volume_ids, heketi_block_volume_names = (
-            self.get_heketi_block_volumes()
-        )
+        h_blockvol_list = heketi_blockvolume_list_by_name_prefix(
+            self.heketi_client_node, self.heketi_server_url, self.prefix)
 
         # validate block volumes listed by heketi and pvs
+        heketi_blockvolume_ids = sorted([bv[0] for bv in h_blockvol_list])
         match_pv_and_heketi_block_volumes(
-            self.oc_node, heketi_block_volume_ids, self.prefix
-        )
+            self.oc_node, heketi_blockvolume_ids, self.prefix)
 
         # validate block volumes listed by heketi and gluster
+        heketi_blockvolume_names = sorted([
+            bv[1].replace("%s_" % self.prefix, "") for bv in h_blockvol_list])
         match_heketi_and_gluster_block_volumes_by_prefix(
-            heketi_block_volume_names, "%s_" % self.prefix)
+            heketi_blockvolume_names, "%s_" % self.prefix)
 
     def get_io_time(self):
         """Gets last io time of io pod by listing log file directory

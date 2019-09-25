@@ -20,6 +20,7 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
     heketi_blockvolume_list,
+    heketi_blockvolume_list_by_name_prefix,
     heketi_node_info,
     heketi_node_list,
 )
@@ -70,8 +71,6 @@ from openshiftstoragelibs.openshift_version import (
 from openshiftstoragelibs import utils
 from openshiftstoragelibs.waiter import Waiter
 
-HEKETI_BLOCK_VOLUME_REGEX = "^Id:(.*).Cluster:(.*).Name:%s_(.*)$"
-
 
 @ddt.ddt
 class TestGlusterBlockStability(GlusterBlockBaseClass):
@@ -92,36 +91,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                 "Skipping this test case as multipath validation "
                 "is not supported in OCS 3.9")
 
-    def get_heketi_block_volumes(self, vol_prefix):
-        """Get list of heketi block volumes filtered by prefix
-
-        Args:
-            vol_prefix (str): volume name prefix used for the block PVC
-
-        Returns:
-            A tuple containing two lists of heketi block volume IDs and names
-        """
-
-        heketi_cmd_out = heketi_blockvolume_list(
-            self.heketi_client_node, self.heketi_server_url,
-            secret=self.heketi_cli_key, user=self.heketi_cli_user
-        )
-        heketi_block_volume_ids, heketi_block_volume_names = [], []
-
-        for block_vol in heketi_cmd_out.split("\n"):
-            heketi_vol_match = re.search(
-                HEKETI_BLOCK_VOLUME_REGEX % vol_prefix, block_vol.strip())
-            if heketi_vol_match:
-                heketi_block_volume_ids.append(
-                    (heketi_vol_match.group(1)).strip())
-                heketi_block_volume_names.append(
-                    (heketi_vol_match.group(3)).strip())
-
-        return (sorted(heketi_block_volume_ids), sorted(
-            heketi_block_volume_names))
-
     def bulk_app_pods_creation_with_block_pv(self, app_pod_count):
-
         prefix = "autotest-%s" % utils.get_random_str()
         self.create_storage_class(sc_name_prefix=prefix,
                                   create_vol_name_prefix=True, set_hacount=3)
@@ -139,16 +109,19 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             iqn, _, ini_node = self.verify_iscsi_sessions_and_multipath(
                 pvc_name, dc_name)
 
-        heketi_block_volume_ids, heketi_block_volume_names = (
-            self.get_heketi_block_volumes(vol_prefix=prefix))
+        h_blockvol_list = heketi_blockvolume_list_by_name_prefix(
+            self.heketi_client_node, self.heketi_server_url, self.prefix)
 
         # validate block volumes listed by heketi and pvs
+        heketi_blockvolume_ids = sorted([bv[0] for bv in h_blockvol_list])
         match_pv_and_heketi_block_volumes(
-            self.node, heketi_block_volume_ids, pvc_prefix=prefix)
+            self.node, heketi_blockvolume_ids, pvc_prefix=prefix)
 
         # validate block volumes listed by heketi and gluster
+        heketi_blockvolume_names = sorted([
+            bv[1].replace("%s_" % prefix, "") for bv in h_blockvol_list])
         match_heketi_and_gluster_block_volumes_by_prefix(
-            heketi_block_volume_names, block_vol_prefix=(prefix + "_"))
+            heketi_blockvolume_names, "%s_" % prefix)
 
     def initiator_side_failures(self):
         self.create_storage_class()
