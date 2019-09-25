@@ -561,7 +561,7 @@ class BaseClass(unittest.TestCase):
         except CloudProviderError as e:
             # Try to power on VM, if it raises already powered On error
             # then don't raise exception.
-            if 'VM %s is already powered On' % vm_name not in e:
+            if 'VM %s is already powered On' % vm_name not in six.text_type(e):
                 raise
 
     def power_off_vm(self, vm_name):

@@ -1,11 +1,15 @@
 import math
+import random
 from unittest import skip
 
 from glusto.core import Glusto as g
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs.command import cmd_run
-from openshiftstoragelibs.exceptions import ExecutionError
+from openshiftstoragelibs.exceptions import (
+    ConfigError,
+    ExecutionError,
+)
 from openshiftstoragelibs.heketi_ops import (
     get_block_hosting_volume_list,
     heketi_blockvolume_create,
@@ -20,7 +24,10 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_expand,
     heketi_volume_info,
 )
-from openshiftstoragelibs.node_ops import node_reboot_by_command
+from openshiftstoragelibs.node_ops import (
+    find_vm_name_by_ip_or_hostname,
+    node_reboot_by_command,
+)
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_default_block_hosting_volume_size,
@@ -711,3 +718,49 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
         # Wait for all the PVCs to be in bound state
         wait_for_pvcs_be_bound(self.node, pvc_names, timeout=300, wait_step=5)
+
+    def test_creation_of_pvc_when_one_node_is_down(self):
+        """Test PVC creation when one node is down than hacount"""
+        node_count = len(self.gluster_servers)
+
+        # Check at least 4 nodes available.
+        if node_count < 4:
+            self.skipTest(
+                "At least 4 nodes are required, found %s." % node_count)
+
+        # Skip test if not able to connect to Cloud Provider
+        try:
+            find_vm_name_by_ip_or_hostname(self.node)
+        except (NotImplementedError, ConfigError) as e:
+            self.skipTest(e)
+
+        # Get gluster node on which heketi pod is not scheduled
+        heketi_node = oc_get_custom_resource(
+            self.node, 'pod', custom='.:status.hostIP',
+            selector='deploymentconfig=%s' % self.heketi_dc_name)[0]
+        gluster_node = random.sample(
+            (set(self.gluster_servers) - set(heketi_node)), 1)[0]
+        gluster_hostname = self.gluster_servers_info[gluster_node]["manage"]
+
+        # Get VM name by VM hostname
+        vm_name = find_vm_name_by_ip_or_hostname(gluster_node)
+
+        # Power off one of the nodes
+        self.power_off_gluster_node_vm(vm_name, gluster_hostname)
+
+        # Create a PVC with SC of hacount equal to node count
+        sc_name = self.create_storage_class(hacount=node_count)
+        pvc_name = oc_create_pvc(self.node, sc_name=sc_name)
+        events = wait_for_events(
+            self.node, obj_name=pvc_name, obj_type='PersistentVolumeClaim',
+            event_type='Warning', event_reason='ProvisioningFailed')
+        error = 'insufficient block hosts online'
+        err_msg = (
+            "Haven't found expected error message containing "
+            "following string: \n%s\nEvents: %s" % (error, events))
+        self.assertTrue(
+            list(filter((lambda e: error in e['message']), events)), err_msg)
+
+        # Create a PVC with SC of hacount less than node count
+        sc_name = self.create_storage_class(hacount=(node_count - 1))
+        self.create_and_wait_for_pvc(sc_name=sc_name)
