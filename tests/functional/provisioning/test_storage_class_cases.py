@@ -1,6 +1,7 @@
 import ddt
 from glusto.core import Glusto as g
 
+from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_info,
     heketi_cluster_list,
@@ -383,7 +384,7 @@ class TestStorageClassCases(BaseClass):
             event_reason='ProvisioningFailed')
 
         # Verify PVC did not get bound
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(ExecutionError):
             verify_pvc_status_is_bound(node, pvc_name, timeout=1)
 
     def test_sc_create_with_clusterid(self):
