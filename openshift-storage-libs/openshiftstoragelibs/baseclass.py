@@ -430,7 +430,7 @@ class GlusterBlockBaseClass(BaseClass):
         cls.sc = cls.storage_classes.get(
             'storage_class2', cls.storage_classes.get('block_storage_class'))
 
-    def verify_iscsi_sessions_and_multipath(self, pvc_name, dc_name):
+    def verify_iscsi_sessions_and_multipath(self, pvc_name, rname, rtype="dc"):
         # Get storage ips of glusterfs pods
         keys = self.gluster_servers
         gluster_ips = []
@@ -449,9 +449,16 @@ class GlusterBlockBaseClass(BaseClass):
         hacount = int(vol_info['hacount'])
 
         # Find node on which pod is running
-        pod_name = get_pod_name_from_dc(self.ocp_client[0], dc_name)
-        pod_info = oc_get_pods(
-            self.ocp_client[0], selector='deploymentconfig=%s' % dc_name)
+        if rtype == 'dc':
+            pod_name = get_pod_name_from_dc(self.ocp_client[0], rname)
+            pod_info = oc_get_pods(
+                self.ocp_client[0], selector='deploymentconfig=%s' % rname)
+        elif rtype == 'pod':
+            pod_info = oc_get_pods(self.ocp_client[0], name=rname)
+            pod_name = rname
+        else:
+            raise NameError("Value of rtype should be either 'dc' or 'pod'")
+
         node = pod_info[pod_name]['node']
 
         # Get the iscsi sessions info from the node
