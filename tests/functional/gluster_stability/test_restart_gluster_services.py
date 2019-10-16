@@ -51,6 +51,7 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
         """Deploys, Verifies and adds resources required for testcases
            in cleanup method
         """
+        super(GlusterStabilityTestSetup, self).setUp()
         self.oc_node = self.ocp_master_node[0]
         self.prefix = "autotest-%s" % utils.get_random_str()
 

@@ -7,6 +7,7 @@ from openshiftstoragelibs import openshift_ops
 class TestHeketiServerStateExamineGluster(BaseClass):
 
     def setUp(self):
+        super(TestHeketiServerStateExamineGluster, self).setUp()
         self.node = self.ocp_master_node[0]
         version = heketi_version.get_heketi_version(self.heketi_client_node)
         if version < '8.0.0-7':

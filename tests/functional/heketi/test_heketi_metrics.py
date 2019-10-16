@@ -19,6 +19,7 @@ from openshiftstoragelibs.openshift_ops import (
 class TestHeketiMetrics(BaseClass):
 
     def setUp(self):
+        super(TestHeketiMetrics, self).setUp()
         self.node = self.ocp_master_node[0]
         version = heketi_version.get_heketi_version(self.heketi_client_node)
         if version < '6.0.0-14':

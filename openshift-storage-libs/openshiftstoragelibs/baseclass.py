@@ -17,6 +17,7 @@ from openshiftstoragelibs.heketi_ops import (
     hello_heketi,
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
+    heketi_db_check,
     heketi_volume_create,
     heketi_volume_delete,
     heketi_volume_info,
@@ -60,6 +61,9 @@ class BaseClass(unittest.TestCase):
     ERROR_OR_FAILURE_EXISTS = False
     STOP_ON_FIRST_FAILURE = bool(g.config.get("common", {}).get(
         "stop_on_first_failure", False))
+    CHECK_HEKETI_DB_INCONSISTENCIES = (
+        g.config.get("common", {}).get("check_heketi_db_inconsistencies", True)
+        in (True, 'TRUE', 'True', 'true', 'yes', 'Yes', 'YES'))
 
     @classmethod
     def setUpClass(cls):
@@ -130,6 +134,17 @@ class BaseClass(unittest.TestCase):
                           "to one test case failure.")
 
         super(BaseClass, self).setUp()
+        if self.CHECK_HEKETI_DB_INCONSISTENCIES:
+            try:
+                self.heketi_db_inconsistencies = heketi_db_check(
+                    self.heketi_client_node, self.heketi_server_url)
+            except NotImplementedError as e:
+                g.log.info("Can not check Heketi DB inconsistencies due to "
+                           "the following error: %s" % e)
+            else:
+                self.addCleanup(
+                    self.check_heketi_db_inconsistencies,
+                    self.heketi_db_inconsistencies["totalinconsistencies"])
 
         msg = "Starting Test : %s : %s" % (self.id(), self.glustotest_run_id)
         g.log.info(msg)
@@ -150,6 +165,24 @@ class BaseClass(unittest.TestCase):
             hostname = self.ocp_master_node[0]
         return command.cmd_run(
             cmd=cmd, hostname=hostname, raise_on_error=raise_on_error)
+
+    def check_heketi_db_inconsistencies(
+            self, number_of_allowed_heketi_db_inconsistencies):
+        current_heketi_db_inconsistencies = heketi_db_check(
+            self.heketi_client_node, self.heketi_server_url)
+        current_number_of_heketi_db_inconsistencies = (
+            current_heketi_db_inconsistencies["totalinconsistencies"])
+        error_msg = (
+            "Before the test case we had %s inconsistencies, but after "
+            "the test case we have %s inconsistencies in the Heketi DB.\n"
+            "'heketi-cli db check' command output is following:\n%s" % (
+                number_of_allowed_heketi_db_inconsistencies,
+                current_number_of_heketi_db_inconsistencies,
+                current_heketi_db_inconsistencies))
+        self.assertEqual(
+            number_of_allowed_heketi_db_inconsistencies,
+            current_number_of_heketi_db_inconsistencies,
+            error_msg)
 
     def create_secret(self, secret_name_prefix="autotests-secret"):
         secret_name = oc_create_secret(
