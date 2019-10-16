@@ -35,7 +35,6 @@ from openshiftstoragelibs.openshift_ops import (
     get_ocp_gluster_pod_details,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
-    get_pvc_status,
     kill_service_on_gluster_pod_or_node,
     match_pv_and_heketi_block_volumes,
     oc_adm_manage_node,
@@ -969,23 +968,6 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.node, "systemctl restart  %s" % " ".join(services),
             gluster_node=self.gluster_servers[0])
 
-        # Get the names of PV's which are in Released state after PVC deletion
-        pending_creations, pending_deletions = [], []
-        for pv_name in pv_names_for_deletions:
-            # Check "Released" status for PV and add it to the list
-            try:
-                pv_status = oc_get_custom_resource(
-                    self.node, "pv", ":.status.phase", pv_name)[0]
-                if pv_status == 'Released':
-                    pending_deletions.append(pv_name)
-            except AssertionError:
-                pass
-
-        # Check which PVC's are in pending state and add to pending list
-        for pvc_name_in_creations in pvc_names_for_creations:
-            if get_pvc_status(self.node, pvc_name_in_creations) == 'Pending':
-                pending_creations.append(pvc_name_in_creations)
-
         # Restart the services
         for service in services:
             state = (
@@ -996,8 +978,8 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                 self.node, service, 'active', state, self.gluster_servers[0])
 
         # Wait for PV's absence and PVC's getting bound
-        wait_for_resources_absence(self.node, 'pv', pending_deletions)
-        wait_for_pvcs_be_bound(self.node, pending_creations, timeout=300)
+        wait_for_resources_absence(self.node, 'pv', pv_names_for_deletions)
+        wait_for_pvcs_be_bound(self.node, pvc_names_for_creations, timeout=300)
 
         # Validate volumes in heketi blockvolume list
         heketi_volumes = heketi_blockvolume_list(
