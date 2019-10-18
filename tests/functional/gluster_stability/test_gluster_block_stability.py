@@ -46,7 +46,6 @@ from openshiftstoragelibs.openshift_ops import (
     oc_rsh,
     restart_service_on_gluster_pod_or_node,
     scale_dcs_pod_amount_and_wait,
-    verify_pvc_status_is_bound,
     wait_for_events,
     wait_for_ocp_node_be_ready,
     wait_for_pod_be_ready,
@@ -782,59 +781,52 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                 self.node, 'gluster-blockd', 'active', 'running', g_node,
                 raise_on_error=False)
 
-        # Verify PVC status is bound
-        for pvc in pvc_names:
-            verify_pvc_status_is_bound(self.node, pvc, timeout=60)
+        # Make sure that PVCs are bound
+        wait_for_pvcs_be_bound(self.node, pvc_names, timeout=60)
+        try:
+            # Stop tcmu-runner/gluster-blockd service
+            for g_node in g_nodes:
+                cmd_run_on_gluster_pod_or_node(self.node, stop_svc_cmd, g_node)
 
-        # Stop tcmu-runner/gluster-blockd service
-        for g_node in g_nodes:
-            cmd_run_on_gluster_pod_or_node(
-                self.node, stop_svc_cmd, g_node)
-            self.addCleanup(
-                wait_for_service_status_on_gluster_pod_or_node, self.node,
-                'gluster-blockd', 'active', 'running', g_node,
-                raise_on_error=False)
-            self.addCleanup(
-                cmd_run_on_gluster_pod_or_node, self.node, start_svc_cmd,
-                g_node)
+            # Delete PVC's and check heketi logs for error
+            for pvc in pvc_names:
+                pv = get_pv_name_from_pvc(self.node, pvc)
+                bvol_name = oc_get_custom_resource(
+                    self.node, 'pv',
+                    ':.metadata.annotations.glusterBlockShare', name=pv)[0]
 
-        re_find_logs = r"(gluster-block delete .*\/%s --json.*%s)"
+                regex = (
+                    r"(Failed to run command .*gluster-block delete .*\/%s "
+                    r"--json.*)" % bvol_name)
+                cmd_date = "date -u --rfc-3339=ns | cut -d '+' -f 1"
+                date = cmd_run(cmd_date, self.node).split(" ")
 
-        # Delete PVC's and check heketi logs for error
-        for pvc in pvc_names:
-            pv = get_pv_name_from_pvc(self.node, pvc)
-            bvol_name = oc_get_custom_resource(
-                self.node, 'pv', ':.metadata.annotations.glusterBlockShare',
-                name=pv)[0]
+                oc_delete(self.node, 'pvc', pvc)
 
-            regex = re_find_logs % (bvol_name, err)
-            cmd_date = "date -u --rfc-3339=ns | cut -d '+' -f 1"
-            date = cmd_run(cmd_date, self.node).split(" ")
+                h_pod_name = get_pod_name_from_dc(
+                    self.node, self.heketi_dc_name)
+                cmd_logs = "oc logs %s --since-time %sT%sZ" % (
+                    h_pod_name, date[0], date[1])
 
-            oc_delete(self.node, 'pvc', pvc)
+                for w in Waiter(20, 5):
+                    logs = cmd_run(cmd_logs, self.node)
+                    status_match = re.search(regex, logs)
+                    if status_match:
+                        break
+                msg = "Did not found '%s' in the heketi logs '%s'" % (
+                    regex, logs)
+                self.assertTrue(status_match, msg)
 
-            h_pod_name = get_pod_name_from_dc(self.node, self.heketi_dc_name)
-            cmd_logs = "oc logs %s --since-time %sT%sZ" % (
-                h_pod_name, date[0], date[1])
-
-            for w in Waiter(20, 5):
-                logs = cmd_run(cmd_logs, self.node)
-                status_match = re.search(regex, logs)
-                if status_match:
-                    break
-            msg = "Did not found '%s' in the heketi logs '%s'" % (
-                regex, logs)
-            self.assertTrue(status_match, msg)
-
-            with self.assertRaises(ExecutionError):
-                wait_for_resource_absence(self.node, 'pvc', pvc, timeout=5)
-
-        # Start services
-        for g_node in g_nodes:
-            cmd_run_on_gluster_pod_or_node(self.node, start_svc_cmd, g_node)
-            wait_for_service_status_on_gluster_pod_or_node(
-                self.node, 'gluster-blockd', 'active', 'running', g_node,
-                raise_on_error=False)
+                with self.assertRaises(ExecutionError):
+                    wait_for_resource_absence(self.node, 'pvc', pvc, timeout=5)
+        finally:
+            # Start services back
+            for g_node in g_nodes:
+                cmd_run_on_gluster_pod_or_node(
+                    self.node, start_svc_cmd, g_node)
+                wait_for_service_status_on_gluster_pod_or_node(
+                    self.node, 'gluster-blockd', 'active', 'running', g_node,
+                    raise_on_error=True)
 
         # Wait for PVC's deletion after bringing up services
         for pvc in pvc_names:
