@@ -11,6 +11,8 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_create,
     heketi_blockvolume_delete,
     heketi_blockvolume_list,
+    heketi_node_disable,
+    heketi_node_enable,
     heketi_node_info,
     heketi_node_list,
     heketi_volume_create,
@@ -22,6 +24,7 @@ from openshiftstoragelibs.node_ops import node_reboot_by_command
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_default_block_hosting_volume_size,
+    get_events,
     get_gluster_host_ips_by_pvc_name,
     get_gluster_pod_names_by_pvc_name,
     get_pod_name_from_dc,
@@ -36,7 +39,9 @@ from openshiftstoragelibs.openshift_ops import (
     verify_pvc_status_is_bound,
     wait_for_events,
     wait_for_pod_be_ready,
+    wait_for_pvcs_be_bound,
     wait_for_resource_absence,
+    wait_for_resources_absence,
 )
 from openshiftstoragelibs.openshift_version import get_openshift_version
 from openshiftstoragelibs.waiter import Waiter
@@ -584,3 +589,125 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                 # create more PVCs in expanded BHV
                 pvcs = self.create_and_wait_for_pvcs(
                     pvc_size=(expand_size - 1), pvc_amount=1)
+
+    @skip("Blocked by BZ-1769426")
+    def test_targetcli_failure_during_block_pvc_creation(self):
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+
+        # Disable redundant nodes and leave just 3 nodes online
+        h_node_id_list = heketi_node_list(h_node, h_server)
+        self.assertGreater(len(h_node_id_list), 2)
+        for node_id in h_node_id_list[3:]:
+            heketi_node_disable(h_node, h_server, node_id)
+            self.addCleanup(heketi_node_enable, h_node, h_server, node_id)
+
+        # Gather info about the Gluster node we are going to use for killing
+        # targetcli processes.
+        chosen_g_node_id = h_node_id_list[0]
+        chosen_g_node_info = heketi_node_info(
+            h_node, h_server, chosen_g_node_id, json=True)
+        chosen_g_node_ip = chosen_g_node_info['hostnames']['storage'][0]
+        chosen_g_node_hostname = chosen_g_node_info['hostnames']['manage'][0]
+        chosen_g_node_ip_and_hostname = set((
+            chosen_g_node_ip, chosen_g_node_hostname))
+
+        g_pods = oc_get_custom_resource(
+            self.node, 'pod', [':.metadata.name', ':.status.hostIP',
+                               ':.status.podIP', ':.spec.nodeName'],
+            selector='glusterfs-node=pod')
+        if g_pods and g_pods[0]:
+            for g_pod in g_pods:
+                if chosen_g_node_ip_and_hostname.intersection(set(g_pod[1:])):
+                    host_to_run_cmds = self.node
+                    g_pod_prefix, g_pod = 'oc exec %s -- ' % g_pod[0], g_pod[0]
+                    break
+            else:
+                err_msg = (
+                    'Failed to find Gluster pod filtering it by following IPs '
+                    'and hostnames: %s\nFound following Gluster pods: %s'
+                ) % (chosen_g_node_ip_and_hostname, g_pods)
+                g.log.error(err_msg)
+                raise AssertionError(err_msg)
+        else:
+            host_to_run_cmds, g_pod_prefix, g_pod = chosen_g_node_ip, '', ''
+
+        # Schedule deletion of targetcli process
+        file_for_bkp, pvc_number = "~/.targetcli/prefs.bin", 10
+        self.cmd_run(
+            "%scp %s %s_backup" % (g_pod_prefix, file_for_bkp, file_for_bkp),
+            hostname=host_to_run_cmds)
+        self.addCleanup(
+            self.cmd_run,
+            "%srm -f %s_backup" % (g_pod_prefix, file_for_bkp),
+            hostname=host_to_run_cmds)
+        kill_targetcli_services_cmd = (
+            "while true; do "
+            "  %spkill targetcli || echo 'failed to kill targetcli process'; "
+            "done" % g_pod_prefix)
+        loop_for_killing_targetcli_process = g.run_async(
+            host_to_run_cmds, kill_targetcli_services_cmd, "root")
+        try:
+            # Create bunch of PVCs
+            sc_name, pvc_names = self.create_storage_class(), []
+            for i in range(pvc_number):
+                pvc_names.append(oc_create_pvc(self.node, sc_name, pvc_size=1))
+            self.addCleanup(
+                wait_for_resources_absence, self.node, 'pvc', pvc_names)
+            self.addCleanup(oc_delete, self.node, 'pvc', ' '.join(pvc_names))
+
+            # Check that we get expected number of provisioning errors
+            timeout, wait_step, succeeded_pvcs, failed_pvcs = 120, 1, [], []
+            _waiter, err_msg = Waiter(timeout=timeout, interval=wait_step), ""
+            for pvc_name in pvc_names:
+                _waiter._attempt = 0
+                for w in _waiter:
+                    events = get_events(
+                        self.node, pvc_name, obj_type="PersistentVolumeClaim")
+                    for event in events:
+                        if event['reason'] == 'ProvisioningSucceeded':
+                            succeeded_pvcs.append(pvc_name)
+                            break
+                        elif event['reason'] == 'ProvisioningFailed':
+                            failed_pvcs.append(pvc_name)
+                            break
+                    else:
+                        continue
+                    break
+                if w.expired:
+                    err_msg = (
+                        "Failed to get neither 'ProvisioningSucceeded' nor "
+                        "'ProvisioningFailed' statuses for all the PVCs in "
+                        "time. Timeout was %ss, interval was %ss." % (
+                            timeout, wait_step))
+                    g.log.error(err_msg)
+                    raise AssertionError(err_msg)
+            self.assertGreater(len(failed_pvcs), len(succeeded_pvcs))
+        finally:
+            # Restore targetcli workability
+            loop_for_killing_targetcli_process._proc.terminate()
+
+            # Revert breakage back which can be caused by BZ-1769426
+            check_bkp_file_size_cmd = (
+                "%sls -lah %s | awk '{print $5}'" % (
+                    g_pod_prefix, file_for_bkp))
+            bkp_file_size = self.cmd_run(
+                check_bkp_file_size_cmd, hostname=host_to_run_cmds).strip()
+            if bkp_file_size == "0":
+                self.cmd_run(
+                    "%smv %s_backup %s" % (
+                        g_pod_prefix, file_for_bkp, file_for_bkp),
+                    hostname=host_to_run_cmds)
+                breakage_err_msg = (
+                    "File located at '%s' was corrupted (zero size) on the "
+                    "%s. Looks like BZ-1769426 took effect. \n"
+                    "Don't worry, it has been restored after test failure." % (
+                        file_for_bkp,
+                        "'%s' Gluster pod" % g_pod if g_pod
+                        else "'%s' Gluster node" % chosen_g_node_ip))
+                g.log.error(breakage_err_msg)
+                if err_msg:
+                    breakage_err_msg = "%s\n%s" % (err_msg, breakage_err_msg)
+                raise AssertionError(breakage_err_msg)
+
+        # Wait for all the PVCs to be in bound state
+        wait_for_pvcs_be_bound(self.node, pvc_names, timeout=300, wait_step=5)
