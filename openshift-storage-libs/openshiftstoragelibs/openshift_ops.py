@@ -511,6 +511,13 @@ def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None):
         return out_list
 
 
+def get_block_provisioner(ocp_node):
+    return oc_get_custom_resource(
+        ocp_node, 'dc', selector="glusterblock",
+        custom=(r'":.spec.template.spec.containers[*].'
+                r'env[?(@.name==\"PROVISIONER_NAME\")].value"'))[0][0]
+
+
 def oc_get_yaml(ocp_node, rtype, name=None, raise_on_error=True):
     """Get an OCP resource by name.
 

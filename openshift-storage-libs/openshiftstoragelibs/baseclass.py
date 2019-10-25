@@ -28,6 +28,7 @@ from openshiftstoragelibs.node_ops import (
     node_delete_iptables_rules,
 )
 from openshiftstoragelibs.openshift_ops import (
+    get_block_provisioner,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
     oc_create_app_dc_with_io,
@@ -80,13 +81,13 @@ class BaseClass(unittest.TestCase):
         cls.ocp_nodes_info = g.config['ocp_servers']['nodes']
 
         # Initializes storage project config variables
-        openshift_config = g.config.get("cns", g.config.get("openshift"))
-        cls.storage_project_name = openshift_config.get(
+        cls.openshift_config = g.config.get("cns", g.config.get("openshift"))
+        cls.storage_project_name = cls.openshift_config.get(
             'storage_project_name',
-            openshift_config.get('setup', {}).get('cns_project_name'))
+            cls.openshift_config.get('setup', {}).get('cns_project_name'))
 
         # Initializes heketi config variables
-        heketi_config = openshift_config['heketi_config']
+        heketi_config = cls.openshift_config['heketi_config']
         cls.heketi_dc_name = heketi_config['heketi_dc_name']
         cls.heketi_service_name = heketi_config['heketi_service_name']
         cls.heketi_client_node = heketi_config['heketi_client_node']
@@ -97,10 +98,12 @@ class BaseClass(unittest.TestCase):
         cls.gluster_servers = list(g.config['gluster_servers'].keys())
         cls.gluster_servers_info = g.config['gluster_servers']
 
-        cls.storage_classes = openshift_config['dynamic_provisioning'][
+        cls.storage_classes = cls.openshift_config['dynamic_provisioning'][
             'storage_classes']
         cls.sc = cls.storage_classes.get(
             'storage_class1', cls.storage_classes.get('file_storage_class'))
+        cls.secret_type = "kubernetes.io/glusterfs"
+
         cmd = "echo -n %s | base64" % cls.heketi_cli_key
         ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
         if ret != 0:
@@ -184,7 +187,8 @@ class BaseClass(unittest.TestCase):
             current_number_of_heketi_db_inconsistencies,
             error_msg)
 
-    def create_secret(self, secret_name_prefix="autotests-secret"):
+    def create_secret(self, secret_name_prefix="autotests-secret",
+                      secret_type=None):
         secret_name = oc_create_secret(
             self.ocp_client[0],
             secret_name_prefix=secret_name_prefix,
@@ -192,7 +196,7 @@ class BaseClass(unittest.TestCase):
                 'secretnamespace',
                 self.sc.get('restsecretnamespace', 'default'))),
             data_key=self.heketi_cli_key,
-            secret_type=self.sc.get('provisioner', 'kubernetes.io/glusterfs'))
+            secret_type=secret_type or self.secret_type)
         self.addCleanup(
             oc_delete, self.ocp_client[0], 'secret', secret_name)
         return secret_name
@@ -217,7 +221,7 @@ class BaseClass(unittest.TestCase):
         # Create storage class
         secret_name_option = "secretname"
         secret_namespace_option = "secretnamespace"
-        provisioner = self.sc.get("provisioner", "kubernetes.io/glusterfs")
+        provisioner = self.get_provisioner_for_sc()
         if provisioner != "kubernetes.io/glusterfs":
             secret_name_option = "rest%s" % secret_name_option
             secret_namespace_option = "rest%s" % secret_namespace_option
@@ -263,6 +267,12 @@ class BaseClass(unittest.TestCase):
             **parameters)
         self.addCleanup(oc_delete, self.ocp_client[0], "sc", self.sc_name)
         return self.sc_name
+
+    def get_provisioner_for_sc(self):
+        return "kubernetes.io/glusterfs"
+
+    def get_block_provisioner_for_sc(self):
+        return get_block_provisioner(self.ocp_client[0])
 
     def create_and_wait_for_pvcs(self, pvc_size=1,
                                  pvc_name_prefix="autotests-pvc",
@@ -513,6 +523,10 @@ class GlusterBlockBaseClass(BaseClass):
         super(GlusterBlockBaseClass, cls).setUpClass()
         cls.sc = cls.storage_classes.get(
             'storage_class2', cls.storage_classes.get('block_storage_class'))
+        cls.secret_type = "gluster.org/glusterblock"
+
+    def get_provisioner_for_sc(self):
+        return self.get_block_provisioner_for_sc()
 
     def verify_iscsi_sessions_and_multipath(self, pvc_name, rname, rtype="dc"):
         # Get storage ips of glusterfs pods

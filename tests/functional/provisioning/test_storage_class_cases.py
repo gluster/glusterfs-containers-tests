@@ -83,7 +83,7 @@ class TestStorageClassCases(BaseClass):
             self.addCleanup(
                 oc_delete, self.ocp_master_node[0], 'secret', self.secret_name)
             sc_parameter = {
-                "provisioner": "gluster.org/glusterblock",
+                "provisioner": self.get_block_provisioner_for_sc(),
                 "restsecretnamespace": sc['restsecretnamespace'],
                 "restsecretname": self.secret_name,
                 "hacount": sc['hacount']

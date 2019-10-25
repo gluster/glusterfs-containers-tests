@@ -60,13 +60,15 @@ openshift:
     dynamic_provisioning:
         storage_classes:
             file_storage_class:
-                provisioner: "kubernetes.io/glusterfs"
+                # 'provisioner' option is no longer supported.
+                # It gets autocalculated.
                 resturl: "<fake-url>"
                 restuser: "<fake-user>"
                 secretnamespace: "<fake-namespace-name>"
                 volumenameprefix: "autotests-file"
             block_storage_class:
-                provisioner: "gluster.org/glusterblock"
+                # 'provisioner' option is no longer supported.
+                # It gets autocalculated.
                 resturl: "<fake-url>"
                 restuser: "<fake-user>"
                 restsecretnamespace: "<fake-namespace-name>"
