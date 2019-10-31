@@ -489,6 +489,12 @@ class BaseClass(unittest.TestCase):
         g_nodes = g_nodes.split('\n') if g_nodes else g_nodes
         return not not g_nodes
 
+    def configure_node_to_run_gluster(self, storage_host_manage):
+        if self.is_containerized_gluster():
+            self.configure_node_to_run_gluster_pod(storage_host_manage)
+        else:
+            self.configure_node_to_run_gluster_node(storage_host_manage)
+
     def _is_error_or_failure_exists(self):
         if hasattr(self, '_outcome'):
             # Python 3.4+
