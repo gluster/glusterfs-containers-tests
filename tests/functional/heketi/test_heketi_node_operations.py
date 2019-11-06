@@ -2,7 +2,10 @@ from glusto.core import Glusto as g
 from glustolibs.gluster import peer_ops
 
 from openshiftstoragelibs import baseclass
+from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs import openshift_ops
+from openshiftstoragelibs import openshift_storage_version
 from openshiftstoragelibs import podcmd
 
 
@@ -108,34 +111,32 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             h_client, h_server, vol_size, json=True)
         heketi_ops.heketi_volume_delete(h_client, h_server, vol_info['id'])
 
-    def test_heketi_node_add_with_valid_cluster(self):
-        """Test heketi node add operation with valid cluster id"""
+    def add_heketi_node_to_cluster(self, cluster_id):
+        """Add new node to a cluster"""
         storage_host_info = g.config.get("additional_gluster_servers")
         if not storage_host_info:
             self.skipTest(
                 "Skip test case as 'additional_gluster_servers' option is "
                 "not provided in config file")
 
-        h_client, h_server = self.heketi_client_node, self.heketi_server_url
-
         storage_host_info = list(storage_host_info.values())[0]
-        storage_host_manage = storage_host_info["manage"]
-        storage_host_name = storage_host_info["storage"]
-        storage_device = storage_host_info["additional_devices"][0]
+        try:
+            storage_hostname = storage_host_info["manage"]
+            storage_ip = storage_host_info["storage"]
+        except KeyError:
+            msg = ("Config options 'additional_gluster_servers.manage' "
+                   "and 'additional_gluster_servers.storage' must be set.")
+            g.log.error(msg)
+            raise exceptions.ConfigError(msg)
+
+        h_client, h_server = self.heketi_client_node, self.heketi_server_url
         storage_zone = 1
 
-        cluster_info = heketi_ops.heketi_cluster_list(
-            h_client, h_server, json=True)
-        cluster_id = cluster_info["clusters"][0]
-
-        if self.is_containerized_gluster():
-            self.configure_node_to_run_gluster_pod(storage_host_manage)
-        else:
-            self.configure_node_to_run_gluster_node(storage_host_manage)
+        self.configure_node_to_run_gluster(storage_hostname)
 
         heketi_node_info = heketi_ops.heketi_node_add(
             h_client, h_server, storage_zone, cluster_id,
-            storage_host_manage, storage_host_name, json=True)
+            storage_hostname, storage_ip, json=True)
         heketi_node_id = heketi_node_info["id"]
         self.addCleanup(
             heketi_ops.heketi_node_delete, h_client, h_server, heketi_node_id)
@@ -148,29 +149,82 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             "Node got added in unexpected cluster exp: %s, act: %s" % (
                 cluster_id, heketi_node_info["cluster"]))
 
-        heketi_ops.heketi_device_add(
-            h_client, h_server, storage_device, heketi_node_id)
-        heketi_node_info = heketi_ops.heketi_node_info(
-            h_client, h_server, heketi_node_id, json=True)
-        device_id = None
-        for device in heketi_node_info["devices"]:
-            if device["name"] == storage_device:
-                device_id = device["id"]
+        return storage_hostname, storage_ip
+
+    @podcmd.GlustoPod()
+    def test_heketi_node_add_with_valid_cluster(self):
+        """Test heketi node add operation with valid cluster id"""
+        if (openshift_storage_version.get_openshift_storage_version()
+                < "3.11.4"):
+            self.skipTest(
+                "This test case is not supported for < OCS 3.11.4 builds due "
+                "to bug BZ-1732831")
+
+        h_client, h_server = self.heketi_client_node, self.heketi_server_url
+        ocp_node = self.ocp_master_node[0]
+
+        # Get heketi endpoints before adding node
+        h_volume_ids = heketi_ops.heketi_volume_list(
+            h_client, h_server, json=True)
+        h_endpoints_before_new_node = heketi_ops.heketi_volume_endpoint_patch(
+            h_client, h_server, h_volume_ids["volumes"][0])
+
+        cluster_info = heketi_ops.heketi_cluster_list(
+            h_client, h_server, json=True)
+        storage_hostname, storage_ip = self.add_heketi_node_to_cluster(
+            cluster_info["clusters"][0])
+
+        # Get heketi nodes and validate for newly added node
+        h_node_ids = heketi_ops.heketi_node_list(h_client, h_server, json=True)
+        for h_node_id in h_node_ids:
+            node_hostname = heketi_ops.heketi_node_info(
+                h_client, h_server, h_node_id, json=True)
+            if node_hostname["hostnames"]["manage"][0] == storage_hostname:
                 break
-        err_msg = ("Failed to add device %s on node %s" % (
-            storage_device, heketi_node_id))
-        self.assertTrue(device_id, err_msg)
+            node_hostname = None
 
-        self.addCleanup(
-            heketi_ops.heketi_device_delete, h_client, h_server, device_id)
-        self.addCleanup(
-            heketi_ops.heketi_device_remove, h_client, h_server, device_id)
-        self.addCleanup(
-            heketi_ops.heketi_device_disable, h_client, h_server, device_id)
+        err_msg = ("Newly added heketi node %s not found in heketi node "
+                   "list %s" % (storage_hostname, h_node_ids))
+        self.assertTrue(node_hostname, err_msg)
 
-        cluster_info = heketi_ops.heketi_cluster_info(
-            h_client, h_server, cluster_id, json=True)
-        self.assertIn(
-            heketi_node_info["id"], cluster_info["nodes"],
-            "Newly added node %s not found in cluster %s, cluster info %s" % (
-                heketi_node_info["id"], cluster_id, cluster_info))
+        # Check gluster peer status for newly added node
+        if self.is_containerized_gluster():
+            gluster_pods = openshift_ops.get_ocp_gluster_pod_details(ocp_node)
+            gluster_pod = [
+                gluster_pod["pod_name"]
+                for gluster_pod in gluster_pods
+                if gluster_pod["pod_hostname"] == storage_hostname][0]
+
+            gluster_peer_status = peer_ops.get_peer_status(
+                podcmd.Pod(ocp_node, gluster_pod))
+        else:
+            gluster_peer_status = peer_ops.get_peer_status(
+                storage_hostname)
+        self.assertEqual(
+            len(gluster_peer_status), len(self.gluster_servers))
+
+        err_msg = "Expected peer status is 1 and actual is %s"
+        for peer in gluster_peer_status:
+            peer_status = int(peer["connected"])
+            self.assertEqual(peer_status, 1, err_msg % peer_status)
+
+        # Get heketi endpoints after adding node
+        h_endpoints_after_new_node = heketi_ops.heketi_volume_endpoint_patch(
+            h_client, h_server, h_volume_ids["volumes"][0])
+
+        # Get openshift openshift endpoints and patch with heketi endpoints
+        heketi_db_endpoint = openshift_ops.oc_get_custom_resource(
+            ocp_node, "dc", name=self.heketi_dc_name,
+            custom=".:spec.template.spec.volumes[*].glusterfs.endpoints")[0]
+        openshift_ops.oc_patch(
+            ocp_node, "ep", heketi_db_endpoint, h_endpoints_after_new_node)
+        self.addCleanup(
+            openshift_ops.oc_patch, ocp_node, "ep", heketi_db_endpoint,
+            h_endpoints_before_new_node)
+        ep_addresses = openshift_ops.oc_get_custom_resource(
+            ocp_node, "ep", name=heketi_db_endpoint,
+            custom=".:subsets[*].addresses[*].ip")[0].split(",")
+
+        err_msg = "Hostname %s not present in endpoints %s" % (
+            storage_ip, ep_addresses)
+        self.assertIn(storage_ip, ep_addresses, err_msg)

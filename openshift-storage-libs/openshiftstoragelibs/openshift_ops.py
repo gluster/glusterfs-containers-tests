@@ -1842,3 +1842,33 @@ def oc_create_service_monitor(hostname, sm_name="heketi",
     })
     oc_create(hostname, sm_data, 'stdin')
     return sm_name
+
+
+def oc_patch(ocp_node, rtype, rname, changes, raise_on_error=True):
+    """Patch openshift resource with change
+
+    Args:
+        ocp_node (str): Node on which the ocp command will run.
+        rtype (str): Name of the resource type (pod, storageClass, etc).
+        rname (str): Name of the resource to fetch.
+        changes (dict): Changes to be applied through patch.
+        raise_on_error (bool): If set to true a failure to patch
+            resource with changes will raise an error, otherwise
+            an None will be returned.
+    Returns:
+        str : output of oc patch command
+    Raises:
+        exceptions.ExecutionError: Raise when invalid json is provided.
+        AssertionError: Raised when unable to patch resource and
+            'raise_on_error' is true.
+    """
+    try:
+        changes = json.dumps(changes)
+    except TypeError:
+        raise exceptions.ExecutionError(
+            "Json %s is not serializable to string")
+
+    cmd = ['oc', 'patch', rtype, rname, '-p', '\'%s\'' % changes]
+    out = command.cmd_run(
+        cmd, hostname=ocp_node, raise_on_error=raise_on_error)
+    return out or None

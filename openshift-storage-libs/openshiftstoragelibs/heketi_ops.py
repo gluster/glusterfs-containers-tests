@@ -1739,3 +1739,42 @@ def heketi_db_check(heketi_client_node, heketi_server_url, **kwargs):
     cmd = TIMEOUT_PREFIX + cmd
     out = heketi_cmd_run(heketi_client_node, cmd)
     return json.loads(out)
+
+
+def heketi_volume_endpoint_patch(
+        heketi_client_node, heketi_server_url, volume_id, **kwargs):
+    """Execute heketi volume endpoint patch command.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+        volume_id (str): Volume ID
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        dict: endpoint info on success
+
+    Raises:
+        exceptions.AssertionError: if command fails.
+    """
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '9.0.0-1':
+        msg = (
+            "heketi-client package %s does not support endpoint patch "
+            "functionality" % version.v_str)
+        g.log.error(msg)
+        raise NotImplementedError(msg)
+
+    heketi_server_url, _, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+
+    cmd = "heketi-cli -s %s volume endpoint patch %s %s %s" % (
+        heketi_server_url, volume_id, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
+    out = heketi_cmd_run(heketi_client_node, cmd)
+
+    return json.loads(out)
