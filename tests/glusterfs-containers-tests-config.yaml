@@ -66,6 +66,7 @@ additional_gluster_servers:
 
 openshift:
     storage_project_name: "<storage-project-name>"
+    registry_project_name: "<registry-project-name>"
     heketi_config:
         heketi_dc_name: "<fake-name-of-heketi-deployment-config>"
         heketi_service_name: "<fake-name-of-heketi-service>"

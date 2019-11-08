@@ -3,11 +3,20 @@ from glusto.core import Glusto as g
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs import command
 from openshiftstoragelibs.openshift_ops import (
+    get_ocp_gluster_pod_details,
     get_pod_name_from_rc,
+    oc_delete,
     oc_get_custom_resource,
     switch_oc_project,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
+    wait_for_pods_be_ready,
+    wait_for_resources_absence,
+)
+from openshiftstoragelibs.openshift_storage_libs import (
+    get_active_and_enabled_devices_from_mpath,
+    get_iscsi_block_devices_by_path,
+    get_mpath_name_from_device_name,
 )
 
 
@@ -28,8 +37,11 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
             self.registry_heketi_server_url = (
                 g.config['openshift']['registry_heketi_config'][
                     'heketi_server_url'])
+            self.registry_project_name = (
+                g.config['openshift']['registry_project_name'])
+            self.registry_servers_info = g.config['gluster_registry_servers']
         except KeyError as err:
-            msg = ("Config file doesn't have key %s" % err)
+            msg = "Config file doesn't have key {}".format(err)
             g.log.error(msg)
             self.skipTest(msg)
 
@@ -61,4 +73,64 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
         self.verify_iscsi_sessions_and_multipath(
             pvc_name, self.metrics_rc_hawkular_cassandra, rtype='rc',
             heketi_server_url=self.registry_heketi_server_url,
+            is_registry_gluster=True)
+
+    def verify_cassandra_pod_multipath_and_iscsi(self):
+        # Validate iscsi and multipath
+        hawkular_cassandra = get_pod_name_from_rc(
+            self.master, self.metrics_rc_hawkular_cassandra)
+        custom = ":.spec.volumes[*].persistentVolumeClaim.claimName"
+        pvc_name = oc_get_custom_resource(
+            self.master, "pod", custom, hawkular_cassandra)[0]
+        iqn, hacount, node = self.verify_iscsi_sessions_and_multipath(
+            pvc_name, self.metrics_rc_hawkular_cassandra, rtype='rc',
+            heketi_server_url=self.registry_heketi_server_url,
+            is_registry_gluster=True)
+        return hawkular_cassandra, pvc_name, iqn, hacount, node
+
+    def test_verify_metrics_data_during_gluster_pod_respin(self):
+        # Add check for CRS version
+        switch_oc_project(self.master, self.registry_project_name)
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as CRS version check "
+                "can not be implemented")
+
+        # Verify multipath and iscsi for cassandra pod
+        switch_oc_project(self.master, self.metrics_project_name)
+        hawkular_cassandra, pvc_name, iqn, _, node = (
+            self.verify_cassandra_pod_multipath_and_iscsi())
+
+        # Get the ip of active path
+        device_and_ip = get_iscsi_block_devices_by_path(node, iqn)
+        mpath = get_mpath_name_from_device_name(
+            node, list(device_and_ip.keys())[0])
+        active_passive_dict = get_active_and_enabled_devices_from_mpath(
+            node, mpath)
+        node_ip = device_and_ip[active_passive_dict['active'][0]]
+
+        # Get the name of gluster pod from the ip
+        switch_oc_project(self.master, self.registry_project_name)
+        gluster_pods = get_ocp_gluster_pod_details(self.master)
+        pod_name = list(
+            filter(lambda pod: (pod["pod_host_ip"] == node_ip), gluster_pods)
+        )[0]["pod_name"]
+        err_msg = "Failed to get the gluster pod name {} with active path"
+        self.assertTrue(pod_name, err_msg.format(pod_name))
+
+        # Delete the pod
+        oc_delete(self.master, 'pod', pod_name)
+        wait_for_resources_absence(self.master, 'pod', pod_name)
+
+        # Wait for new pod to come up
+        pod_count = len(self.registry_servers_info.keys())
+        selector = "glusterfs-node=pod"
+        wait_for_pods_be_ready(self.master, pod_count, selector)
+
+        # Validate cassandra pod state, multipath and issci
+        switch_oc_project(self.master, self.metrics_project_name)
+        wait_for_pod_be_ready(self.master, hawkular_cassandra, timeout=2)
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, self.metrics_rc_hawkular_cassandra,
+            rtype='rc', heketi_server_url=self.registry_heketi_server_url,
             is_registry_gluster=True)
