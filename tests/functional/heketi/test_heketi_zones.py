@@ -12,6 +12,7 @@ from glusto.core import Glusto as g
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import openshift_ops
+from openshiftstoragelibs import openshift_storage_libs
 
 
 @ddt.ddt
@@ -129,10 +130,22 @@ class TestHeketiZones(baseclass.BaseClass):
         (2, "none", True),
         (3, "none", False),
         (3, "none", True),
+        # PVC expansion cases:
+        (3, "strict", False, True),
+        (3, "strict", True, True),
+        (1, "none", False, True),
+        (1, "none", True, True),
+        (2, "none", False, True),
+        (2, "none", True, True),
+        (3, "none", False, True),
+        (3, "none", True, True),
     )
     @ddt.unpack
     def test_check_pvc_placement_based_on_the_heketi_zones(
-            self, zone_count, heketi_zone_checking, is_arbiter_vol):
+            self, zone_count, heketi_zone_checking, is_arbiter_vol,
+            expand=False):
+        # TODO(vponomar): implement setting env vars for the Heketi dc.
+
         # Check amount of available online heketi nodes
         online_nodes = self._get_online_nodes()
         node_count = len(online_nodes)
@@ -161,6 +174,7 @@ class TestHeketiZones(baseclass.BaseClass):
         prefix = "autotests-heketi-zones"
         sc_name = self.create_storage_class(
             sc_name_prefix=prefix, vol_name_prefix=prefix,
+            allow_volume_expansion=expand,
             is_arbiter_vol=is_arbiter_vol,
             heketi_zone_checking=heketi_zone_checking)
 
@@ -168,27 +182,41 @@ class TestHeketiZones(baseclass.BaseClass):
         pvc_name = self.create_and_wait_for_pvc(
             pvc_name_prefix=prefix, sc_name=sc_name)
 
-        # Validate brick placement if heketi zone checking is set to 'strict'
-        if heketi_zone_checking == 'strict':
-            brick_hosts_ips = openshift_ops.get_gluster_host_ips_by_pvc_name(
-                self.node, pvc_name)
-            placement_zones = set()
-            for brick_host_ip in brick_hosts_ips:
-                for node_zone, node_ips in online_nodes:
-                    if brick_host_ip not in node_ips:
-                        continue
-                    placement_zones.add(node_zone)
-                    break
-            actual_zone_count = len(placement_zones)
-            # NOTE(vponomar): '3' is default amount of volume replicas.
-            # And it is just impossible to find more actual zones than amount
-            # of replicas/bricks.
-            expected_zone_count = 3 if zone_count > 3 else zone_count
-            self.assertEqual(
-                expected_zone_count, actual_zone_count,
-                "PVC '%s' is incorrectly placed on the Heketi nodes "
-                "according to their zones. Expected '%s' unique zones, got "
-                "'%s'." % (pvc_name, zone_count, actual_zone_count))
+        for i in range(2):
+            # Validate brick placement if heketi zone checking is 'strict'
+            if heketi_zone_checking == 'strict':
+                brick_hosts_ips = (
+                    openshift_ops.get_gluster_host_ips_by_pvc_name(
+                        self.node, pvc_name))
+                placement_zones = {}
+                for brick_host_ip in brick_hosts_ips:
+                    for node_zone, node_ips in online_nodes:
+                        if brick_host_ip not in node_ips:
+                            continue
+                        placement_zones[node_zone] = placement_zones.get(
+                            node_zone, 0) + 1
+                        break
+                actual_zone_count = len(placement_zones)
+                # NOTE(vponomar): '3' is default amount of volume replicas.
+                # And it is just impossible to find more actual zones than
+                # amount of replicas/bricks.
+                brick_number = len(brick_hosts_ips)
+                expected_zone_count = (
+                    brick_number if brick_number < zone_count else zone_count)
+                self.assertEqual(
+                    expected_zone_count, actual_zone_count,
+                    "PVC '%s' is incorrectly placed on the Heketi nodes "
+                    "according to their zones. Expected '%s' unique zones, "
+                    "got '%s'." % (pvc_name, zone_count, actual_zone_count))
+
+            # Expand PVC if needed
+            if expand:
+                expand_size, expand = 2, False
+                openshift_storage_libs.enable_pvc_resize(self.node)
+                openshift_ops.resize_pvc(self.node, pvc_name, expand_size)
+                openshift_ops.verify_pvc_size(self.node, pvc_name, expand_size)
+            else:
+                break
 
         # Make sure that gluster vol has appropriate option set
         vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
