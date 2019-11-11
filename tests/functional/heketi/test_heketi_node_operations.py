@@ -1,5 +1,6 @@
 from glusto.core import Glusto as g
 from glustolibs.gluster import peer_ops
+import six
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
@@ -7,6 +8,7 @@ from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import openshift_storage_version
 from openshiftstoragelibs import podcmd
+from openshiftstoragelibs import utils
 
 
 class TestHeketiNodeOperations(baseclass.BaseClass):
@@ -228,3 +230,18 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
         err_msg = "Hostname %s not present in endpoints %s" % (
             storage_ip, ep_addresses)
         self.assertIn(storage_ip, ep_addresses, err_msg)
+
+    def test_heketi_node_add_with_invalid_cluster(self):
+        """Test heketi node add operation with invalid cluster id"""
+        storage_hostname, cluster_id = None, utils.get_random_str(size=33)
+        try:
+            storage_hostname, _ = self.add_heketi_node_to_cluster(cluster_id)
+        except AssertionError as e:
+            err_msg = ("validation failed: cluster: %s is not a valid UUID" %
+                       cluster_id)
+            if err_msg not in six.text_type(e):
+                raise
+
+        err_msg = ("Unexpectedly node %s got added to cluster %s" % (
+            storage_hostname, cluster_id))
+        self.assertFalse(storage_hostname, err_msg)
