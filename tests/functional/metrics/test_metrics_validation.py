@@ -1,7 +1,10 @@
+from pkg_resources import parse_version
+
 from glusto.core import Glusto as g
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs import command
+from openshiftstoragelibs import exceptions
 from openshiftstoragelibs.openshift_ops import (
     get_ocp_gluster_pod_details,
     get_pod_name_from_rc,
@@ -44,6 +47,21 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
             msg = "Config file doesn't have key {}".format(err)
             g.log.error(msg)
             self.skipTest(msg)
+
+        # Skip the test if iscsi-initiator-utils version is not the expected
+        cmd = ("rpm -q iscsi-initiator-utils "
+               "--queryformat '%{version}-%{release}\n'"
+               "| cut -d '.' -f 1,2,3,4")
+        e_pkg_version = "6.2.0.874-17"
+        for g_server in self.gluster_servers:
+            out = self.cmd_run(cmd, g_server)
+            if parse_version(out) < parse_version(e_pkg_version):
+                msg = ("Skip test since isci initiator utils version actual: "
+                       "{out} is less than expected: {ver} on node {server},"
+                       " for more info refer to BZ-1624670"
+                       .format(out=out, ver=e_pkg_version, server=g_server))
+                g.log.error(msg)
+                self.skipTest(msg)
 
         self.master = self.ocp_master_node[0]
         cmd = "oc project --short=true"
@@ -130,6 +148,40 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
         # Validate cassandra pod state, multipath and issci
         switch_oc_project(self.master, self.metrics_project_name)
         wait_for_pod_be_ready(self.master, hawkular_cassandra, timeout=2)
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, self.metrics_rc_hawkular_cassandra,
+            rtype='rc', heketi_server_url=self.registry_heketi_server_url,
+            is_registry_gluster=True)
+
+    def cassandra_pod_delete_cleanup(self):
+        """Cleanup for deletion of cassandra pod using force delete"""
+        try:
+            # Check if pod is up or ready
+            pod_name = get_pod_name_from_rc(
+                self.master, self.metrics_rc_hawkular_cassandra)
+            wait_for_pod_be_ready(self.master, pod_name, timeout=1)
+        except exceptions.ExecutionError:
+            # Force delete and wait for new pod to come up
+            oc_delete(self.master, 'pod', pod_name, is_force=True)
+            wait_for_resources_absence(self.master, 'pod', pod_name)
+            new_pod_name = get_pod_name_from_rc(
+                self.master, self.metrics_rc_hawkular_cassandra)
+            wait_for_pod_be_ready(self.master, new_pod_name)
+
+    def test_metrics_during_cassandra_pod_respin(self):
+        """Validate cassandra pod respin"""
+        old_cassandra_pod, pvc_name, _, _, _ = (
+            self.verify_cassandra_pod_multipath_and_iscsi())
+
+        # Delete the cassandra pod and wait for new pod to be ready
+        oc_delete(self.master, 'pod', old_cassandra_pod)
+        self.addCleanup(self.cassandra_pod_delete_cleanup)
+        wait_for_resources_absence(self.master, 'pod', old_cassandra_pod)
+        new_cassandra_pod = get_pod_name_from_rc(
+            self.master, self.metrics_rc_hawkular_cassandra)
+        wait_for_pod_be_ready(self.master, new_cassandra_pod)
+
+        # Validate iscsi and multipath
         self.verify_iscsi_sessions_and_multipath(
             pvc_name, self.metrics_rc_hawkular_cassandra,
             rtype='rc', heketi_server_url=self.registry_heketi_server_url,
