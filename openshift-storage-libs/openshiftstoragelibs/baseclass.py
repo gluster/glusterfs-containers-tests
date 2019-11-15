@@ -738,13 +738,21 @@ class GlusterBlockBaseClass(BaseClass):
             msg = "All paths are not up in mpath %s on Node %s" % (out, node)
             self.assertNotIn(state, out, msg)
 
-    def get_block_hosting_volume_by_pvc_name(self, pvc_name):
+    def get_block_hosting_volume_by_pvc_name(
+            self, pvc_name, heketi_server_url=None, gluster_node=None,
+            ocp_client_node=None):
         """Get block hosting volume of pvc name given
 
         Args:
             pvc_name (str): pvc name for which the BHV name needs
                             to be returned
+        Kwargs:
+            heketi_server_url (str): heketi server url to run heketi commands
+            gluster_node (str): gluster node where to run gluster commands
+            ocp_client_node (str): ocp cleint node where to run oc commands
         """
+        if not heketi_server_url:
+            heketi_server_url = self.heketi_server_url
         pv_name = get_pv_name_from_pvc(self.ocp_client[0], pvc_name)
         block_volume = oc_get_custom_resource(
             self.ocp_client[0], 'pv',
@@ -754,6 +762,7 @@ class GlusterBlockBaseClass(BaseClass):
 
         # get block hosting volume from block volume
         block_hosting_vol = get_block_hosting_volume_name(
-            self.heketi_client_node, self.heketi_server_url, block_volume)
+            self.heketi_client_node, heketi_server_url, block_volume,
+            gluster_node=gluster_node, ocp_client_node=ocp_client_node)
 
         return block_hosting_vol

@@ -6,6 +6,9 @@ from glusto.core import Glusto as g
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs import command
 from openshiftstoragelibs import exceptions
+from openshiftstoragelibs.gluster_ops import (
+    restart_gluster_vol_brick_processes,
+)
 from openshiftstoragelibs.openshift_ops import (
     get_ocp_gluster_pod_details,
     get_pod_name_from_rc,
@@ -156,20 +159,23 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
             rtype='rc', heketi_server_url=self.registry_heketi_server_url,
             is_registry_gluster=True)
 
-    def cassandra_pod_delete_cleanup(self):
+    def cassandra_pod_delete_cleanup(self, raise_on_error=False):
         """Cleanup for deletion of cassandra pod using force delete"""
+        switch_oc_project(self.master, self.metrics_project_name)
         try:
             # Check if pod is up or ready
             pod_name = get_pod_name_from_rc(
                 self.master, self.metrics_rc_hawkular_cassandra)
             wait_for_pod_be_ready(self.master, pod_name, timeout=1)
-        except exceptions.ExecutionError:
+        except exceptions.ExecutionError as err:
             # Force delete and wait for new pod to come up
             oc_delete(self.master, 'pod', pod_name, is_force=True)
             wait_for_resource_absence(self.master, 'pod', pod_name)
             new_pod_name = get_pod_name_from_rc(
                 self.master, self.metrics_rc_hawkular_cassandra)
             wait_for_pod_be_ready(self.master, new_pod_name)
+            if raise_on_error:
+                raise err
 
     @ddt.data('delete', 'drain')
     def test_metrics_during_cassandra_pod_respin(self, motive='delete'):
@@ -245,3 +251,20 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
         cmd_remove_file = 'rm {}'.format(file_name)
         self.addCleanup(
             oc_rsh, self.master, hawkular_cassandra, cmd_remove_file)
+
+    def test_metrics_cassandra_pod_with_bhv_brick_process_down(self):
+        """Validate metrics during restart of brick process of  bhv"""
+
+        # Validate iscsi and multipath
+        gluster_node = list(self.registry_servers_info.keys())[0]
+        hawkular_cassandra, pvc_name, _, _, _ = (
+            self.verify_cassandra_pod_multipath_and_iscsi())
+        switch_oc_project(self.master, self.registry_project_name)
+
+        # Kill the brick process and force restart the volume
+        bhv_name = self.get_block_hosting_volume_by_pvc_name(
+            pvc_name, heketi_server_url=self.registry_heketi_server_url,
+            gluster_node=gluster_node, ocp_client_node=self.master)
+        restart_gluster_vol_brick_processes(
+            self.master, bhv_name, list(self.registry_servers_info.keys()))
+        self.addCleanup(self.cassandra_pod_delete_cleanup, raise_on_error=True)

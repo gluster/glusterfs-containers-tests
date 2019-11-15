@@ -240,7 +240,8 @@ def match_heketi_and_gluster_block_volumes_by_prefix(
 
 @podcmd.GlustoPod()
 def get_block_hosting_volume_name(heketi_client_node, heketi_server_url,
-                                  block_volume):
+                                  block_volume, gluster_node=None,
+                                  ocp_client_node=None):
     """Returns block hosting volume name of given block volume
 
     Args:
@@ -248,6 +249,10 @@ def get_block_hosting_volume_name(heketi_client_node, heketi_server_url,
         heketi_server_url (str): Heketi server url
         block_volume (str): Block volume of which block hosting volume
                             returned
+    Kwargs:
+        gluster_node (str): gluster node/pod ip where gluster command can be
+                            run
+        ocp_client_node (str): OCP client node where oc commands can be run
     Returns:
         str : Name of the block hosting volume for given block volume
     """
@@ -263,7 +268,13 @@ def get_block_hosting_volume_name(heketi_client_node, heketi_server_url,
         if not block_hosting_vol_match:
             continue
 
-        gluster_vol_list = get_volume_list("auto_get_gluster_endpoint")
+        if gluster_node and ocp_client_node:
+            cmd = 'gluster volume list'
+            gluster_vol_list = cmd_run_on_gluster_pod_or_node(
+                ocp_client_node, cmd, gluster_node).split('\n')
+        else:
+            gluster_vol_list = get_volume_list('auto_get_gluster_endpoint')
+
         for vol in gluster_vol_list:
             if block_hosting_vol_match.group(1).strip() in vol:
                 return vol
