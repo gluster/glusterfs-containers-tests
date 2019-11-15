@@ -1463,3 +1463,53 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                 "Failed to get block list from bhv %s" % bhv_id)
             for blockvol in gluster_vol_info:
                 self.assertNotIn("blockvol_", blockvol)
+
+    def test_create_and_delete_block_pvcs_with_network_failure(self):
+        """Create and delete volumes after blocking the port 24010 on 51% of
+        the nodes"""
+        chain, pvc_amount = 'OS_FIREWALL_ALLOW', 5
+        rules = '-p tcp -m state --state NEW -m tcp --dport 24010 -j ACCEPT'
+
+        # Create  5 PVC's, get PV names and volume ids
+        sc_name = self.create_storage_class(hacount=len(self.gluster_servers))
+        pvc_names = self.create_and_wait_for_pvcs(
+            sc_name=sc_name, pvc_amount=pvc_amount)
+        vol_details = self.get_vol_id_and_vol_names_from_pvc_names(pvc_names)
+        vol_names = [vol_name['gluster_vol'] for vol_name in vol_details]
+        vol_ids = [vol_id['heketi_vol'] for vol_id in vol_details]
+
+        # Get the time to collect logs
+        since_time = cmd_run(
+            'date -u --rfc-3339=ns| cut -d  "+" -f 1', self.node).replace(
+                " ", "T") + "Z"
+
+        # Close the port 24010 on 51% of the nodes
+        for i in range(len(self.gluster_servers) // 2 + 1):
+            node_delete_iptables_rules(self.gluster_servers[i], chain, rules)
+            self.addCleanup(
+                node_add_iptables_rules, self.gluster_servers[i], chain, rules)
+
+        # Create and delete 5 PVC's
+        pvc_names_for_creations = self.create_pvcs_not_waiting(
+            pvc_amount=pvc_amount, sc_name=sc_name)
+        for pvc_name in pvc_names:
+            oc_delete(self.node, 'pvc', pvc_name)
+            self.addCleanup(
+                wait_for_resource_absence, self.node, 'pvc', pvc_name)
+
+        # Check errors in heketi pod logs and get pending creations
+        self.check_errors_in_heketi_pod_network_failure_after_deletion(
+            since_time, vol_names)
+
+        # Open the port 24010, wait for PVC's to get bound
+        for i in range(len(self.gluster_servers) // 2 + 1):
+            node_add_iptables_rules(self.gluster_servers[i], chain, rules)
+        wait_for_pvcs_be_bound(self.node, pvc_names_for_creations, timeout=300)
+
+        # Verify volume deletion
+        blockvolume_list = heketi_blockvolume_list(
+            self.heketi_client_node, self.heketi_server_url)
+        msg = "Unexpectedly volume '%s' exists in the volume list %s"
+        for vol_id in vol_ids:
+            self.assertNotIn(
+                vol_id, blockvolume_list, msg % (vol_id, blockvolume_list))
