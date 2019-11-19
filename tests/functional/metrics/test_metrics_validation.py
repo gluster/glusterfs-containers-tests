@@ -1,5 +1,6 @@
 from pkg_resources import parse_version
 
+import ddt
 from glusto.core import Glusto as g
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
@@ -14,7 +15,7 @@ from openshiftstoragelibs.openshift_ops import (
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
     wait_for_pods_be_ready,
-    wait_for_resources_absence,
+    wait_for_resource_absence,
 )
 from openshiftstoragelibs.openshift_storage_libs import (
     get_active_and_enabled_devices_from_mpath,
@@ -23,6 +24,7 @@ from openshiftstoragelibs.openshift_storage_libs import (
 )
 
 
+@ddt.ddt
 class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
 
     def setUp(self):
@@ -138,7 +140,7 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
 
         # Delete the pod
         oc_delete(self.master, 'pod', pod_name)
-        wait_for_resources_absence(self.master, 'pod', pod_name)
+        wait_for_resource_absence(self.master, 'pod', pod_name)
 
         # Wait for new pod to come up
         pod_count = len(self.registry_servers_info.keys())
@@ -163,20 +165,49 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
         except exceptions.ExecutionError:
             # Force delete and wait for new pod to come up
             oc_delete(self.master, 'pod', pod_name, is_force=True)
-            wait_for_resources_absence(self.master, 'pod', pod_name)
+            wait_for_resource_absence(self.master, 'pod', pod_name)
             new_pod_name = get_pod_name_from_rc(
                 self.master, self.metrics_rc_hawkular_cassandra)
             wait_for_pod_be_ready(self.master, new_pod_name)
 
-    def test_metrics_during_cassandra_pod_respin(self):
+    @ddt.data('delete', 'drain')
+    def test_metrics_during_cassandra_pod_respin(self, motive='delete'):
         """Validate cassandra pod respin"""
-        old_cassandra_pod, pvc_name, _, _, _ = (
+        old_cassandra_pod, pvc_name, _, _, node = (
             self.verify_cassandra_pod_multipath_and_iscsi())
 
-        # Delete the cassandra pod and wait for new pod to be ready
-        oc_delete(self.master, 'pod', old_cassandra_pod)
-        self.addCleanup(self.cassandra_pod_delete_cleanup)
-        wait_for_resources_absence(self.master, 'pod', old_cassandra_pod)
+        if motive == 'delete':
+            # Delete the cassandra pod
+            oc_delete(self.master, 'pod', old_cassandra_pod)
+            self.addCleanup(self.cassandra_pod_delete_cleanup)
+        elif motive == 'drain':
+            # Get the number of infra nodes
+            infra_node_count_cmd = (
+                'oc get nodes '
+                '--no-headers -l node-role.kubernetes.io/infra=true|wc -l')
+            infra_node_count = command.cmd_run(
+                infra_node_count_cmd, self.master)
+
+            # Skip test case if number infra nodes are less than #2
+            if int(infra_node_count) < 2:
+                self.skipTest('Available number of infra nodes "{}", it should'
+                              ' be more than 1'.format(infra_node_count))
+
+            # Drain the node
+            drain_cmd = ('oc adm drain {} --force=true --ignore-daemonsets '
+                         '--delete-local-data'.format(node))
+            command.cmd_run(drain_cmd, hostname=self.master)
+
+            # Cleanup to make node schedulable
+            cmd_schedule = (
+                'oc adm manage-node {} --schedulable=true'.format(node))
+            self.addCleanup(
+                command.cmd_run, cmd_schedule, hostname=self.master)
+
+        # Wait for pod to get absent
+        wait_for_resource_absence(self.master, 'pod', old_cassandra_pod)
+
+        # Wait for new pod to come up
         new_cassandra_pod = get_pod_name_from_rc(
             self.master, self.metrics_rc_hawkular_cassandra)
         wait_for_pod_be_ready(self.master, new_cassandra_pod)
