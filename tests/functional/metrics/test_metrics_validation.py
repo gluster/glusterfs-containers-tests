@@ -11,6 +11,7 @@ from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_rc,
     oc_delete,
     oc_get_custom_resource,
+    oc_rsh,
     switch_oc_project,
     verify_pvc_status_is_bound,
     wait_for_pod_be_ready,
@@ -217,3 +218,30 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
             pvc_name, self.metrics_rc_hawkular_cassandra,
             rtype='rc', heketi_server_url=self.registry_heketi_server_url,
             is_registry_gluster=True)
+
+    def test_metrics_cassandra_pod_pvc_all_freespace_utilization(self):
+        """Validate metrics by utilizing all the free space of block PVC bound
+           to cassandra pod"""
+
+        # Validate iscsi and multipath
+        hawkular_cassandra, _, _, _, _ = (
+            self.verify_cassandra_pod_multipath_and_iscsi())
+
+        # Get the available free space
+        mount_point = '/cassandra_data'
+        cmd_free_space = (
+            "df -kh {} | awk '{{print $4}}' | tail -1".format(mount_point))
+        old_available_space = oc_rsh(
+            self.master, hawkular_cassandra, cmd_free_space)[1]
+
+        # Fill the all the available space
+        file_name = '{}/file'.format(mount_point)
+        cmd_fill_space = ("fallocate -l {} {}"
+                          .format(old_available_space, file_name))
+        with self.assertRaises(AssertionError):
+            oc_rsh(self.master, hawkular_cassandra, cmd_fill_space)
+
+        # Cleanup the filled space
+        cmd_remove_file = 'rm {}'.format(file_name)
+        self.addCleanup(
+            oc_rsh, self.master, hawkular_cassandra, cmd_remove_file)
