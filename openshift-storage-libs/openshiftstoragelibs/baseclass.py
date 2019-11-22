@@ -611,6 +611,7 @@ class BaseClass(unittest.TestCase):
                 timeout=timeout, wait_step=wait_step)
 
         # Power off vm
+        self.addCleanup(self.power_on_vm, vm_name)
         self.power_off_vm(vm_name)
 
 
