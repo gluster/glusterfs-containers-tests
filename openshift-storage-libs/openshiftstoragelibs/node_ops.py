@@ -2,6 +2,7 @@ import time
 
 from glustolibs.gluster.exceptions import ExecutionError
 from glusto.core import Glusto as g
+import six
 
 from openshiftstoragelibs.cloundproviders.vmware import VmWare
 from openshiftstoragelibs import command
@@ -194,7 +195,7 @@ def node_add_iptables_rules(node, chain, rules, raise_on_error=True):
         AssertionError: In case command fails to execute and
                         raise_on_error set to True
     """
-    rules = rules if hasattr(rules, '__iter__') else [rules]
+    rules = [rules] if isinstance(rules, six.string_types) else rules
 
     add_iptables_rule_cmd = "iptables --append %s %s"
     check_iptables_rule_cmd = "iptables --check %s %s"
@@ -221,7 +222,7 @@ def node_delete_iptables_rules(node, chain, rules, raise_on_error=True):
         AssertionError: In case command fails to execute and
                         raise_on_error set to True
     """
-    rules = rules if hasattr(rules, '__iter__') else [rules]
+    rules = [rules] if isinstance(rules, six.string_types) else rules
 
     delete_iptables_rule_cmd = "iptables --delete %s %s"
     for rule in rules:

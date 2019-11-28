@@ -712,7 +712,8 @@ def scale_dcs_pod_amount_and_wait(hostname, dc_names, pod_amount=1,
             "dc_name_n": ["pod_name_n_1", "pod_name_n_2", ..., "pod_name_n_n"],
         }
     """
-    dc_names = dc_names if hasattr(dc_names, '__iter__') else [dc_names]
+    dc_names = (
+        [dc_names] if isinstance(dc_names, six.string_types) else dc_names)
     dc_and_pod_names = {}
     namespace_arg = "--namespace=%s" % namespace if namespace else ""
     scale_cmd = "oc scale %s --replicas=%d dc/%s" % (
@@ -1827,8 +1828,10 @@ def oc_annotate(hostname, rtype, rname, annotations):
     Raises:
         AssertionError: In case adding annotations to resource fails.
     """
-    annotations = annotations if hasattr(
-        annotations, '__iter__') else [annotations]
+    annotations = (
+        [annotations]
+        if isinstance(annotations, six.string_types)
+        else annotations)
     for annotation in annotations:
         cmd = 'oc annotate %s %s %s --overwrite' % (rtype, rname, annotation)
         command.cmd_run(cmd, hostname=hostname)
@@ -1885,9 +1888,9 @@ def oc_create_service_monitor(hostname, sm_name="heketi",
         ep_namespace_selector_matchnames if ep_namespace_selector_matchnames
         else ['glusterfs'])
     ep_namespace_selector_matchnames = (
-        ep_namespace_selector_matchnames
-        if hasattr(ep_namespace_selector_matchnames, '__iter__')
-        else [ep_namespace_selector_matchnames])
+        [ep_namespace_selector_matchnames]
+        if isinstance(ep_namespace_selector_matchnames, six.string_types)
+        else ep_namespace_selector_matchnames)
     ep_matchlabels = (
         ep_matchlabels if ep_matchlabels else {"heketi": "storage-service"})
     sm_data = json.dumps({
