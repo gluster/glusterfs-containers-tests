@@ -751,6 +751,8 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # Create a PVC with SC of hacount equal to node count
         sc_name = self.create_storage_class(hacount=node_count)
         pvc_name = oc_create_pvc(self.node, sc_name=sc_name)
+        self.addCleanup(wait_for_resource_absence, self.node, 'pvc', pvc_name)
+        self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
         events = wait_for_events(
             self.node, obj_name=pvc_name, obj_type='PersistentVolumeClaim',
             event_type='Warning', event_reason='ProvisioningFailed')
