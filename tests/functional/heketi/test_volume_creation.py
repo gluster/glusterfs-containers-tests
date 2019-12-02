@@ -6,6 +6,7 @@ import six
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import podcmd
+from openshiftstoragelibs import utils
 
 
 class TestVolumeCreationTestCases(BaseClass):
@@ -368,3 +369,35 @@ class TestVolumeCreationTestCases(BaseClass):
         msg = ("Volume %s does not have bricks count multiple of 3. It has %s"
                % (vol_name, gluster_v_info['brickCount']))
         self.assertFalse(int(gluster_v_info['brickCount']) % 3)
+
+    def test_create_volume_with_same_name(self):
+        """Test create two volumes with the same name and verify that 2nd one
+        is failing with the appropriate error.
+        """
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+        vol_name = "autovol-%s" % utils.get_random_str()
+
+        # Create volume for the first time
+        vol_info = heketi_ops.heketi_volume_create(
+            h_node, h_url, size=1, name=vol_name, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, h_node, h_url, vol_info['id'])
+
+        vol_info_new = None
+        try:
+            # Try to create volume for 2nd time
+            vol_info_new = heketi_ops.heketi_volume_create(
+                h_node, h_url, size=1, name=vol_name, json=True)
+            self.addCleanup(
+                heketi_ops.heketi_volume_delete,
+                h_node, h_url, vol_info_new['id'])
+        except AssertionError as err:
+            # Verify msg in error
+            msg = "Volume name '%s' already in use" % vol_name
+            if msg not in six.text_type(err):
+                raise
+
+        # Raise exception if there is no error raised by heketi
+        msg = ('Volume %s and %s got created two times with the same name '
+               'unexpectedly.' % (vol_info, vol_info_new))
+        self.assertFalse(vol_info_new, msg)
