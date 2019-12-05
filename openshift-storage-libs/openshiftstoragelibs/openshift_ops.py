@@ -130,15 +130,16 @@ def get_ocp_gluster_pod_details(ocp_node):
     if not gluster_pods[0]:
         return []
 
-    gluster_pod_details = map(
+    gluster_pod_details = list(map(
         lambda pod: {
             "pod_name": pod[0],
             "pod_host_ip": pod[1],
             "pod_ip": pod[2],
             "pod_hostname": pod[3],
             "pod_status": pod[4],
-            "pod_restarts": pod[5]},
-        gluster_pods)
+            "pod_restarts": pod[5],
+        }, gluster_pods
+    ))
 
     return gluster_pod_details
 
@@ -815,8 +816,9 @@ def get_gluster_pod_names_by_pvc_name(
     # Get Gluster POD names which are located on the filtered nodes
     gluster_pods = get_ocp_gluster_pod_details(ocp_node)
     if gluster_pods:
-        matched_gluster_pods = filter(
-            lambda pod: (pod["pod_host_ip"] in gluster_host_ips), gluster_pods)
+        matched_gluster_pods = list(filter(
+            lambda pod: (pod["pod_host_ip"] in gluster_host_ips), gluster_pods
+        ))
         pod_count = len(matched_gluster_pods)
         err_msg = (
             "Expected 3 or more Gluster PODs to be found. "
@@ -1493,13 +1495,13 @@ def match_pvc_and_pv(hostname, prefix):
         prefix (str): pv prefix used by user at time
                       of pvc creation
     """
-    pvc_list = sorted([
+    pvc_list = set([
         pvc[0]
         for pvc in oc_get_custom_resource(hostname, "pvc", ":.metadata.name")
         if pvc[0].startswith(prefix)
     ])
 
-    pv_list = sorted([
+    pv_list = set([
         pv[0]
         for pv in oc_get_custom_resource(
             hostname, "pv", ":.spec.claimRef.name"
@@ -1507,11 +1509,12 @@ def match_pvc_and_pv(hostname, prefix):
         if pv[0].startswith(prefix)
     ])
 
-    if cmp(pvc_list, pv_list) != 0:
+    pvc_pv_diff = pvc_list ^ pv_list
+    if pvc_pv_diff:
         err_msg = "PVC and PV list match failed"
         err_msg += "\nPVC list: %s, " % pvc_list
         err_msg += "\nPV list %s" % pv_list
-        err_msg += "\nDifference: %s" % (set(pvc_list) ^ set(pv_list))
+        err_msg += "\nDifference: %s" % pvc_pv_diff
         raise AssertionError(err_msg)
 
 
@@ -1530,18 +1533,18 @@ def match_pv_and_heketi_block_volumes(
         r':.metadata.annotations."pv\.kubernetes\.io\/provisioned\-by"',
         r':.metadata.annotations."gluster\.org\/volume\-id"'
     ]
-    pv_block_volumes = sorted([
+    pv_block_volumes = set([
         pv[2]
         for pv in oc_get_custom_resource(hostname, "pv", custom_columns)
         if pv[0].startswith(pvc_prefix) and pv[1] == "gluster.org/glusterblock"
     ])
 
-    if cmp(pv_block_volumes, heketi_block_volumes) != 0:
+    vol_diff = pv_block_volumes ^ set(heketi_block_volumes)
+    if vol_diff:
         err_msg = "PV block volumes and Heketi Block volume list match failed"
         err_msg += "\nPV Block Volumes: %s, " % pv_block_volumes
         err_msg += "\nHeketi Block volumes %s" % heketi_block_volumes
-        err_msg += "\nDifference: %s" % (
-            set(pv_block_volumes) ^ set(heketi_block_volumes))
+        err_msg += "\nDifference: %s" % vol_diff
         raise AssertionError(err_msg)
 
 

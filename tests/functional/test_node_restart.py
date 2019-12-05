@@ -76,9 +76,9 @@ class TestNodeRestart(BaseClass):
     def reboot_gluster_node_and_wait_for_services(self):
         gluster_node_ip = (
             g.config["gluster_servers"][self.gluster_servers[0]]["storage"])
-        gluster_pod = filter(
+        gluster_pod = list(filter(
             lambda pod: (pod["pod_host_ip"] == gluster_node_ip),
-            get_ocp_gluster_pod_details(self.oc_node))
+            get_ocp_gluster_pod_details(self.oc_node)))
         if not gluster_pod:
             raise ExecutionError(
                 "Gluster pod Host IP '%s' not matched." % gluster_node_ip)

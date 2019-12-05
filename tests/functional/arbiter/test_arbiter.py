@@ -351,9 +351,9 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
                 vol_info))
 
-        expected_file_amount = pvc_size_gb * 1024**2 / (avg_file_size or 64)
+        expected_file_amount = pvc_size_gb * 1024**2 // (avg_file_size or 64)
         expected_file_amount = (
-            expected_file_amount / bricks_info['arbiter_amount'])
+            expected_file_amount // bricks_info['arbiter_amount'])
 
         # Try to create expected amount of files on arbiter brick mount
         passed_arbiter_bricks = []

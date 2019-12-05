@@ -672,12 +672,12 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         target_portal_list = sorted(set(target_portal_list))
         unmatched_gips = (set(host_ips) ^ set(gluster_ips_bv_flattend))
         unmatched_tpips = (set(host_ips) ^ set(target_portal_list))
-        self.assertEqual(
-            cmp(host_ips, gluster_ips_bv_flattend), 0,
+        self.assertFalse(
+            unmatched_gips,
             "Could not match glusterips in blockvolumes, difference is %s "
             % unmatched_gips)
-        self.assertEqual(
-            cmp(host_ips, target_portal_list), 0,
+        self.assertFalse(
+            unmatched_tpips,
             "Could not match glusterips in pv describe, difference is %s "
             % unmatched_tpips)
 

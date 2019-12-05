@@ -229,12 +229,12 @@ def match_heketi_and_gluster_block_volumes_by_prefix(
             if block_vol.startswith(block_vol_prefix)
         ])
 
-    if cmp(sorted(gluster_vol_block_list), heketi_block_volumes) != 0:
+    vol_difference = set(gluster_vol_block_list) ^ set(heketi_block_volumes)
+    if vol_difference:
         err_msg = "Gluster and Heketi Block volume list match failed"
         err_msg += "\nGluster Volumes: %s, " % gluster_vol_block_list
         err_msg += "\nBlock volumes %s" % heketi_block_volumes
-        err_msg += "\nDifference: %s" % (
-            set(gluster_vol_block_list) ^ set(heketi_block_volumes))
+        err_msg += "\nDifference: %s" % vol_difference
         raise AssertionError(err_msg)
 
 
