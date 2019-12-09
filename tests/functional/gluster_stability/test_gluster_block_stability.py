@@ -1,3 +1,4 @@
+import math
 import re
 
 import ddt
@@ -38,6 +39,7 @@ from openshiftstoragelibs.node_ops import (
 )
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
+    get_default_block_hosting_volume_size,
     get_ocp_gluster_pod_details,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
@@ -1308,16 +1310,29 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
     def test_delete_block_pvcs_with_network_failure(self):
         """Block port 24010 while deleting PVC's"""
-        pvc_amount, pvc_delete_amount = 10, 5
-        gluster_node = self.gluster_servers[0]
+        pvc_amount, pvc_delete_amount, is_bhv_exist = 10, 5, True
+        initial_free_storage, gluster_node = 0, self.gluster_servers[0]
         chain = 'OS_FIREWALL_ALLOW'
         rules = '-p tcp -m state --state NEW -m tcp --dport 24010 -j ACCEPT'
 
         sc_name = self.create_storage_class(hacount=len(self.gluster_servers))
 
-        # Get the total free space available
-        initial_free_storage = get_total_free_space(
-            self.heketi_client_node, self.heketi_server_url)
+        # Get the list of BHV's
+        bhv_list = get_block_hosting_volume_list(
+            self.node, self.heketi_server_url, json=True)
+        if not bhv_list:
+            is_bhv_exist = False
+
+        # Get the sum of free space of all the BHV's
+        if is_bhv_exist:
+            for vol_id in bhv_list.keys():
+                initial_free_storage += heketi_volume_info(
+                    self.node, self.heketi_server_url, vol_id,
+                    json=True)['blockinfo']['freesize']
+        else:
+            default_storage = get_default_block_hosting_volume_size(
+                self.node, self.heketi_dc_name)
+            initial_free_storage = math.floor(default_storage * 0.98)
 
         # Create  10 PVC's, get their PV names and volume ids
         pvc_names = self.create_and_wait_for_pvcs(
@@ -1350,12 +1365,23 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             # Open port 24010
             node_add_iptables_rules(gluster_node, chain, rules)
 
-        # validate available free space is same
-        final_free_storage = get_total_free_space(
-            self.heketi_client_node, self.heketi_server_url)
-        msg = ("Available free space %s is not same as expected %s"
-               % (initial_free_storage, final_free_storage))
-        self.assertEqual(initial_free_storage, final_free_storage, msg)
+        # Get the list of BHV's
+        bhv_list = get_block_hosting_volume_list(
+            self.node, self.heketi_server_url)
+
+        # Validate available free space is same
+        for w in Waiter():
+            final_free_storage = 0
+            for vol_id in bhv_list.keys():
+                final_free_storage += heketi_volume_info(
+                    self.node, self.heketi_server_url, vol_id,
+                    json=True)['blockinfo']['freesize']
+            if initial_free_storage == final_free_storage:
+                break
+        if w.expired:
+            err_msg = ("Available free space {} is not same as expected {}"
+                       .format(initial_free_storage, final_free_storage))
+            raise AssertionError(err_msg)
 
     @podcmd.GlustoPod()
     def test_delete_block_device_pvc_while_io_in_progress(self):
