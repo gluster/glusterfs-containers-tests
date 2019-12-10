@@ -104,7 +104,7 @@ class TestHeketiVolume(BaseClass):
         try:
             heketi_vol = self.create_heketi_volume_with_name_and_wait(
                 h_volume_name, vol_size_gb, json=True,
-                raise_on_cleanup_error=False)
+                raise_on_cleanup_error=False, block=block)
         except AssertionError as e:
             # NOTE: rare situation when we need to decrease size of a volume.
             #       and we expect this vol to be distributed.
@@ -118,7 +118,7 @@ class TestHeketiVolume(BaseClass):
             vol_size_gb -= 1
             heketi_vol = self.create_heketi_volume_with_name_and_wait(
                 h_volume_name, vol_size_gb, json=True,
-                raise_on_cleanup_error=False)
+                raise_on_cleanup_error=False, block=block)
         g.log.info("Successfully created distributed volume.")
 
         vol_name = heketi_vol['name']
