@@ -415,7 +415,8 @@ class BaseClass(unittest.TestCase):
         return self.create_dcs_with_pvc(pvc_name, timeout, wait_step)[pvc_name]
 
     def create_heketi_volume_with_name_and_wait(
-            self, name, size, timeout=600, wait_step=10, **kwargs):
+            self, name, size, raise_on_cleanup_error=True,
+            timeout=600, wait_step=10, **kwargs):
         json = kwargs.get("json", False)
 
         try:
@@ -445,7 +446,8 @@ class BaseClass(unittest.TestCase):
 
         self.addCleanup(
             heketi_volume_delete, self.heketi_client_node,
-            self.heketi_server_url, h_volume_info["id"])
+            self.heketi_server_url, h_volume_info["id"],
+            raise_on_error=raise_on_cleanup_error)
 
         return h_volume_info
 

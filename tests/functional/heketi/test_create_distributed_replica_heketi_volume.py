@@ -103,7 +103,8 @@ class TestHeketiVolume(BaseClass):
         h_volume_name = "autotests-heketi-volume-%s" % utils.get_random_str()
         try:
             heketi_vol = self.create_heketi_volume_with_name_and_wait(
-                h_volume_name, vol_size_gb, json=True)
+                h_volume_name, vol_size_gb, json=True,
+                raise_on_cleanup_error=False)
         except AssertionError as e:
             # NOTE: rare situation when we need to decrease size of a volume.
             #       and we expect this vol to be distributed.
@@ -116,7 +117,8 @@ class TestHeketiVolume(BaseClass):
 
             vol_size_gb -= 1
             heketi_vol = self.create_heketi_volume_with_name_and_wait(
-                h_volume_name, vol_size_gb, json=True)
+                h_volume_name, vol_size_gb, json=True,
+                raise_on_cleanup_error=False)
         g.log.info("Successfully created distributed volume.")
 
         vol_name = heketi_vol['name']
@@ -192,14 +194,10 @@ class TestHeketiVolume(BaseClass):
                        free_space_after_creating_vol,
                        free_space_after_deleting_vol))
 
-    def test_to_create_distribute_replicated_vol(self):
+    def test_to_create_and_delete_dist_rep_vol(self):
         """Validate 2x3 vol type creation when the volume cannot be
            carved out of a single device
         """
-        self._create_distributed_replica_vol(validate_cleanup=False)
-
-    def test_to_create_and_delete_dist_rep_vol(self):
-        """Validate whether deleting a dist-rep volume is handled by heketi"""
         self._create_distributed_replica_vol(validate_cleanup=True)
 
     @ddt.data(True, False)
