@@ -1,5 +1,4 @@
 import re
-from unittest import skip
 
 import ddt
 from glusto.core import Glusto as g
@@ -847,13 +846,13 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.heketi_client_node, self.heketi_server_url)
         self.assertNotIn(vol_name_prefix, h_vol_list)
 
-    @skip("Blocked by BZ-1624670")
     def test_path_failures_on_initiator_node_migration_and_pod_restart(self):
         """Verify path failures on initiator node migration
            and app pod restart. Also, make sure that existing
            paths get cleaned up and recreated on new nodes.
         """
         pvc_size, pvc_amount = 1, 20
+        e_pkg_version = '6.2.0.874-13'
         free_space, node_count = get_total_free_space(
             self.heketi_client_node, self.heketi_server_url)
         if node_count < 3:
@@ -865,6 +864,18 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.skipTest("Skip test since free_space_available %s"
                           "is less than the space_required %s."
                           % (free_space_available, space_required))
+
+        # Skip the test if iscsi-initiator-utils version is not the expected
+        cmd = ("rpm -q iscsi-initiator-utils"
+               " --queryformat '%{version}-%{release}\n'"
+               "| cut -d '.' -f 1,2,3,4")
+        for g_server in self.gluster_servers:
+            out = self.cmd_run(cmd, g_server)
+            if parse_version(out) < parse_version(e_pkg_version):
+                self.skipTest("Skip test since isci initiator utils version "
+                              "actual: %s is less than expected: %s "
+                              "on node %s, for more info refer to BZ-1624670"
+                              % (out, e_pkg_version, g_server))
 
         # Create pvs & dc's
         pvc_names = self.create_and_wait_for_pvcs(
