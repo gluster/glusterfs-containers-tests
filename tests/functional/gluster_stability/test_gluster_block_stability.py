@@ -118,7 +118,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                 pvc_name, dc_name)
 
         h_blockvol_list = heketi_blockvolume_list_by_name_prefix(
-            self.heketi_client_node, self.heketi_server_url, self.prefix)
+            self.heketi_client_node, self.heketi_server_url, prefix)
 
         # validate block volumes listed by heketi and pvs
         heketi_blockvolume_ids = sorted([bv[0] for bv in h_blockvol_list])
@@ -928,11 +928,11 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
     def test_tcmu_runner_failure_while_creating_and_deleting_pvc(self):
         """Kill the tcmu-runner service while creating and deleting PVC's"""
 
-        self.prefix = "auto-block-test-%s" % utils.get_random_str()
+        prefix = "auto-block-test-%s" % utils.get_random_str()
 
         # Create DC and pod with created PVC.
         sc_name = self.create_storage_class(
-            hacount=len(self.gluster_servers), vol_name_prefix=self.prefix)
+            hacount=len(self.gluster_servers), vol_name_prefix=prefix)
         pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
         dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
 
@@ -986,7 +986,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         # Validate volumes in heketi blockvolume list
         heketi_volumes = heketi_blockvolume_list(
             self.heketi_client_node, self.heketi_server_url)
-        volume_count = heketi_volumes.count(self.prefix)
+        volume_count = heketi_volumes.count(prefix)
         msg = (
             'Wrong volume count in heketi blockvolume list %s and expected '
             'volume count is 9 ' % volume_count)
