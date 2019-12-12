@@ -263,7 +263,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             self.additional_gluster_servers_info = (
                 g.config['additional_gluster_servers'])
             return list(self.additional_gluster_servers_info.values())[0]
-        except (KeyError, AttributeError):
+        except (KeyError, AttributeError, IndexError):
             self.skipTest("Required 'additional_gluster_servers' option is "
                           "not set in the config file.")
 
