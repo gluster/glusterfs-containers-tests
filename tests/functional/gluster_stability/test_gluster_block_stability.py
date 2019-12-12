@@ -999,6 +999,19 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.skipTest("Skipping test case due to BZ-1607520, which is"
                           " fixed in OCS 3.11.4")
 
+        # Skip the test if iscsi-initiator-utils version is not the expected
+        e_pkg_version = '6.2.0.874-13'
+        cmd = ("rpm -q iscsi-initiator-utils"
+               " --queryformat '%{version}-%{release}\n'"
+               "| cut -d '.' -f 1,2,3,4")
+        for g_server in self.gluster_servers:
+            out = self.cmd_run(cmd, g_server)
+            if parse_version(out) < parse_version(e_pkg_version):
+                self.skipTest(
+                    "Skip test since isci initiator utils version actual: %s "
+                    "is less than expected: %s on node %s, for more info "
+                    "refer to BZ-1624670" % (out, e_pkg_version, g_server))
+
         nodes = oc_get_schedulable_nodes(self.node)
 
         # Get list of all gluster nodes
