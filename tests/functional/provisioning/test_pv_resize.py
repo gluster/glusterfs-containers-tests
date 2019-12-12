@@ -22,6 +22,9 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_events,
     wait_for_pod_be_ready,
     wait_for_resource_absence)
+from openshiftstoragelibs.openshift_storage_version import (
+    get_openshift_storage_version,
+)
 from openshiftstoragelibs.openshift_version import get_openshift_version
 from openshiftstoragelibs import waiter
 
@@ -218,6 +221,11 @@ class TestPvResizeClass(BaseClass):
 
     def test_pv_resize_no_free_space(self):
         """Validate PVC resize fails if there is no free space available"""
+        if get_openshift_storage_version() < "3.11.5":
+            self.skipTest(
+                "This test case is not supported for < OCS 3.11.5 builds due "
+                "to bug BZ-1653567")
+
         self._pv_resize(exceed_free_space=True)
 
     def test_pv_resize_by_exact_free_space(self):
