@@ -782,7 +782,7 @@ def get_gluster_host_ips_by_pvc_name(ocp_node, pvc_name):
             brick["name"].split(":")[0]
             for brick in pv_info["bricks"]["brick"]
         ]
-    elif sp == "gluster.org/glusterblock":
+    elif sp.startswith("gluster.org/glusterblock"):
         get_gluster_pod_node_ip_cmd = (
             r"""oc get pv --template '{{range .items}}"""
             + r"""{{if eq .spec.claimRef.name "%s"}}"""
