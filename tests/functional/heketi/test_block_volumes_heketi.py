@@ -376,7 +376,7 @@ class TestBlockVolumeOps(BaseClass):
                 bv = heketi_volume_create(
                     h_node, h_server, free_size, json=True)
                 self.addCleanup(
-                    heketi_blockvolume_delete, h_node, h_server, bv["id"])
+                    heketi_volume_delete, h_node, h_server, bv["id"])
 
         # Create BV
         bv = heketi_blockvolume_create(h_node, h_server, 2, json=True)
