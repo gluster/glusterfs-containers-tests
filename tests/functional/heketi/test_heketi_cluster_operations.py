@@ -109,11 +109,11 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
         try:
             storage_hostname = storage_host_info["manage"]
             storage_ip = storage_host_info["storage"]
-            storage_device = storage_host_info["additional_devices"][0]
+            storage_device = storage_host_info["devices"][0]
         except KeyError:
             msg = ("Config options 'additional_gluster_servers.manage' "
                    "'additional_gluster_servers.storage' and "
-                   "'additional_gluster_servers.additional_devices' "
+                   "'additional_gluster_servers.devices' "
                    "must be set.")
             g.log.error(msg)
             raise exceptions.ConfigError(msg)
