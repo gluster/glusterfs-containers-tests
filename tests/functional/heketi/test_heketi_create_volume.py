@@ -353,6 +353,8 @@ class TestHeketiVolume(BaseClass):
 
         # Verify volume creation at the gluster side
         g_vol_list = get_volume_list('auto_get_gluster_endpoint')
+        self.assertTrue(g_vol_list, "Failed to get gluster volume list")
+
         msg = "volume: %s not found in the volume list: %s" % (
             volume_name, g_vol_list)
         self.assertIn(volume_name, g_vol_list, msg)
