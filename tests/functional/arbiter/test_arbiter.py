@@ -6,6 +6,7 @@ from glustolibs.gluster import volume_ops
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
+from openshiftstoragelibs import gluster_ops
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import heketi_version
 from openshiftstoragelibs import openshift_ops
@@ -14,6 +15,7 @@ from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import utils
 
 BRICK_REGEX = r"^(.*):\/var\/lib\/heketi\/mounts\/(.*)\/brick$"
+HEKETI_VOLS = re.compile(r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(\S+)")
 
 
 @ddt.ddt
@@ -802,3 +804,28 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                     cmd = "lvs %s" % lv_match.group(2).strip()
                     openshift_ops.cmd_run_on_gluster_pod_or_node(
                         self.node, cmd, gluster_node_ip)
+
+    def test_arbiter_scaled_heketi_and_gluster_volume_mapping(self):
+        """Test to validate PVC, Heketi & gluster volume mapping
+        for large no of PVC's
+        """
+        prefix = "autotest-{}".format(utils.get_random_str())
+
+        sc_name = self.create_storage_class(
+            vol_name_prefix=prefix, is_arbiter_vol=True)
+        for count in range(5):
+            self.create_and_wait_for_pvcs(
+                pvc_name_prefix=prefix, pvc_amount=20,
+                sc_name=sc_name, timeout=300, wait_step=5)
+        openshift_ops.match_pvc_and_pv(self.heketi_client_node, prefix)
+
+        h_vol_list = heketi_ops.heketi_volume_list_by_name_prefix(
+            self.heketi_client_node, self.heketi_server_url, prefix, json=True)
+        heketi_volume_ids = sorted([v[0] for v in h_vol_list])
+        openshift_ops.match_pv_and_heketi_volumes(
+            self.heketi_client_node, heketi_volume_ids, prefix)
+
+        heketi_volume_names = sorted([
+            v[2].replace("{}_".format(prefix), "") for v in h_vol_list])
+        gluster_ops.match_heketi_and_gluster_volumes_by_prefix(
+            heketi_volume_names, "{}_".format(prefix))
