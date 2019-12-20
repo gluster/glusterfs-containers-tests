@@ -1,6 +1,0 @@
----
-openshift_required_packages:
-- iptables
-- iptables-services
-- NetworkManager
-- docker{{ '-' + docker_version if docker_version is defined else '' }}
