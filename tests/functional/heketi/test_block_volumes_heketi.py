@@ -110,7 +110,7 @@ class TestBlockVolumeOps(BaseClass):
         volumes = heketi_blockvolume_list(
             self.heketi_client_node, self.heketi_server_url, json=True)
 
-        existing_vol_ids = volumes.values()[0]
+        existing_vol_ids = list(volumes.values())[0]
         for vol_id in created_vol_ids:
             self.assertIn(vol_id, existing_vol_ids,
                           "Block vol with '%s' ID is absent in the "

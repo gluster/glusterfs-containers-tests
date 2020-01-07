@@ -178,7 +178,7 @@ class TestHeketiDeviceOperations(BaseClass):
     def test_device_remove_operation(self, delete_device):
         """Validate remove/delete device using heketi-cli"""
 
-        gluster_server_0 = g.config["gluster_servers"].values()[0]
+        gluster_server_0 = list(g.config["gluster_servers"].values())[0]
         try:
             device_name = gluster_server_0["additional_devices"][0]
         except (KeyError, IndexError):
