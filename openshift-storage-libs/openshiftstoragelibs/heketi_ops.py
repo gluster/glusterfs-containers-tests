@@ -1573,16 +1573,17 @@ def get_block_hosting_volume_list(
     Raises:
         exceptions.ExecutionError: if command fails.
     """
+    # Delete json key from kwargs
+    kwargs.pop("json", None)
 
-    out = heketi_volume_list(
+    volume_list = heketi_volume_list(
         heketi_client_node, heketi_server_url, **kwargs)
 
-    BHV = {}
+    bhv = {
+        volume[0]: {"Cluster": volume[1], "Name": volume[2]}
+        for volume in HEKETI_BHV.findall(volume_list.strip())}
 
-    for volume in HEKETI_BHV.findall(out.strip()):
-        BHV[volume[0]] = {'Cluster': volume[1], 'Name': volume[2]}
-
-    return BHV
+    return bhv
 
 
 def get_total_free_space(heketi_client_node, heketi_server_url):
