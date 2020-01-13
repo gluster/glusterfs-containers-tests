@@ -5,6 +5,7 @@ except ImportError:
     # py2
     import json
 
+import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
 import mock
@@ -35,6 +36,7 @@ from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import waiter
 
 
+@ddt.ddt
 class TestHeketiVolume(BaseClass):
     """
     Class to test heketi volume create
@@ -441,3 +443,155 @@ class TestHeketiVolume(BaseClass):
         # Verify bricks and volume pending operation after creation
         self.assertEqual(h_db_chk_after_v_creation["bricks"]["pending"], 0)
         self.assertEqual(h_db_chk_after_v_creation["volumes"]["pending"], 0)
+
+    @pytest.mark.tier1
+    @ddt.data('', 'block')
+    def test_heketi_server_db_pending_entries_for_volume_operations(
+            self, vol_type):
+        """Verify pending entries of blockvolumes/volumes and bricks in db
+        during heketi blockvolume/volume delete operation.
+        """
+
+        # Create a large volumes to observe the pending operation
+        h_volume_size, volume_ids, async_obj = 95, [], []
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        h_db_check_before = heketi_db_check(h_node, h_url)
+        h_db_check_bricks_before = h_db_check_before["bricks"]
+        h_db_check_vol_before = h_db_check_before["{}volumes".format(vol_type)]
+
+        # Check file/block volume pending operations before creation.
+        if h_db_check_vol_before["pending"]:
+            self.skipTest(
+                "Skip TC due to unexpected {}volumes pending operations"
+                .format(vol_type))
+
+        # Check bricks pending operations before creation.
+        if h_db_check_bricks_before["pending"]:
+            self.skipTest(
+                "Skip TC due to unexpected bricks pending operations for"
+                " {}volume".format(vol_type))
+
+        # Create 5 file/block volumes to find out pending operations
+        for count in range(5):
+            vol_info = eval("heketi_{}volume_create".format(vol_type))(
+                h_node, h_url, h_volume_size, json=True)
+            volume_ids.append(vol_info["id"])
+            self.addCleanup(
+                eval("heketi_{}volume_delete".format(vol_type)),
+                h_node, h_url, vol_info["id"], raise_on_error=False)
+
+            h_db_check_after = heketi_db_check(h_node, h_url)
+            h_db_check_bricks_after = h_db_check_after["bricks"]
+            h_db_check_vol_after = h_db_check_after["{}volumes".format(
+                vol_type)]
+
+            # Verify file/block volumes pending operation after creation
+            err_msg = (
+                "Expecting heketi db {}volume pending operation to be "
+                "0 but found {}")
+            self.assertFalse(
+                h_db_check_vol_after["pending"],
+                err_msg.format(vol_type, h_db_check_vol_after["pending"]))
+
+            # Verify bricks pending operation after volume creation
+            err_msg = (
+                "Expecting heketi db bricks pending operation to be "
+                "0 but found {} after {}volume creation")
+            self.assertFalse(
+                h_db_check_bricks_after["pending"],
+                err_msg.format(
+                    h_db_check_bricks_after["pending"], vol_type))
+
+        def run_async(cmd, hostname, raise_on_error=True):
+            async_op = g.run_async(host=hostname, command=cmd)
+            async_obj.append(async_op)
+            return async_op
+
+        for vol_id in volume_ids:
+            # Temporary replace g.run with g.async_run in heketi_volume_delete
+            # and heketi_blockvolume_delete func to be able to run it in
+            # background.
+            with mock.patch.object(
+                    command, 'cmd_run', side_effect=run_async):
+                eval("heketi_{}volume_delete".format(vol_type))(
+                    h_node, h_url, vol_id)
+
+        for w in waiter.Waiter(timeout=10, interval=1):
+            h_db_check = heketi_db_check(h_node, h_url)
+            h_db_check_bricks = h_db_check["bricks"]
+            h_db_check_vol = h_db_check["{}volumes".format(vol_type)]
+
+            if h_db_check_vol["pending"] != 0:
+                break
+
+        if w.expired:
+            err_msg = ("Expected some pending operations found {} operation"
+                       " for {}volume in Heketi db")
+            g.log.error(err_msg.format(h_db_check_vol["pending"], vol_type))
+            raise exceptions.ExecutionError(
+                err_msg.format(h_db_check_vol["pending"], vol_type))
+
+        # Verify pending operation during file/block volumes delete
+        err_msg = ("Expecting pending operations for {}volume during"
+                   " deletion")
+        self.assertTrue(h_db_check_vol["pending"], err_msg.format(vol_type))
+
+        # Verify brick pending operation during delete
+        err_msg = ("Expecting bricks pending in multiple of 3 but found {}")
+        if vol_type == '':
+            self.assertFalse(
+                h_db_check_bricks["pending"] % 3,
+                err_msg.format(h_db_check_bricks["pending"]))
+
+        # Verify volume/blockvolume pending operation during delete
+        for w in waiter.Waiter(timeout=100, interval=5):
+            h_db_check_vol_after = heketi_db_check(h_node, h_url)
+            h_db_check_bricks_after = h_db_check_vol_after["bricks"]
+            h_db_check_vol_after = h_db_check_vol_after["{}volumes".format(
+                vol_type)]
+
+            # verify if file/block volumes and bricks are properly deleted
+            if (((not vol_type) and (not h_db_check_bricks_after["pending"]))
+                    or (not h_db_check_vol_after["pending"])):
+                break
+        if w.expired:
+            err_msg = ("Failed to delete {}volumes after waiting for 100 secs")
+            raise exceptions.AssertionError(err_msg.format(vol_type))
+
+        # Check that all background processes got exited
+        for obj in async_obj:
+            ret, out, err = obj.async_communicate()
+            self.assertFalse(ret, err)
+
+        # Verify bricks pending operation after delete
+        if vol_type == "":
+            err_msg = ("Expecting 0 bricks pending operations after deletion"
+                       " but found {} after {}volume deletion")
+            self.assertFalse(
+                h_db_check_bricks_after["pending"],
+                err_msg.format(h_db_check_bricks_after["pending"], vol_type))
+
+        # Verify volumes/bockvolumes pending operation after delete
+        err_msg = ("Expecting 0 {}volume pending operations after deletion"
+                   " but found {}")
+        self.assertFalse(
+            h_db_check_vol_after["pending"],
+            err_msg.format(vol_type, h_db_check_vol_after["pending"]))
+
+        # Verify if initial and final volumes/blockvolumes are same
+        err_msg = ("Total volume before {} and after {} creation not matched"
+                   .format(h_db_check_vol_after["total"],
+                           h_db_check_vol_before["total"]))
+        self.assertEqual(
+            h_db_check_vol_after["total"], h_db_check_vol_before["total"],
+            err_msg)
+
+        # Verify if initial and final bricks are same
+        err_msg = ("Total bricks before {} and after {} creation not matched"
+                   .format(h_db_check_bricks_after["total"],
+                           h_db_check_bricks_before["total"]))
+        self.assertEqual(
+            h_db_check_bricks_after["total"],
+            h_db_check_bricks_before["total"],
+            err_msg)
