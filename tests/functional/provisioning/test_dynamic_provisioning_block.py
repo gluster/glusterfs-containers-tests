@@ -1,4 +1,5 @@
 import math
+import pytest
 import random
 from unittest import skip
 
@@ -86,6 +87,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                 ret, 0,
                 "Failed to execute '%s' command on '%s'." % (cmd, self.node))
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterblock_hacount_true(self):
         """Validate dynamic provisioning for glusterblock
         """
@@ -96,6 +98,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         """
         self.dynamic_provisioning_glusterblock(set_hacount=False)
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterblock_heketipod_failure(self):
         """Validate PVC with glusterblock creation when heketi pod is down"""
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
@@ -225,6 +228,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         ret, out, err = async_io.async_communicate()
         self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd, self.node))
 
+    @pytest.mark.tier0
     def test_glusterblock_logs_presence_verification(self):
         """Validate presence of glusterblock provisioner POD and it's status"""
 
@@ -264,6 +268,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                     self.ocp_client[0], cmd % log, gluster_node=g_host)
                 self.assertTrue(out, "Command '%s' output is empty." % cmd)
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterblock_heketidown_pvc_delete(self):
         """Validate PVC deletion when heketi is down"""
 
@@ -348,6 +353,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         self.assertTrue(vol_name.startswith(
             self.sc.get('volumenameprefix', 'autotest')))
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterblock_reclaim_policy_retain(self):
         """Validate retain policy for gluster-block after PVC deletion"""
 

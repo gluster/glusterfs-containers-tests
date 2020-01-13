@@ -1,5 +1,8 @@
 import ddt
+import pytest
+
 from glusto.core import Glusto as g
+
 from glustolibs.gluster.block_libs import get_block_list
 from glustolibs.gluster.volume_ops import (
     get_volume_info,
@@ -44,6 +47,7 @@ class TestBlockVolumeOps(BaseClass):
        after manually creating a Block Hosting volume.
     """
 
+    @pytest.mark.tier0
     def test_create_block_vol_after_host_vol_creation(self):
         """Validate block-device after manual block hosting volume creation
            using heketi
@@ -61,6 +65,7 @@ class TestBlockVolumeOps(BaseClass):
             heketi_blockvolume_delete, self.heketi_client_node,
             self.heketi_server_url, block_vol["id"])
 
+    @pytest.mark.tier0
     def test_block_host_volume_delete_without_block_volumes(self):
         """Validate deletion of empty block hosting volume"""
         block_host_create_info = heketi_volume_create(
@@ -76,6 +81,7 @@ class TestBlockVolumeOps(BaseClass):
             self.heketi_client_node, self.heketi_server_url,
             block_hosting_vol_id, json=True)
 
+    @pytest.mark.tier0
     def test_block_volume_delete(self):
         """Validate deletion of gluster-block volume and capacity of used pool
         """
@@ -95,6 +101,7 @@ class TestBlockVolumeOps(BaseClass):
                          "The block volume has not been successfully deleted,"
                          " ID is %s" % block_vol["id"])
 
+    @pytest.mark.tier0
     def test_block_volume_list(self):
         """Validate heketi blockvolume list command works as expected"""
         created_vol_ids = []
@@ -116,6 +123,7 @@ class TestBlockVolumeOps(BaseClass):
                           "Block vol with '%s' ID is absent in the "
                           "list of block volumes." % vol_id)
 
+    @pytest.mark.tier0
     def test_block_host_volume_delete_block_volume_delete(self):
         """Validate block volume and BHV removal using heketi"""
         free_space, nodenum = get_total_free_space(
@@ -239,6 +247,7 @@ class TestBlockVolumeOps(BaseClass):
             ("Password is %spresent in %s", (assertion_msg_part,
                                              block_vol["id"])))
 
+    @pytest.mark.tier0
     def test_block_volume_create_with_name(self):
         """Validate creation of block volume with name"""
         vol_name = "autotests-heketi-volume-%s" % utils.get_random_str()

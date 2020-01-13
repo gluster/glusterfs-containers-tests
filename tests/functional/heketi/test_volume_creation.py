@@ -1,3 +1,5 @@
+import pytest
+
 from glusto.core import Glusto as g
 from glustolibs.gluster import snap_ops
 from glustolibs.gluster import volume_ops
@@ -18,6 +20,7 @@ class TestVolumeCreationTestCases(BaseClass):
         super(TestVolumeCreationTestCases, self).setUp()
         self.node = self.ocp_master_node[0]
 
+    @pytest.mark.tier0
     @podcmd.GlustoPod()
     def test_create_heketi_volume(self):
         """Test heketi volume creation and background gluster validation"""

@@ -7,6 +7,7 @@ import threading
 import time
 
 import ddt
+import pytest
 import yaml
 
 from glusto.core import Glusto as g
@@ -383,6 +384,7 @@ class TestVolumeMultiReq(BaseClass):
             c.update_pv_info(ocp_node)
             self.assertIn(c.heketiVolumeName, now_vols)
 
+    @pytest.mark.tier0
     def test_create_delete_volumes_concurrently(self):
         """Test creating volume when "other processes" are creating
         and deleting other volumes in the background.

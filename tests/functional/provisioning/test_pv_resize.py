@@ -2,6 +2,7 @@ from unittest import skip
 
 import ddt
 from glusto.core import Glusto as g
+import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.openshift_storage_libs import enable_pvc_resize
@@ -49,6 +50,7 @@ class TestPvResizeClass(BaseClass):
             g.log.error(msg)
             raise self.skipTest(msg)
 
+    @pytest.mark.tier0
     @ddt.data(
         (True, True),
         (False, True),
@@ -228,10 +230,12 @@ class TestPvResizeClass(BaseClass):
 
         self._pv_resize(exceed_free_space=True)
 
+    @pytest.mark.tier0
     def test_pv_resize_by_exact_free_space(self):
         """Validate PVC resize when resized by exact available free space"""
         self._pv_resize(exceed_free_space=False)
 
+    @pytest.mark.tier0
     def test_pv_resize_try_shrink_pv_size(self):
         """Validate whether reducing the PV size is allowed"""
         dir_path = "/mnt/"
@@ -268,6 +272,7 @@ class TestPvResizeClass(BaseClass):
         self.assertEqual(
             ret, 0, "Failed to execute command %s on %s" % (cmd, node))
 
+    @pytest.mark.tier0
     def test_pv_resize_when_heketi_down(self):
         """Create a PVC and try to expand it when heketi is down, It should
         fail. After heketi is up, expand PVC should work.

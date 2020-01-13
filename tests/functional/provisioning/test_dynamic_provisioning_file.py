@@ -1,3 +1,4 @@
+import pytest
 import time
 
 from glusto.core import Glusto as g
@@ -107,11 +108,13 @@ class TestDynamicProvisioningP0(BaseClass):
                 ret, 0,
                 "Failed to execute '%s' command on %s" % (cmd, self.node))
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterfile(self):
         """Validate dynamic provisioning for gluster file"""
         g.log.info("test_dynamic_provisioning_glusterfile")
         self.dynamic_provisioning_glusterfile(False)
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterfile_volname_prefix(self):
         """Validate dynamic provisioning for gluster file with vol name prefix
         """
@@ -123,6 +126,7 @@ class TestDynamicProvisioningP0(BaseClass):
         g.log.info("test_dynamic_provisioning_glusterfile volname prefix")
         self.dynamic_provisioning_glusterfile(True)
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterfile_heketipod_failure(self):
         """Validate dynamic provisioning for gluster file when heketi pod down
         """
@@ -205,6 +209,7 @@ class TestDynamicProvisioningP0(BaseClass):
             ret, 0,
             "Failed to execute command %s on %s" % (write_data_cmd, self.node))
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterfile_gluster_pod_or_node_failure(
             self):
         """Create glusterblock PVC when gluster pod or node is down."""
@@ -281,6 +286,7 @@ class TestDynamicProvisioningP0(BaseClass):
         ret, out, err = async_io.async_communicate()
         self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd, self.node))
 
+    @pytest.mark.tier0
     def test_storage_class_mandatory_params_glusterfile(self):
         """Validate storage-class creation with mandatory parameters"""
 
@@ -330,6 +336,7 @@ class TestDynamicProvisioningP0(BaseClass):
         self.assertEqual(
             ret, 0, "Failed to execute command %s on %s" % (cmd, self.node))
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterfile_heketidown_pvc_delete(self):
         """Validate deletion of PVC's when heketi is down"""
 
@@ -423,6 +430,7 @@ class TestDynamicProvisioningP0(BaseClass):
         self.assertEqual(
             ret, 0, "Failed to execute command %s on %s" % (cmd, self.node))
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterfile_reclaim_policy_retain(self):
         """Validate retain policy for glusterfs after deletion of pvc"""
 

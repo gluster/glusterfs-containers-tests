@@ -1,3 +1,5 @@
+import pytest
+
 try:
     # py2/3
     import simplejson as json
@@ -43,6 +45,7 @@ class TestHeketiVolume(BaseClass):
         super(TestHeketiVolume, cls).setUpClass()
         cls.volume_size = 1
 
+    @pytest.mark.tier0
     @podcmd.GlustoPod()
     def test_volume_create_and_list_volume(self):
         """Validate heketi and gluster volume list"""

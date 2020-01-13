@@ -1,6 +1,8 @@
 from __future__ import division
 import math
 
+import pytest
+
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops, rebalance_ops
 
@@ -161,6 +163,7 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
                 device_delete, False,
                 "Device %s could not be deleted" % device_id)
 
+    @pytest.mark.tier0
     def test_volume_expansion_expanded_volume(self):
         """Validate volume expansion with brick and check rebalance"""
         creation_info = heketi_ops.heketi_volume_create(
@@ -300,6 +303,7 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
                         "Free space not reclaimed after deletion of %s"
                         % volume_id)
 
+    @pytest.mark.tier0
     def test_volume_expansion_no_free_space(self):
         """Validate volume expansion when there is no free space"""
 
@@ -437,6 +441,7 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
             free_space_after_deletion, free_space_after_expansion,
             "Free space not reclaimed after deletion of volume %s" % volume_id)
 
+    @pytest.mark.tier0
     @podcmd.GlustoPod()
     def test_volume_expansion_rebalance_brick(self):
         """Validate volume expansion with brick and check rebalance"""

@@ -1,5 +1,7 @@
 from __future__ import division
 
+import pytest
+
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs import heketi_ops
@@ -30,6 +32,7 @@ class TestVolumeDeleteTestCases(BaseClass):
 
         return total_free_space
 
+    @pytest.mark.tier0
     def test_delete_heketi_volume(self):
         """
         Method to test heketi volume deletion and whether it

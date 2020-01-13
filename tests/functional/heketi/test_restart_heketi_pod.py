@@ -1,4 +1,5 @@
 from jsondiff import diff
+import pytest
 try:
     # py2/3
     import simplejson as json
@@ -26,6 +27,7 @@ from openshiftstoragelibs.openshift_ops import (
 
 class TestRestartHeketi(BaseClass):
 
+    @pytest.mark.tier0
     def test_restart_heketi_pod(self):
         """Validate restarting heketi pod"""
 

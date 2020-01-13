@@ -1,6 +1,7 @@
 import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster import peer_ops
+import pytest
 import six
 
 from openshiftstoragelibs import baseclass
@@ -24,6 +25,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
         self.h_node = self.heketi_client_node
         self.h_url = self.heketi_server_url
 
+    @pytest.mark.tier0
     @podcmd.GlustoPod()
     def test_heketi_node_list(self):
         """Test node list operation
@@ -70,6 +72,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
                 "Failed to match node ID. Exp: %s, Act: %s" % (
                     node_id, node_info["id"]))
 
+    @pytest.mark.tier0
     def test_heketi_node_states_enable_disable(self):
         """Test node enable and disable functionality
         """
@@ -162,6 +165,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
 
         return storage_hostname, storage_ip
 
+    @pytest.mark.tier0
     @podcmd.GlustoPod()
     def test_heketi_node_add_with_valid_cluster(self):
         """Test heketi node add operation with valid cluster id"""
@@ -240,6 +244,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             storage_ip, ep_addresses)
         self.assertIn(storage_ip, ep_addresses, err_msg)
 
+    @pytest.mark.tier0
     def test_heketi_node_add_with_invalid_cluster(self):
         """Test heketi node add operation with invalid cluster id"""
         storage_hostname, cluster_id = None, utils.get_random_str(size=33)
@@ -415,6 +420,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
                 self.h_node, self.h_url, device['id'])
         heketi_ops.heketi_node_delete(self.h_node, self.h_url, node_id)
 
+    @pytest.mark.tier0
     @ddt.data('remove', 'delete')
     def test_heketi_node_remove_or_delete(self, operation='delete'):
         """Test node remove and delete functionality of heketi and validate
@@ -525,6 +531,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             for node_id in h_nodes_list[2:]:
                 self.addCleanup(h.heketi_node_enable, h_node, h_url, node_id)
 
+    @pytest.mark.tier0
     @ddt.data(
         ("volume", "create"),
         ("volume", "delete"),

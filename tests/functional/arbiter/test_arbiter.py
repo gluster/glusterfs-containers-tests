@@ -1,5 +1,6 @@
 import re
 
+import pytest
 import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
@@ -120,6 +121,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
 
         return bricks
 
+    @pytest.mark.tier0
     def test_arbiter_pvc_create(self):
         """Validate dynamic provision of an arbiter volume"""
 
@@ -135,6 +137,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
 
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(vol_info)
 
+    @pytest.mark.tier0
     def test_arbiter_pvc_mount_on_pod(self):
         """Validate new volume creation using app pod"""
         # Create sc with gluster arbiter info
@@ -203,6 +206,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 mount_path, available_size))
         self.cmd_run(write_data_cmd)
 
+    @pytest.mark.tier0
     def test_create_arbiter_vol_with_more_than_one_brick_set(self):
         """Validate volume creation using heketi for more than six brick set"""
 
@@ -385,6 +389,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 "Arbiter brick '%s' was not verified. Looks like it was "
                 "not found on any of gluster PODs/nodes." % brick["name"])
 
+    @pytest.mark.tier0
     @ddt.data(
         (False, False, True, True),
         (True, True, False, False),
@@ -556,6 +561,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             openshift_ops.oc_delete(self.node, 'pvc', pvc_name)
             openshift_ops.wait_for_resource_absence(self.node, 'pvc', pvc_name)
 
+    @pytest.mark.tier0
     def test_arbiter_volume_expand_using_pvc(self):
         """Validate arbiter volume expansion by PVC creation"""
         # Create sc with gluster arbiter info
@@ -581,6 +587,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info, arbiter_bricks=2, data_bricks=4)
 
+    @pytest.mark.tier0
     @ddt.data(True, False)
     def test_expand_arbiter_volume_setting_tags_on_nodes_or_devices(
             self, node_tags):
@@ -668,6 +675,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         for brick in bricks['data_list']:
             self.assertIn(brick['name'].split(':')[0], data_hosts)
 
+    @pytest.mark.tier0
     @ddt.data(
         (4, '250M', True),
         (8, '122M', True),
@@ -743,6 +751,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             openshift_ops.verify_pvc_size(self.node, self.pvc_name, pvc_size)
             vol_expanded = True
 
+    @pytest.mark.tier0
     @podcmd.GlustoPod()
     def test_arbiter_volume_delete_using_pvc(self):
         """Test Arbiter volume delete using pvc when volume is not mounted

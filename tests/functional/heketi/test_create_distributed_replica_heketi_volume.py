@@ -4,6 +4,7 @@ import math
 import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
+import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
@@ -200,6 +201,7 @@ class TestHeketiVolume(BaseClass):
         """
         self._create_distributed_replica_vol(validate_cleanup=True)
 
+    @pytest.mark.tier0
     @ddt.data(True, False)
     def test_create_and_delete_dist_replicated_bhv(self, validate_cleanup):
         """Validate distributed replicated bhv using heketi-cli"""
