@@ -640,3 +640,164 @@ class TestHeketiVolume(BaseClass):
             h_db_check_bricks_after["total"],
             h_db_check_bricks_before["total"],
             err_msg)
+
+    @pytest.mark.tier1
+    @ddt.data('', 'block')
+    def test_verify_create_heketi_volumes_pending_entries_in_db(
+            self, vol_type):
+        """Verify pending entries of file/block volumes in db during
+        volumes creation from heketi side
+        """
+
+        # Create large volumes to observe the pending operations
+        h_volume_size, vol_count, h_vol_creation_async_op = 50, 3, []
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # Verify file/block volumes pending operation before creation
+        # Wait for few min's if found and pending operation or skip tc
+        for w in waiter.Waiter(timeout=300, interval=10):
+            h_db_check_before = heketi_db_check(h_node, h_url)
+            h_db_check_bricks_before = h_db_check_before["bricks"]
+            h_db_check_vol_before = h_db_check_before["{}volumes".format(
+                vol_type)]
+
+            if(not(h_db_check_vol_before["pending"]
+                    and h_db_check_bricks_before["pending"])):
+                break
+
+        if w.expired:
+            self.skipTest(
+                "Skip TC due to unexpected {} volumes or {} bricks pending"
+                " operations for {}volume".format(
+                    h_db_check_vol_before["pending"],
+                    h_db_check_bricks_before["pending"],
+                    vol_type))
+
+        if vol_type == 'block':
+            h_bhv_list_before = {
+                bhv for bhv in (
+                    get_block_hosting_volume_list(h_node, h_url).keys())}
+
+        # Temporary replace g.run with g.async_run in heketi_blockvolume_create
+        # func to be able to run it in background.Also, avoid parsing the
+        # output as it won't be json at that moment. Parse it after reading
+        # the async operation results.
+        def run_async(cmd, hostname, raise_on_error=True):
+            return g.run_async(host=hostname, command=cmd)
+
+        for count in range(vol_count):
+            with mock.patch.object(json, 'loads', side_effect=(lambda j: j)):
+                with mock.patch.object(
+                        command, 'cmd_run', side_effect=run_async):
+                    h_vol_creation_async_op.append(
+                        eval("heketi_{}volume_create".format(vol_type))(
+                            h_node, h_url, h_volume_size, json=True))
+
+        # Check for pending operations
+        for w in waiter.Waiter(timeout=30, interval=5):
+            h_db_chk_during = heketi_db_check(h_node, h_url)
+
+            h_db_check_bricks_during = h_db_chk_during["bricks"]
+            h_db_check_vol_during = h_db_chk_during["{}volumes".format(
+                vol_type)]
+
+            if h_db_check_vol_during["pending"]:
+                break
+
+        if w.expired:
+            err_msg = ("Expected some pending operations found {} operation"
+                       " for {}volume in Heketi db")
+            raise exceptions.ExecutionError(
+                err_msg.format(h_db_check_vol_during["pending"], vol_type))
+
+        # Verify file/block volumes pending operation during creation
+        self.assertTrue(
+            h_db_check_vol_during["pending"],
+            "Expecting some pending operations during {}volumes creation but "
+            "found {}".format(vol_type, h_db_check_vol_during["pending"]))
+
+        # Verify bricks pending operation during creation
+        err_msg = "Expecting bricks pending in multiple of 3 but found {}"
+        if vol_type == '':
+            self.assertFalse(
+                h_db_check_bricks_during["pending"] % 3,
+                err_msg.format(h_db_check_bricks_during["pending"]))
+
+        # Wait for all counts of pending operations to be zero
+        for w in waiter.Waiter(timeout=120, interval=10):
+            h_db_chk_during = heketi_db_check(h_node, h_url)
+            h_db_check_vol_during = h_db_chk_during["{}volumes".format(
+                vol_type)]
+            if h_db_check_vol_during["pending"] == 0:
+                break
+
+        if w.expired:
+            err_msg = ("Expected no pending operations found {} operation"
+                       " for {}volume in Heketi db")
+            raise exceptions.ExecutionError(
+                err_msg.format(h_db_check_vol_during["pending"], vol_type))
+
+        if vol_type == 'block':
+            h_bhv_list_after = {
+                bhv for bhv in (
+                    get_block_hosting_volume_list(h_node, h_url).keys())}
+            self.assertTrue(
+                h_bhv_list_after,
+                "Failed to get the BHV list "
+                "{}".format(get_block_hosting_volume_list(h_node, h_url)))
+
+            # Get to total number of BHV created
+            total_bhvs = h_bhv_list_after - h_bhv_list_before
+            for bhv_id in total_bhvs:
+                self.addCleanup(heketi_volume_delete, h_node, h_url, bhv_id)
+
+        # Fetch volume id to perform cleanup of volumes
+        for count in range(vol_count):
+            _, stdout, _ = h_vol_creation_async_op[count].async_communicate()
+            heketi_vol = json.loads(stdout)
+            self.addCleanup(
+                eval("heketi_{}volume_delete".format(vol_type)),
+                h_node, h_url, heketi_vol["id"], raise_on_error=False)
+
+        h_db_check_after = heketi_db_check(
+            self.heketi_client_node, self.heketi_server_url)
+        h_db_check_vol_after = h_db_check_after["{}volumes".format(vol_type)]
+        h_db_check_bricks_after = h_db_check_after["bricks"]
+
+        # Verify if initial and final file/block volumes are same
+        err_msg = ("Total {}volume before {} and after {} creation not matched"
+                   .format(vol_type,
+                           h_db_check_vol_after["total"],
+                           h_db_check_vol_before["total"]))
+        self.assertEqual(
+            h_db_check_vol_after["total"],
+            h_db_check_vol_before["total"] + vol_count,
+            err_msg)
+
+        # Verify if initial and final bricks are same for file volume
+        err_msg = "Total bricks after {} and before {} creation not matched"
+        if vol_type == '':
+            self.assertEqual(
+                h_db_check_bricks_after["total"],
+                h_db_check_bricks_before["total"] + (vol_count * 3),
+                err_msg.format(
+                    h_db_check_bricks_after["total"],
+                    h_db_check_bricks_before["total"] + (vol_count * 3)))
+
+        # Verify if initial and final volumes/bricks are same for block volumes
+        elif vol_type == 'block':
+            self.assertEqual(
+                h_db_check_after["volumes"]["total"],
+                h_db_check_before["volumes"]["total"] + len(total_bhvs),
+                "Total volume before {} and after {} creation not"
+                " matched".format(
+                    h_db_check_after["volumes"]["total"],
+                    h_db_check_before["volumes"]["total"]))
+            self.assertEqual(
+                h_db_check_bricks_after["total"],
+                h_db_check_bricks_before["total"] + (
+                    len(total_bhvs) * 3),
+                err_msg.format(
+                    h_db_check_bricks_after["total"],
+                    h_db_check_bricks_before["total"] + (
+                        len(total_bhvs) * 3)))
