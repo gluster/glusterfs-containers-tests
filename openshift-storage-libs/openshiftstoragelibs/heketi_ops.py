@@ -27,6 +27,7 @@ MASTER_NODE = list(g.config["ocp_servers"]["master"].keys())[0]
 HEKETI_BHV = re.compile(r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(\S+)\s\[block\]")
 HEKETI_OPERATIONS = re.compile(r"Id:(\S+)\s+Type:(\S+)\s+Status:(\S+)")
 HEKETI_NODES = re.compile(r"Id:(\S+)\s+Cluster:(\S+)")
+HEKETI_VOLUME = r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(%s_\S+)"
 
 GET_HEKETI_PODNAME_CMD = (
     "oc get pods -l deploymentconfig=%s -o=custom-columns=:.metadata.name "
@@ -1884,3 +1885,34 @@ def get_bricks_on_heketi_node(
     for device in node_info['devices']:
         bricks += device['bricks']
     return bricks
+
+
+def heketi_volume_list_by_name_prefix(
+        heketi_client_node, heketi_server_url, prefix, **kwargs):
+    """Get heketi volume id, cluster and name by volume name prefix.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url.
+        prefix (str): Volume name prefix.
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        list: Tuple of volume id, cluster id and name
+
+    Raises:
+        exceptions.AssertionError: If command fails to execute on
+                                   heketi server.
+    """
+    # Delete json key from kwargs
+    kwargs.pop("json", None)
+
+    h_volumes = heketi_volume_list(
+        heketi_client_node, heketi_server_url, **kwargs)
+
+    vol_regex = re.compile(HEKETI_VOLUME % prefix)
+    return vol_regex.findall(h_volumes.strip())

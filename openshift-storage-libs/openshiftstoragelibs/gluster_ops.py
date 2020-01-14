@@ -267,3 +267,25 @@ def get_block_hosting_volume_name(heketi_client_node, heketi_server_url,
         for vol in gluster_vol_list:
             if block_hosting_vol_match.group(1).strip() in vol:
                 return vol
+
+
+@podcmd.GlustoPod()
+def match_heketi_and_gluster_volumes_by_prefix(heketi_volumes, prefix):
+    """Match volumes from heketi and gluster using given volume name prefix
+
+    Args:
+        heketi_volumes (list): List of heketi volumes with which gluster
+                               volumes need to be matched
+        prefix (str): Volume prefix by which the volumes needs to be filtered
+    """
+    g_vol_list = get_volume_list("auto_get_gluster_endpoint")
+    g_volumes = [
+        g_vol.replace(prefix, "")
+        for g_vol in g_vol_list if g_vol.startswith(prefix)]
+
+    vol_difference = set(heketi_volumes) ^ set(g_volumes)
+    err_msg = ("Heketi and Gluster volume list match failed"
+               "Heketi volumes: {}, Gluster Volumes: {},"
+               "Difference: {}"
+               .format(heketi_volumes, g_volumes, vol_difference))
+    assert not vol_difference, err_msg

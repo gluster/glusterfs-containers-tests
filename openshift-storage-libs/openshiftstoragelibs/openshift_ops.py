@@ -1966,3 +1966,32 @@ def oc_patch(ocp_node, rtype, rname, changes, raise_on_error=True):
     out = command.cmd_run(
         cmd, hostname=ocp_node, raise_on_error=raise_on_error)
     return out or None
+
+
+def match_pv_and_heketi_volumes(hostname, heketi_volumes, pvc_prefix):
+    """Match heketi volumes and PVs
+
+    Args:
+        hostname (str): Hostname on which we want to check heketi
+                        volumes and PVCs
+        heketi_volumes (list): List of heketi volume names
+        pvc_prefix (str): PVC name prefix given by user at the time
+                          of pvc creation
+    """
+
+    custom_columns = [
+        r':.spec.claimRef.name',
+        r':.metadata.annotations."pv\.kubernetes\.io\/provisioned\-by"',
+        r':.metadata.annotations."gluster\.kubernetes\.io\/heketi-volume\-id"'
+    ]
+    pv_volumes = set([
+        pv[2]
+        for pv in oc_get_custom_resource(hostname, "pv", custom_columns)
+        if pv[0].startswith(pvc_prefix) and pv[1] == "kubernetes.io/glusterfs"
+    ])
+
+    vol_diff = pv_volumes ^ set(heketi_volumes)
+    err_msg = ("PV and Heketi volume list match failed"
+               "PV: {}, Heketi volumes {}, "
+               "Difference: {}".format(pv_volumes, heketi_volumes, vol_diff))
+    assert not vol_diff, err_msg
