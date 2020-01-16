@@ -75,7 +75,7 @@ def enable_pvc_resize(master_node):
             raise ExecutionError(err_msg)
 
         with conn.builtin.open(MASTER_CONFIG_FILEPATH, 'r') as f:
-            data = yaml.load(f)
+            data = yaml.load(f, Loader=yaml.FullLoader)
             dict_add = data['admissionConfig']['pluginConfig']
             if "PersistentVolumeClaimResize" in dict_add:
                 g.log.info("master-config.yaml file is already edited")

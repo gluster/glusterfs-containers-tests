@@ -567,7 +567,7 @@ def oc_get_yaml(ocp_node, rtype, name=None, raise_on_error=True):
         cmd.append(name)
     out = command.cmd_run(
         cmd, hostname=ocp_node, raise_on_error=raise_on_error)
-    return yaml.load(out) if out else {}
+    return yaml.load(out, Loader=yaml.FullLoader) if out else {}
 
 
 def oc_get_pvc(ocp_node, name):
@@ -1460,7 +1460,8 @@ def get_events(hostname,
     cmd = "oc get events -o yaml"
     if openshift_version.get_openshift_version() >= '3.9':
         cmd += " --field-selector %s" % ",".join(field_selector or "''")
-    objects = yaml.load(command.cmd_run(cmd, hostname=hostname))['items']
+    get_objects = command.cmd_run(cmd, hostname=hostname)
+    objects = yaml.load(get_objects, Loader=yaml.FullLoader)['items']
     if openshift_version.get_openshift_version() >= '3.9':
         return objects
 
