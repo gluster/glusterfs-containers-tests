@@ -505,9 +505,8 @@ class TestHeketiDeviceOperations(BaseClass):
             for key in ('id', 'name', 'state', 'storage', 'bricks'):
                 self.assertIn(key, list(device_from_t_info.keys()))
                 self.assertIn(key, list(device_info.keys()))
-            self.assertEqual(device_info['id'], device_from_t_info['id'])
-            self.assertEqual(device_info['name'], device_from_t_info['name'])
-            self.assertEqual(device_info['state'], device_from_t_info['state'])
+            for key in ('id', 'name', 'state'):
+                self.assertEqual(device_info[key], device_from_t_info[key])
             device_info_storage = device_info['storage']
             device_from_t_info_storage = device_from_t_info['storage']
             device_info_storage_keys = list(device_info_storage.keys())
