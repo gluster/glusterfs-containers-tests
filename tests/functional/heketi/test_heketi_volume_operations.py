@@ -1,3 +1,9 @@
+from glustolibs.gluster.snap_ops import (
+    snap_create,
+    snap_delete,
+    snap_list,
+)
+
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.command import cmd_run
 from openshiftstoragelibs.heketi_ops import (
@@ -8,6 +14,7 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_info,
 )
 from openshiftstoragelibs.openshift_ops import cmd_run_on_gluster_pod_or_node
+from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import utils
 
 
@@ -118,3 +125,33 @@ class TestHeketiVolumeOperations(BaseClass):
             brick_host = node_info['hostnames']['storage'][0]
             cmd_run_on_gluster_pod_or_node(self.node, 'ls %s/%s' % (
                 brick['path'], _file), brick_host)
+
+    @podcmd.GlustoPod()
+    def test_heketi_volume_snapshot_create(self):
+        """Test heketi volume snapshot create operation"""
+        h_volume_size = 1
+        snap_name = 'snap_test_heketi_volume_snapshot_create_1'
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        h_volume_info = heketi_volume_create(
+            h_node, h_url, h_volume_size, json=True)
+        self.addCleanup(
+            heketi_volume_delete, h_node, h_url, h_volume_info["id"])
+
+        h_volume_name = h_volume_info["name"]
+        ret, _, _ = snap_create(
+            'auto_get_gluster_endpoint',
+            h_volume_name, snap_name, timestamp=False)
+        self.addCleanup(
+            podcmd.GlustoPod()(snap_delete),
+            "auto_get_gluster_endpoint", snap_name)
+        self.assertEqual(
+            ret, 0, "Failed to create snapshot {} for heketi volume {}"
+            .format(snap_name, h_volume_name))
+        ret, out, _ = snap_list('auto_get_gluster_endpoint')
+        self.assertEqual(
+            ret, 0, "Failed to list snapshot {} for heketi volume"
+            .format(snap_name))
+        self.assertIn(
+            snap_name, out, "Heketi volume snapshot {} not found in {}"
+            .format(snap_name, out))
