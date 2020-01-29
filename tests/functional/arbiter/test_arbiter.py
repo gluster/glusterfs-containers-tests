@@ -829,3 +829,66 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             v[2].replace("{}_".format(prefix), "") for v in h_vol_list])
         gluster_ops.match_heketi_and_gluster_volumes_by_prefix(
             heketi_volume_names, "{}_".format(prefix))
+
+    @podcmd.GlustoPod()
+    def test_arbiter_volume_node_tag_removal(self):
+        """Test remove tags from nodes and check if arbiter volume is
+        created randomly.
+        """
+        h_volume_size, bricks_list = 1, []
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+
+        node_ids = heketi_ops.heketi_node_list(h_client, h_url)
+        self.assertTrue(node_ids, "Failed to get heketi node list")
+
+        # Remove all the tag from the nodes
+        for node_id in node_ids:
+            node_info = heketi_ops.heketi_node_info(
+                h_client, h_url, node_id, json=True)
+            self._set_arbiter_tag_with_further_revert(
+                h_client, h_url, 'node', node_id, None,
+                node_info.get('tags', {}).get('arbiter'))
+            h_info = heketi_ops.heketi_node_info(
+                h_client, h_url, node_id, json=True)
+
+            # Make sure that all tags are removed
+            err_msg = "Failed to remove tags from node id {}".format(node_id)
+            self.assertEqual(h_info.get("tags"), None, err_msg)
+
+        # Creating 10 volumes for verificaton
+        for count in range(10):
+            h_volume = heketi_ops.heketi_volume_create(
+                h_client, h_url, h_volume_size,
+                gluster_volume_options='user.heketi.arbiter true', json=True)
+            h_vol_id = h_volume["id"]
+            h_vol_name = h_volume["name"]
+
+            self.addCleanup(
+                heketi_ops.heketi_volume_delete, h_client, h_url, h_vol_id,
+                h_vol_name, gluster_volume_options='user.heketi.arbiter true')
+
+            g_vol_list = volume_ops.get_volume_list(
+                "auto_get_gluster_endpoint")
+
+            err_msg = ("Failed to find heketi volume name {} in gluster volume"
+                       "list {}".format(h_vol_name, g_vol_list))
+            self.assertIn(h_vol_name, g_vol_list, err_msg)
+
+            g_vol_info = volume_ops.get_volume_info(
+                'auto_get_gluster_endpoint', h_vol_name)
+
+            err_msg = "Brick details are empty for{}"
+            for brick_details in g_vol_info[h_vol_name]["bricks"]["brick"]:
+                if brick_details['isArbiter'][0] == '1':
+                    brick_ip_name = brick_details["name"]
+                    self.assertTrue(brick_ip_name, err_msg.format(h_vol_name))
+                    bricks_list.append(brick_ip_name)
+
+        arbiter_brick_ip = {
+            brick.strip().split(":")[0] for brick in bricks_list}
+        self.assertTrue(
+            arbiter_brick_ip, "Brick IP not found in {}".format(bricks_list))
+
+        err_msg = ("Expecting more than one IP but received "
+                   "{}".format(arbiter_brick_ip))
+        self.assertGreaterEqual(len(arbiter_brick_ip), 1, err_msg)
