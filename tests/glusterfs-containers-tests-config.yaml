@@ -106,6 +106,16 @@ common:
     stop_on_first_failure: False
     heketi_command_timeout: 120
 
+scaleup:
+    run_scale_up_on_start: True
+    skip_cleanup: True
+    file_pvc_count: 500
+    file_pod_count: 100
+    arbiter_pvc_count: 200
+    arbiter_pod_count: 100
+    block_pvc_count: 200
+    block_pod_count: 100
+
 cloud_provider:
     name: '<fake-cloud-provider-name eg. vmware>'
     vmware:
