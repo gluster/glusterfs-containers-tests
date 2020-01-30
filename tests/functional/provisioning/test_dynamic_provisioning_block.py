@@ -15,6 +15,7 @@ from openshiftstoragelibs.heketi_ops import (
     get_block_hosting_volume_list,
     heketi_blockvolume_create,
     heketi_blockvolume_delete,
+    heketi_blockvolume_info,
     heketi_blockvolume_list,
     heketi_node_disable,
     heketi_node_enable,
@@ -86,6 +87,28 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             self.assertEqual(
                 ret, 0,
                 "Failed to execute '%s' command on '%s'." % (cmd, self.node))
+
+    def _dynamic_provisioning_block_with_bhv_cleanup(
+            self, sc_name, pvc_size, bhv_list):
+        """Dynamic provisioning for glusterblock with BHV Cleanup"""
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+        pvc_name = oc_create_pvc(self.node, sc_name, pvc_size=pvc_size)
+        try:
+            verify_pvc_status_is_bound(self.node, pvc_name)
+            pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+            custom = [r':.metadata.annotations."gluster\.org\/volume\-id"']
+            bvol_id = oc_get_custom_resource(
+                self.node, 'pv', custom, pv_name)[0]
+            bhv_id = heketi_blockvolume_info(
+                h_node, h_url, bvol_id, json=True)['blockhostingvolume']
+            if bhv_id not in bhv_list:
+                self.addCleanup(
+                    heketi_volume_delete, h_node, h_url, bhv_id)
+        finally:
+            self.addCleanup(
+                wait_for_resource_absence, self.node, 'pvc', pvc_name)
+            self.addCleanup(
+                oc_delete, self.node, 'pvc', pvc_name, raise_on_absence=True)
 
     @pytest.mark.tier0
     def test_dynamic_provisioning_glusterblock_hacount_true(self):
@@ -778,3 +801,42 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # Create a PVC with SC of hacount less than node count
         sc_name = self.create_storage_class(hacount=(node_count - 1))
         self.create_and_wait_for_pvc(sc_name=sc_name)
+
+    @pytest.mark.tier1
+    def test_heketi_block_volume_create_with_size_more_than_bhv_free_space(
+            self):
+        """ Test to create heketi block volume of size greater than
+            free space in BHV so that it will create a new BHV.
+        """
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        default_bhv_size = get_default_block_hosting_volume_size(
+            self.node, self.heketi_dc_name)
+        reserve_size = math.ceil(default_bhv_size * 0.02)
+        bhv_list, pvc_size = [], (default_bhv_size - reserve_size)
+
+        # Get existing BHV list
+        bhv_list = list(get_block_hosting_volume_list(h_node, h_url).keys())
+        for vol in bhv_list:
+            info = heketi_volume_info(h_node, h_url, vol, json=True)
+            if info['blockinfo']['freesize'] >= pvc_size:
+                self.skipTest(
+                    "Skip test case since there is atleast one BHV with free"
+                    " space {} greater than the default value {}".format(
+                        info['blockinfo']['freesize'], pvc_size))
+
+        # To verify if there is enough free space for two BHVs
+        self.verify_free_space(2 * (default_bhv_size + 1))
+
+        sc_name = self.create_storage_class()
+
+        self._dynamic_provisioning_block_with_bhv_cleanup(
+            sc_name, pvc_size, bhv_list)
+        self._dynamic_provisioning_block_with_bhv_cleanup(
+            sc_name, pvc_size, bhv_list)
+        bhv_post = len(get_block_hosting_volume_list(h_node, h_url))
+        err_msg = (
+            "New BHVs were not created to satisfy the block PV requests"
+            " No. of BHV before the test : {} \n"
+            " No. of BHV after the test : {}".format(len(bhv_list), bhv_post))
+        self.assertEqual(bhv_post, (len(bhv_list) + 2), err_msg)
