@@ -195,7 +195,7 @@ class BaseClass(unittest.TestCase):
             error_msg)
 
     def create_secret(self, secret_name_prefix="autotests-secret",
-                      secret_type=None):
+                      secret_type=None, skip_cleanup=False):
         secret_name = oc_create_secret(
             self.ocp_client[0],
             secret_name_prefix=secret_name_prefix,
@@ -204,8 +204,9 @@ class BaseClass(unittest.TestCase):
                 self.sc.get('restsecretnamespace', 'default'))),
             data_key=self.heketi_cli_key,
             secret_type=secret_type or self.secret_type)
-        self.addCleanup(
-            oc_delete, self.ocp_client[0], 'secret', secret_name)
+        if not skip_cleanup:
+            self.addCleanup(
+                oc_delete, self.ocp_client[0], 'secret', secret_name)
         return secret_name
 
     def create_storage_class(self, secret_name=None,
@@ -219,11 +220,12 @@ class BaseClass(unittest.TestCase):
                              clusterid=None,
                              hacount=None,
                              is_arbiter_vol=False, arbiter_avg_file_size=None,
-                             heketi_zone_checking=None, volumeoptions=None):
+                             heketi_zone_checking=None, volumeoptions=None,
+                             skip_cleanup=False):
 
         # Create secret if one is not specified
         if not secret_name:
-            secret_name = self.create_secret()
+            secret_name = self.create_secret(skip_cleanup=skip_cleanup)
 
         # Create storage class
         secret_name_option = "secretname"
@@ -278,7 +280,9 @@ class BaseClass(unittest.TestCase):
             allow_volume_expansion=allow_volume_expansion,
             reclaim_policy=reclaim_policy,
             **parameters)
-        self.addCleanup(oc_delete, self.ocp_client[0], "sc", self.sc_name)
+
+        if not skip_cleanup:
+            self.addCleanup(oc_delete, self.ocp_client[0], "sc", self.sc_name)
         return self.sc_name
 
     def get_provisioner_for_sc(self):
@@ -289,7 +293,8 @@ class BaseClass(unittest.TestCase):
 
     def create_and_wait_for_pvcs(
             self, pvc_size=1, pvc_name_prefix="autotests-pvc", pvc_amount=1,
-            sc_name=None, timeout=120, wait_step=3, skip_waiting=False):
+            sc_name=None, timeout=120, wait_step=3, skip_waiting=False,
+            skip_cleanup=False):
         """Create multiple PVC's not waiting for it
 
         Args:
@@ -313,7 +318,7 @@ class BaseClass(unittest.TestCase):
             if getattr(self, "sc_name", ""):
                 sc_name = self.sc_name
             else:
-                sc_name = self.create_storage_class()
+                sc_name = self.create_storage_class(skip_cleanup=skip_cleanup)
 
         # Create PVCs
         pvc_names = []
@@ -322,14 +327,18 @@ class BaseClass(unittest.TestCase):
                 node, sc_name, pvc_name_prefix=pvc_name_prefix,
                 pvc_size=pvc_size)
             pvc_names.append(pvc_name)
-        self.addCleanup(
-            wait_for_resources_absence, node, 'pvc', pvc_names)
+        if not skip_cleanup:
+            self.addCleanup(
+                wait_for_resources_absence, node, 'pvc', pvc_names)
 
         # Wait for PVCs to be in bound state
         try:
             if not skip_waiting:
                 wait_for_pvcs_be_bound(node, pvc_names, timeout, wait_step)
         finally:
+            if skip_cleanup:
+                return pvc_names
+
             if get_openshift_version() < "3.9":
                 reclaim_policy = "Delete"
             else:
@@ -361,21 +370,24 @@ class BaseClass(unittest.TestCase):
                                 raise_on_absence=False)
         return pvc_names
 
-    def create_and_wait_for_pvc(self, pvc_size=1,
-                                pvc_name_prefix='autotests-pvc', sc_name=None):
+    def create_and_wait_for_pvc(
+            self, pvc_size=1, pvc_name_prefix='autotests-pvc', sc_name=None,
+            skip_cleanup=False):
         self.pvc_name = self.create_and_wait_for_pvcs(
-            pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix, sc_name=sc_name
-        )[0]
+            pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix,
+            sc_name=sc_name, skip_cleanup=skip_cleanup)[0]
         return self.pvc_name
 
     def create_pvcs_not_waiting(
             self, pvc_size=1, pvc_name_prefix="autotests-pvc",
-            pvc_amount=1, sc_name=None):
+            pvc_amount=1, sc_name=None, skip_cleanup=False):
         return self.create_and_wait_for_pvcs(
             pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix,
-            pvc_amount=pvc_amount, sc_name=sc_name, skip_waiting=True)
+            pvc_amount=pvc_amount, sc_name=sc_name, skip_waiting=True,
+            skip_cleanup=skip_cleanup)
 
-    def create_dcs_with_pvc(self, pvc_names, timeout=600, wait_step=5):
+    def create_dcs_with_pvc(
+            self, pvc_names, timeout=600, wait_step=5, skip_cleanup=False):
         """Create bunch of DCs with app PODs which use unique PVCs.
 
         Args:
@@ -398,10 +410,12 @@ class BaseClass(unittest.TestCase):
         for pvc_name in pvc_names:
             dc_name = oc_create_app_dc_with_io(self.ocp_client[0], pvc_name)
             dc_names[pvc_name] = dc_name
-            self.addCleanup(oc_delete, self.ocp_client[0], 'dc', dc_name)
-        self.addCleanup(
-            scale_dcs_pod_amount_and_wait, self.ocp_client[0],
-            dc_names.values(), 0, timeout=timeout, wait_step=wait_step)
+            if not skip_cleanup:
+                self.addCleanup(oc_delete, self.ocp_client[0], 'dc', dc_name)
+        if not skip_cleanup:
+            self.addCleanup(
+                scale_dcs_pod_amount_and_wait, self.ocp_client[0],
+                dc_names.values(), 0, timeout=timeout, wait_step=wait_step)
 
         for pvc_name, dc_name in dc_names.items():
             pod_name = get_pod_name_from_dc(self.ocp_client[0], dc_name)
@@ -412,8 +426,10 @@ class BaseClass(unittest.TestCase):
 
         return dc_and_pod_names
 
-    def create_dc_with_pvc(self, pvc_name, timeout=300, wait_step=10):
-        return self.create_dcs_with_pvc(pvc_name, timeout, wait_step)[pvc_name]
+    def create_dc_with_pvc(
+            self, pvc_name, timeout=300, wait_step=10, skip_cleanup=False):
+        return self.create_dcs_with_pvc(
+            pvc_name, timeout, wait_step, skip_cleanup=skip_cleanup)[pvc_name]
 
     def create_heketi_volume_with_name_and_wait(
             self, name, size, raise_on_cleanup_error=True,
