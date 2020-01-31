@@ -1,6 +1,9 @@
 import ddt
 from glusto.core import Glusto as g
-from glustolibs.gluster.block_libs import get_block_list
+from glustolibs.gluster.block_libs import (
+    get_block_info,
+    get_block_list,
+)
 from glustolibs.gluster.volume_ops import (
     get_volume_info,
     volume_start,
@@ -438,3 +441,84 @@ class TestBlockVolumeOps(BaseClass):
                 err = "Failed to start gluster volume %s on %s. error: %s" % (
                     bhv_name, h_node, err)
                 raise exceptions.ExecutionError(err)
+
+    @pytest.mark.tier0
+    @podcmd.GlustoPod()
+    def test_heket_block_volume_info_with_gluster_block_volume_info(self):
+        """Verify heketi block volume info with the backend gluster
+        block volume info
+        """
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+        vol_size = 1
+        h_block_vol = heketi_blockvolume_create(
+            h_node, h_server, vol_size, auth=True, json=True)
+        self.addCleanup(
+            heketi_blockvolume_delete, h_node, h_server, h_block_vol["id"])
+
+        h_block_vol["blockvolume"]["hosts"].sort()
+        h_block_vol_gbid = h_block_vol["blockvolume"]["username"]
+        h_block_vol_name = h_block_vol["name"]
+        h_block_vol_paswd = h_block_vol["blockvolume"]["password"]
+        h_block_vol_hosts = h_block_vol["blockvolume"]["hosts"]
+        h_block_host_vol_id = h_block_vol["blockhostingvolume"]
+        h_block_vol_ha = h_block_vol["hacount"]
+
+        # Fetch heketi blockhostingvolume info
+        h_bhv_info = heketi_volume_info(
+            h_node, h_server, h_block_host_vol_id, json=True)
+        err_msg = "Failed to get heketi blockhostingvolume info for {}"
+        self.assertTrue(h_bhv_info, err_msg.format(h_block_host_vol_id))
+        h_bhv_name = h_bhv_info['name']
+        err_msg = "Failed to get heketi BHV name for heketi blockvolume Id {}"
+        self.assertTrue(h_bhv_name, err_msg.format(h_block_host_vol_id))
+
+        # Get gluster blockvolume list
+        g_block_vol_list = get_block_list(
+            'auto_get_gluster_endpoint', h_bhv_name)
+        err_msg = ("Failed to get gluter blockvolume list {}"
+                   .format(g_block_vol_list))
+        self.assertTrue(g_block_vol_list, err_msg)
+
+        err_msg = (
+            "Heketi block volume {} not present in gluster blockvolumes {}"
+            .format(h_block_vol_name, g_block_vol_list))
+        self.assertIn(h_block_vol_name, g_block_vol_list, err_msg)
+
+        g_block_info = get_block_info(
+            'auto_get_gluster_endpoint', h_bhv_name, h_block_vol_name)
+        g_block_info["EXPORTED ON"].sort()
+
+        g_block_vol_hosts = g_block_info["EXPORTED ON"]
+        g_block_vol_gbid = g_block_info["GBID"]
+        g_block_vol_name = g_block_info["NAME"]
+        g_block_vol_paswd = g_block_info["PASSWORD"]
+        g_block_vol_id = g_block_info["VOLUME"][4:]
+        g_block_vol_ha = g_block_info["HA"]
+
+        # verfiy block device info and glusterblock volume info
+        err_msg = ("Did not match {} from heketi {} and gluster {} side")
+        self.assertEqual(
+            h_block_vol_gbid, g_block_vol_gbid,
+            err_msg.format(
+                "GBID", h_block_vol_gbid, g_block_vol_gbid, err_msg))
+        self.assertEqual(
+            h_block_vol_name, g_block_vol_name,
+            err_msg.format(
+                "blockvolume", h_block_vol_name, g_block_vol_name, err_msg))
+        self.assertEqual(
+            h_block_vol_paswd, g_block_vol_paswd,
+            err_msg.format(
+                "password", h_block_vol_paswd, g_block_vol_paswd, err_msg))
+        self.assertEqual(
+            h_block_vol_hosts, g_block_vol_hosts,
+            err_msg.format(
+                "hosts", h_block_vol_hosts, g_block_vol_hosts, err_msg))
+        self.assertEqual(
+            h_block_host_vol_id, g_block_vol_id,
+            err_msg.format(
+                "blockhost vol id", h_block_host_vol_id,
+                g_block_vol_id, err_msg))
+        self.assertEqual(
+            h_block_vol_ha, g_block_vol_ha,
+            err_msg.format(
+                "ha", h_block_vol_ha, g_block_vol_ha, err_msg))
