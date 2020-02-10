@@ -543,3 +543,29 @@ class TestHeketiDeviceOperations(BaseClass):
                         self.assertIn(key, brick_keys)
                         self.assertEqual(brick[key], brick_from_t[key])
             self.assertEqual(brick_match_count, len(device_info['bricks']))
+
+    @pytest.mark.tier1
+    def test_device_delete_with_bricks(self):
+        """Validate device deletion with existing bricks on the device"""
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # Create volume
+        vol_size = 1
+        vol_info = heketi_volume_create(h_node, h_url, vol_size, json=True)
+        self.addCleanup(
+            heketi_volume_delete, h_node, h_url, vol_info['id'])
+        device_delete_id = vol_info['bricks'][0]['device']
+        node_id = vol_info['bricks'][0]['node']
+        device_info = heketi_device_info(
+            h_node, h_url, device_delete_id, json=True)
+        device_name = device_info['name']
+
+        # Disable the device
+        heketi_device_disable(h_node, h_url, device_delete_id)
+        self.addCleanup(heketi_device_enable, h_node, h_url, device_delete_id)
+
+        # Delete device with bricks
+        with self.assertRaises(AssertionError):
+            heketi_device_delete(h_node, h_url, device_delete_id)
+            self.addCleanup(
+                heketi_device_add, h_node, h_url, device_name, node_id)
