@@ -905,3 +905,97 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         err_msg = ("Expecting more than one IP but received "
                    "{}".format(arbiter_brick_ip))
         self.assertGreaterEqual(len(arbiter_brick_ip), 1, err_msg)
+
+    @pytest.mark.tier1
+    @podcmd.GlustoPod()
+    def test_arbiter_volume_delete_using_pvc_mounted_on_app_pod(self):
+        """Test Arbiter volume delete using a pvc when volume is mounted
+           on app pod
+        """
+        if openshift_version.get_openshift_version() <= "3.9":
+            self.skipTest(
+                "PVC deletion while pod is running is not supported"
+                " in OCP older than 3.10")
+
+        prefix = "autotest-{}".format(utils.get_random_str())
+
+        # Create sc with gluster arbiter info
+        sc_name = self.create_storage_class(
+            vol_name_prefix=prefix, is_arbiter_vol=True)
+
+        # Create PVC and corresponding App pod
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix=prefix, sc_name=sc_name)
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
+
+        # Get vol info
+        g_vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, pvc_name)
+
+        # Verify arbiter volume properties
+        self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
+            g_vol_info)
+
+        # Get volume ID
+        g_vol_id = g_vol_info["gluster_vol_id"]
+
+        # Delete the pvc
+        openshift_ops.oc_delete(self.node, 'pvc', pvc_name)
+        with self.assertRaises(exceptions.ExecutionError):
+            openshift_ops.wait_for_resource_absence(
+                self.node, 'pvc', pvc_name, interval=10, timeout=60)
+
+        # Verify if IO is running on the app pod
+        filepath = "/mnt/file_for_testing_volume.log"
+        cmd = "dd if=/dev/urandom of={} bs=1K count=100".format(filepath)
+        err_msg = "Failed to execute command {} on pod {}".format(
+            cmd, pod_name)
+        ret, out, err = openshift_ops.oc_rsh(self.node, pod_name, cmd)
+        self.assertFalse(ret, err_msg)
+
+        # Delete the app pod
+        openshift_ops.oc_delete(self.node, 'pod', pod_name)
+        openshift_ops.wait_for_resource_absence(self.node, 'pod', pod_name)
+
+        # Check the status of the newly spinned app pod
+        pod_status = openshift_ops.oc_get_custom_resource(
+            self.node, 'pod', custom=':.status.phase',
+            selector='deploymentconfig={}'.format(dc_name))[0]
+        self.assertEqual(pod_status[0], 'Pending')
+
+        # Check if the PVC is deleted
+        openshift_ops.wait_for_resource_absence(self.node, 'pvc', pvc_name)
+
+        # Check the heketi volume list if volume is deleted
+        heketi_volumes = heketi_ops.heketi_volume_list(
+            self.heketi_client_node, self.heketi_server_url)
+        err_msg = "Failed to delete heketi volume by prefix {}".format(prefix)
+        self.assertNotIn(prefix, heketi_volumes, err_msg)
+
+        # Check for absence of the gluster volume
+        get_gluster_vol_info = volume_ops.get_volume_info(
+            "auto_get_gluster_endpoint", g_vol_id)
+        err_msg = ("Failed to delete gluster volume {} for PVC {}".format(
+            g_vol_id, pvc_name))
+        self.assertFalse(get_gluster_vol_info, err_msg)
+
+        # Check for absence of bricks and lvs
+        for brick in g_vol_info['bricks']['brick']:
+            gluster_node_ip, brick_name = brick["name"].split(":")
+
+            err_msg = "Brick not found"
+            cmd = "df {} || echo {} ".format(brick_name, err_msg)
+            out = openshift_ops.cmd_run_on_gluster_pod_or_node(
+                self.node, cmd, gluster_node_ip)
+            self.assertEqual(
+                out, err_msg, "Brick {} still present".format(brick_name))
+
+            err_msg = "LV not found"
+            lv_match = re.search(BRICK_REGEX, brick["name"])
+            if lv_match:
+                lv = lv_match.group(2).strip()
+                cmd = "lvs {} || echo {}".format(lv, err_msg)
+                out = openshift_ops.cmd_run_on_gluster_pod_or_node(
+                    self.node, cmd, gluster_node_ip)
+                self.assertEqual(
+                    out, err_msg, "LV {} still present".format(lv))
