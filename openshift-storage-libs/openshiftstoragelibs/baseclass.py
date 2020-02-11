@@ -209,19 +209,19 @@ class BaseClass(unittest.TestCase):
                 oc_delete, self.ocp_client[0], 'secret', secret_name)
         return secret_name
 
-    def create_storage_class(self, secret_name=None,
-                             sc_name_prefix="autotests-sc",
-                             sc_name=None,
-                             create_vol_name_prefix=False,
-                             vol_name_prefix=None,
-                             allow_volume_expansion=False,
-                             reclaim_policy="Delete",
-                             set_hacount=None,
-                             clusterid=None,
-                             hacount=None,
-                             is_arbiter_vol=False, arbiter_avg_file_size=None,
-                             heketi_zone_checking=None, volumeoptions=None,
-                             skip_cleanup=False):
+    def _create_storage_class(self, provisioner, secret_name=None,
+                              sc_name_prefix="autotests-sc",
+                              sc_name=None,
+                              create_vol_name_prefix=False,
+                              vol_name_prefix=None,
+                              allow_volume_expansion=False,
+                              reclaim_policy="Delete",
+                              set_hacount=None,
+                              clusterid=None,
+                              hacount=None,
+                              is_arbiter_vol=False, arbiter_avg_file_size=None,
+                              heketi_zone_checking=None, volumeoptions=None,
+                              skip_cleanup=False):
 
         # Create secret if one is not specified
         if not secret_name:
@@ -230,7 +230,6 @@ class BaseClass(unittest.TestCase):
         # Create storage class
         secret_name_option = "secretname"
         secret_namespace_option = "secretnamespace"
-        provisioner = self.get_provisioner_for_sc()
         if provisioner != "kubernetes.io/glusterfs":
             secret_name_option = "rest%s" % secret_name_option
             secret_namespace_option = "rest%s" % secret_namespace_option
@@ -284,6 +283,35 @@ class BaseClass(unittest.TestCase):
         if not skip_cleanup:
             self.addCleanup(oc_delete, self.ocp_client[0], "sc", self.sc_name)
         return self.sc_name
+
+    def create_storage_class(self, secret_name=None,
+                             sc_name_prefix="autotests-sc",
+                             sc_name=None,
+                             create_vol_name_prefix=False,
+                             vol_name_prefix=None,
+                             allow_volume_expansion=False,
+                             reclaim_policy="Delete",
+                             set_hacount=None,
+                             clusterid=None,
+                             hacount=None,
+                             is_arbiter_vol=False, arbiter_avg_file_size=None,
+                             heketi_zone_checking=None, volumeoptions=None,
+                             skip_cleanup=False):
+
+        provisioner = self.get_provisioner_for_sc()
+
+        return self._create_storage_class(
+            provisioner=provisioner, secret_name=secret_name,
+            sc_name_prefix=sc_name_prefix, sc_name=sc_name,
+            create_vol_name_prefix=create_vol_name_prefix,
+            vol_name_prefix=vol_name_prefix,
+            allow_volume_expansion=allow_volume_expansion,
+            reclaim_policy=reclaim_policy, set_hacount=set_hacount,
+            clusterid=clusterid, hacount=hacount,
+            is_arbiter_vol=is_arbiter_vol,
+            arbiter_avg_file_size=arbiter_avg_file_size,
+            heketi_zone_checking=heketi_zone_checking,
+            volumeoptions=volumeoptions, skip_cleanup=skip_cleanup)
 
     def get_provisioner_for_sc(self):
         return "kubernetes.io/glusterfs"
