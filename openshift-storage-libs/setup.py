@@ -7,7 +7,7 @@ name = 'openshift-storage-libs'
 setup(
     name=name,
     version=version,
-    description='Red Hat Container-Native Storage Libraries',
+    description='Red Hat Openshift Container Storage Libraries',
     author='Red Hat, Inc.',
     author_email='cns-qe@redhat.com',
     packages=find_packages(),
@@ -20,10 +20,13 @@ setup(
         'Programming Language :: Python :: 2'
         'Programming Language :: Python :: 2.6'
         'Programming Language :: Python :: 2.7'
+        'Programming Language :: Python :: 3'
+        'Programming Language :: Python :: 3.7'
         'Topic :: Software Development :: Testing'
     ],
     install_requires=['glusto', 'ddt', 'mock', 'rtyaml', 'jsondiff', 'six',
-                      'simplejson', 'prometheus_client>=0.4.2'],
+                      'simplejson', 'prometheus_client>=0.4.2',
+                      'pytest-custom-exit-code', 'pyvmomi'],
     dependency_links=[
         'http://github.com/loadtheaccumulator/glusto/tarball/master#egg=glusto'
     ],
