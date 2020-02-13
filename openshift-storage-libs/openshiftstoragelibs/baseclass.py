@@ -388,7 +388,8 @@ class BaseClass(unittest.TestCase):
 
     def create_dcs_with_pvc(
             self, pvc_names, timeout=600, wait_step=5,
-            dc_name_prefix='autotests-dc', skip_cleanup=False):
+            dc_name_prefix='autotests-dc', label=None,
+            skip_cleanup=False):
         """Create bunch of DCs with app PODs which use unique PVCs.
 
         Args:
@@ -397,6 +398,7 @@ class BaseClass(unittest.TestCase):
             timeout (int): timeout value, default value is 600 seconds.
             wait_step( int): wait step, default value is 5 seconds.
             dc_name_prefix(str): name prefix for deployement config.
+            lable (dict): keys and value for adding label into DC.
         Returns: dictionary with following structure:
             {
                 "pvc_name_1": ("dc_name_1", "pod_name_1"),
@@ -411,7 +413,8 @@ class BaseClass(unittest.TestCase):
         dc_and_pod_names, dc_names = {}, {}
         for pvc_name in pvc_names:
             dc_name = oc_create_app_dc_with_io(
-                self.ocp_client[0], pvc_name, dc_name_prefix=dc_name_prefix)
+                self.ocp_client[0], pvc_name, dc_name_prefix=dc_name_prefix,
+                label=label)
             dc_names[pvc_name] = dc_name
             if not skip_cleanup:
                 self.addCleanup(oc_delete, self.ocp_client[0], 'dc', dc_name)
@@ -431,10 +434,12 @@ class BaseClass(unittest.TestCase):
 
     def create_dc_with_pvc(
             self, pvc_name, timeout=300, wait_step=10,
-            dc_name_prefix='autotests-dc', skip_cleanup=False):
+            dc_name_prefix='autotests-dc', label=None,
+            skip_cleanup=False):
         return self.create_dcs_with_pvc(
             pvc_name, timeout, wait_step,
-            dc_name_prefix=dc_name_prefix, skip_cleanup=skip_cleanup)[pvc_name]
+            dc_name_prefix=dc_name_prefix, label=label,
+            skip_cleanup=skip_cleanup)[pvc_name]
 
     def create_heketi_volume_with_name_and_wait(
             self, name, size, raise_on_cleanup_error=True,

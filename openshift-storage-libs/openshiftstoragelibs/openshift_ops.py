@@ -347,7 +347,7 @@ def oc_create_pvc(hostname, sc_name=None, pvc_name_prefix="autotests-pvc",
 
 def oc_create_app_dc_with_io(
         hostname, pvc_name, dc_name_prefix="autotests-dc-with-app-io",
-        replicas=1, space_to_use=1048576):
+        replicas=1, space_to_use=1048576, label=None):
     """Create DC with app PODs and attached PVC, constantly running I/O.
 
     Args:
@@ -358,6 +358,7 @@ def oc_create_app_dc_with_io(
                               random str.
         replicas (int): amount of application POD replicas.
         space_to_use (int): value in bytes which will be used for I/O.
+        label (dict): dict of keys and values to add labels in DC.
     """
     dc_name = "%s-%s" % (dc_name_prefix, utils.get_random_str())
     container_data = {
@@ -385,6 +386,12 @@ def oc_create_app_dc_with_io(
             ]},
         },
     }
+
+    labels = {"name": dc_name}
+    if label:
+        label.pop("name", None)
+        labels.update(label)
+
     dc_data = json.dumps({
         "kind": "DeploymentConfig",
         "apiVersion": "v1",
@@ -395,7 +402,7 @@ def oc_create_app_dc_with_io(
             "paused": False,
             "revisionHistoryLimit": 2,
             "template": {
-                "metadata": {"labels": {"name": dc_name}},
+                "metadata": {"labels": labels},
                 "spec": {
                     "restartPolicy": "Always",
                     "volumes": [{
