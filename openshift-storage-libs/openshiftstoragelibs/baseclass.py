@@ -1,3 +1,4 @@
+from collections import defaultdict
 import datetime
 import re
 import unittest
@@ -13,6 +14,7 @@ from openshiftstoragelibs.exceptions import (
 )
 from openshiftstoragelibs.gluster_ops import (
     get_block_hosting_volume_name,
+    get_gluster_vol_status,
 )
 from openshiftstoragelibs.heketi_ops import (
     hello_heketi,
@@ -51,6 +53,9 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_pods_be_ready,
     wait_for_resources_absence,
     wait_for_service_status_on_gluster_pod_or_node,
+)
+from openshiftstoragelibs.process_ops import (
+    get_process_info_on_gluster_pod_or_node,
 )
 from openshiftstoragelibs.openshift_storage_libs import (
     get_iscsi_block_devices_by_path,
@@ -805,3 +810,209 @@ class GlusterBlockBaseClass(BaseClass):
             gluster_node=gluster_node, ocp_client_node=ocp_client_node)
 
         return block_hosting_vol
+
+
+class ScaleUpBaseClass(GlusterBlockBaseClass):
+    """Base class for ScaleUp test cases."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Initialize all the variables necessary for test cases."""
+        super(GlusterBlockBaseClass, cls).setUpClass()
+
+        cls.file_sc = cls.storage_classes.get(
+            'storage_class1', cls.storage_classes.get('file_storage_class'))
+        cls.file_secret_type = "kubernetes.io/glusterfs"
+
+        cls.block_sc = cls.storage_classes.get(
+            'storage_class2', cls.storage_classes.get('block_storage_class'))
+        cls.block_secret_type = "gluster.org/glusterblock"
+
+    def create_storage_class(self, sc_type, secret_name=None,
+                             sc_name_prefix="autotests-sc",
+                             sc_name=None,
+                             create_vol_name_prefix=False,
+                             vol_name_prefix=None,
+                             allow_volume_expansion=False,
+                             reclaim_policy="Delete",
+                             set_hacount=None,
+                             clusterid=None,
+                             hacount=None,
+                             is_arbiter_vol=False, arbiter_avg_file_size=None,
+                             heketi_zone_checking=None, volumeoptions=None,
+                             skip_cleanup=False):
+
+        if sc_type == "file":
+            self.sc = self.file_sc
+            self.secret_type = self.file_secret_type
+            provisioner = "kubernetes.io/glusterfs"
+        elif sc_type == "block":
+            self.sc = self.block_sc
+            self.secret_type = self.block_secret_type
+            provisioner = self.get_block_provisioner_for_sc()
+        else:
+            msg = (
+                "Only file or block sc_type is supported. But got {}.".format(
+                    sc_type))
+            raise AssertionError(msg)
+
+        return self._create_storage_class(
+            provisioner=provisioner, secret_name=secret_name,
+            sc_name_prefix=sc_name_prefix, sc_name=sc_name,
+            create_vol_name_prefix=create_vol_name_prefix,
+            vol_name_prefix=vol_name_prefix,
+            allow_volume_expansion=allow_volume_expansion,
+            reclaim_policy=reclaim_policy, set_hacount=set_hacount,
+            clusterid=clusterid, hacount=hacount,
+            is_arbiter_vol=is_arbiter_vol,
+            arbiter_avg_file_size=arbiter_avg_file_size,
+            heketi_zone_checking=heketi_zone_checking,
+            volumeoptions=volumeoptions, skip_cleanup=skip_cleanup)
+
+    def create_pvcs_in_batch(
+            self, sc_name, pvc_count, batch_amount=8,
+            pvc_name_prefix='auto-scale-pvc', timeout=300, wait_step=5,
+            skip_cleanup=False):
+        """Create PVC's in batches.
+
+        Args:
+            sc_name(str): Name of the storage class.
+            pvc_count(int): Count of PVC's to be create.
+            batch_amount(int): Amount of PVC's to be create in one batch.
+            pvc_name_prefix(str): Name prefix for PVC's.
+            timeout (int): timeout for one batch
+            wait_step ( int): wait step
+            skip_cleanup (bool): skip cleanup or not.
+
+        Returns:
+            list: list of PVC's
+        """
+        pvcs = []
+
+        while pvc_count > 0:
+            # Change batch_amount if pvc_count < batch_amount
+            if pvc_count < batch_amount:
+                batch_amount = pvc_count
+            # Create PVC's
+            pvcs += self.create_and_wait_for_pvcs(
+                sc_name=sc_name, pvc_amount=batch_amount,
+                pvc_name_prefix=pvc_name_prefix, timeout=timeout,
+                wait_step=wait_step, skip_cleanup=skip_cleanup)
+            pvc_count -= batch_amount
+
+        return pvcs
+
+    def create_app_pods_in_batch(
+            self, pvcs, pod_count, batch_amount=5,
+            dc_name_prefix='auto-scale-dc', label={'scale': 'scale'},
+            timeout=300, wait_step=5, skip_cleanup=False):
+        """Create App pods in batches.
+
+        Args:
+            pvcs (list): List of PVC's for which app pods needs to be created.
+            pod_count (int): Count of app pods needs to be created.
+            batch_amount (int): Amount of POD's to be create in one batch.
+            dc_name_prefix (str): Name prefix for deployement config.
+            lable (dict): keys and value for adding label into DC.
+            timeout (int): timeout for one batch
+            wait_step ( int): wait step
+            skip_cleanup (bool): skip cleanup or not.
+
+        Returns:
+            dict: dict of DC's as key.
+        """
+        index, dcs = 0, {}
+
+        if pod_count > len(pvcs):
+            raise AssertionError(
+                "Pod count {} should be less or equal to PVC's len {}.".format(
+                    pod_count, len(pvcs)))
+
+        while pod_count > 0:
+            # Change batch_amount if pod_count < 5
+            if pod_count < batch_amount:
+                batch_amount = pod_count
+            # Create DC's
+            dcs.update(
+                self.create_dcs_with_pvc(
+                    pvc_names=pvcs[index:index + batch_amount],
+                    dc_name_prefix=dc_name_prefix, label=label,
+                    timeout=timeout, wait_step=wait_step,
+                    skip_cleanup=self.skip_cleanup))
+            index += batch_amount
+            pod_count -= batch_amount
+
+        return dcs
+
+    def check_glusterfsd_memory(self):
+        faulty_processes = defaultdict(lambda: {})
+
+        for g_node in self.gluster_servers:
+            ps_info = get_process_info_on_gluster_pod_or_node(
+                self.ocp_master_node[0], g_node, 'glusterfsd', ['pid', 'rss'])
+
+            for ps in ps_info:
+                pid, rss = ps['pid'], ps['rss']
+
+                # If process memory is more than 3 gb
+                if int(rss) > 3145728:
+                    faulty_processes[g_node][pid] = rss
+
+        msg = (
+            "Some of gluster pods or nodes are using more than 3gb for "
+            "glusterfsd process. {}".format(faulty_processes))
+        self.assertFalse(faulty_processes, msg)
+
+    def check_vol_status(self):
+        # Check status of all vols
+        status = get_gluster_vol_status('all')
+
+        pids = defaultdict(int)
+        down_bricks = 0
+        for vol in status.keys():
+            for host in status[vol].keys():
+                for brick_or_shd in status[vol][host].keys():
+                    if status[vol][host][brick_or_shd]['status'] != "1":
+                        down_bricks += 1
+                    pid = status[vol][host][brick_or_shd]['pid']
+                    pids[pid] += 1
+
+        # Get Pids which are running more than 250 bricks and raise exception
+        exhausted_pids = [pd for pd in pids.keys() if pids[pd] > 250]
+
+        self.assertFalse(
+            (exhausted_pids and down_bricks),
+            'Pids {} have more than 250 bricks attached to it. {} bricks or '
+            'shd are down.'.format(exhausted_pids, down_bricks))
+        self.assertFalse(
+            exhausted_pids, 'Pids {} have more than 250 bricks attached to'
+            ' it.'.format(exhausted_pids))
+        self.assertFalse(
+            down_bricks, '{} bricks or shd are down.'.format(down_bricks))
+
+    def verify_pods_are_running(self):
+        pods = oc_get_pods(self.ocp_master_node[0], selector='scale=scale')
+
+        faulty_pods = {}
+        for pod in pods.keys():
+            if not (pods[pod]['ready'] == '1/1'
+                    and pods[pod]['status'] == 'Running'):
+                faulty_pods[pod] = pods[pod]
+
+        msg = "Out of {} pods {} pods are not running. Pods are {}".format(
+            len(pods), len(faulty_pods), faulty_pods)
+        self.assertFalse(faulty_pods, msg)
+
+    def verify_if_more_than_n_percentage_pod_restarted(
+            self, pods_old, selector='scale=scale', percentage=33):
+        # Make sure pods did not got restarted
+        pods_new = oc_get_pods(self.ocp_master_node[0], selector=selector)
+        pods_restart = []
+        for pod in pods_new.keys():
+            if pods_new[pod]['restarts'] != pods_old[pod]['restarts']:
+                pods_restart += [pod]
+
+        if len(pods_restart) > int(len(pods_new.keys()) / (100 / percentage)):
+            msg = "Out of {} pods {} pods restarted {}".format(
+                len(pods_new), len(pods_restart), pods_restart)
+            raise AssertionError(msg)
