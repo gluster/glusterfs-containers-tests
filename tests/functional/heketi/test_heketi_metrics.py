@@ -193,7 +193,7 @@ class TestHeketiMetrics(BaseClass):
             self.ocp_master_node[0], self.heketi_dc_name, pod_amount=1)
 
         pod_name = get_pod_name_from_dc(
-            self.ocp_master_node[0], self.heketi_dc_name, self.heketi_dc_name)
+            self.ocp_master_node[0], self.heketi_dc_name)
         wait_for_pod_be_ready(self.ocp_master_node[0], pod_name, wait_step=5)
 
         for i in range(3):
