@@ -3,6 +3,7 @@ import random
 from unittest import skip
 
 from glusto.core import Glusto as g
+import pytest
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs.command import cmd_run
@@ -86,6 +87,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                 ret, 0,
                 "Failed to execute '%s' command on '%s'." % (cmd, self.node))
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterblock_hacount_true(self):
         """Validate dynamic provisioning for glusterblock
         """
@@ -96,6 +98,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         """
         self.dynamic_provisioning_glusterblock(set_hacount=False)
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterblock_heketipod_failure(self):
         """Validate PVC with glusterblock creation when heketi pod is down"""
         datafile_path = '/mnt/fake_file_for_%s' % self.id()
@@ -264,6 +267,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                     self.ocp_client[0], cmd % log, gluster_node=g_host)
                 self.assertTrue(out, "Command '%s' output is empty." % cmd)
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterblock_heketidown_pvc_delete(self):
         """Validate PVC deletion when heketi is down"""
 
@@ -301,6 +305,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # create a new PVC
         self.create_and_wait_for_pvc()
 
+    @pytest.mark.tier0
     def test_recreate_app_pod_with_attached_block_pv(self):
         """Validate app pod attached block device I/O after restart"""
         datafile_path = '/mnt/temporary_test_file'
@@ -329,6 +334,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # Perform I/O on the new POD
         self.cmd_run(write_cmd % (new_pod_name, datafile_path))
 
+    @pytest.mark.tier0
     def test_volname_prefix_glusterblock(self):
         """Validate custom volname prefix blockvol"""
 
@@ -348,6 +354,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         self.assertTrue(vol_name.startswith(
             self.sc.get('volumenameprefix', 'autotest')))
 
+    @pytest.mark.tier0
     def test_dynamic_provisioning_glusterblock_reclaim_policy_retain(self):
         """Validate retain policy for gluster-block after PVC deletion"""
 

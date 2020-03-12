@@ -6,6 +6,8 @@ except ImportError:
     # py2
     import json
 
+import pytest
+
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
     heketi_topology_info,
@@ -26,6 +28,7 @@ from openshiftstoragelibs.openshift_ops import (
 
 class TestRestartHeketi(BaseClass):
 
+    @pytest.mark.tier0
     def test_restart_heketi_pod(self):
         """Validate restarting heketi pod"""
 
@@ -77,6 +80,7 @@ class TestRestartHeketi(BaseClass):
         heketi_volume_delete(
             self.heketi_client_node, self.heketi_server_url, vol_info['id'])
 
+    @pytest.mark.tier0
     def test_set_heketi_vol_size_and_brick_amount_limits(self):
         # Get Heketi secret name
         cmd_get_heketi_secret_name = (

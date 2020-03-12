@@ -1,6 +1,7 @@
 from glusto.core import Glusto as g
 from glustolibs.gluster import snap_ops
 from glustolibs.gluster import volume_ops
+import pytest
 import six
 
 from openshiftstoragelibs.baseclass import BaseClass
@@ -18,6 +19,7 @@ class TestVolumeCreationTestCases(BaseClass):
         super(TestVolumeCreationTestCases, self).setUp()
         self.node = self.ocp_master_node[0]
 
+    @pytest.mark.tier0
     @podcmd.GlustoPod()
     def test_create_heketi_volume(self):
         """Test heketi volume creation and background gluster validation"""
@@ -90,6 +92,7 @@ class TestVolumeCreationTestCases(BaseClass):
                              [brick_name]["status"]), 1,
                              "Brick %s is not up" % brick_name)
 
+    @pytest.mark.tier0
     def test_volume_creation_no_free_devices(self):
         """Validate heketi error is returned when no free devices available"""
         node, server_url = self.heketi_client_node, self.heketi_server_url
@@ -242,6 +245,7 @@ class TestVolumeCreationTestCases(BaseClass):
             g_vol_info = g_vol_info.get(file_vol)
         return g_vol_info
 
+    @pytest.mark.tier0
     def test_volume_creation_of_size_greater_than_the_device_size(self):
         """Validate creation of a volume of size greater than the size of a
         device.

@@ -2,6 +2,7 @@ from unittest import skip
 
 import ddt
 from glusto.core import Glusto as g
+import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.openshift_storage_libs import enable_pvc_resize
@@ -228,6 +229,7 @@ class TestPvResizeClass(BaseClass):
 
         self._pv_resize(exceed_free_space=True)
 
+    @pytest.mark.tier0
     def test_pv_resize_by_exact_free_space(self):
         """Validate PVC resize when resized by exact available free space"""
         self._pv_resize(exceed_free_space=False)

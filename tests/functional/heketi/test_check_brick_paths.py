@@ -1,4 +1,5 @@
 from glusto.core import Glusto as g
+import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
@@ -27,6 +28,7 @@ class TestHeketiVolume(BaseClass):
                 results.append(out)
             assertion_method('present', results)
 
+    @pytest.mark.tier0
     def test_validate_brick_paths_on_gluster_pods_or_nodes(self):
         """Validate brick paths after creation and deletion of a volume."""
 

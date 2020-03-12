@@ -1,4 +1,5 @@
 import ddt
+import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs import heketi_ops
@@ -48,6 +49,7 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             "heketi volume list matches with volume list of all nodes",
             out['report'])
 
+    @pytest.mark.tier0
     @ddt.data('', 'block')
     def test_compare_real_vol_count_with_db_check_info(self, vol_type):
         """Validate file/block volumes using heketi db check."""

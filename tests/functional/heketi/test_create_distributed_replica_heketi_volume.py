@@ -4,6 +4,7 @@ import math
 import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_list, get_volume_info
+import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
@@ -194,12 +195,14 @@ class TestHeketiVolume(BaseClass):
                        free_space_after_creating_vol,
                        free_space_after_deleting_vol))
 
+    @pytest.mark.tier0
     def test_to_create_and_delete_dist_rep_vol(self):
         """Validate 2x3 vol type creation when the volume cannot be
            carved out of a single device
         """
         self._create_distributed_replica_vol(validate_cleanup=True)
 
+    @pytest.mark.tier0
     @ddt.data(True, False)
     def test_create_and_delete_dist_replicated_bhv(self, validate_cleanup):
         """Validate distributed replicated bhv using heketi-cli"""

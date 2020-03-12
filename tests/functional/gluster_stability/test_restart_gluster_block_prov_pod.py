@@ -1,3 +1,5 @@
+import pytest
+
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs import command
 from openshiftstoragelibs.heketi_ops import (
@@ -13,6 +15,7 @@ from openshiftstoragelibs.openshift_ops import (
 
 class TestRestartGlusterBlockPod(BaseClass):
 
+    @pytest.mark.tier0
     def test_restart_gluster_block_provisioner_pod(self):
         """Restart gluster-block provisioner pod."""
 

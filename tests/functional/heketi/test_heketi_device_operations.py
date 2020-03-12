@@ -1,5 +1,6 @@
 import ddt
 from glusto.core import Glusto as g
+import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
@@ -95,6 +96,7 @@ class TestHeketiDeviceOperations(BaseClass):
 
         return online_hosts
 
+    @pytest.mark.tier0
     def test_heketi_device_enable_disable(self):
         """Validate device enable and disable functionality"""
 
@@ -174,6 +176,7 @@ class TestHeketiDeviceOperations(BaseClass):
             "None of '%s' volume bricks is present on the '%s' device." % (
                 vol_info['id'], online_device_id))
 
+    @pytest.mark.tier0
     @ddt.data(True, False)
     def test_heketi_device_remove(self, delete_device):
         """Validate remove/delete device using heketi-cli"""
