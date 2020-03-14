@@ -181,6 +181,7 @@ class TestStorageClassCases(BaseClass):
         validate_multipath_pod(
             self.ocp_master_node[0], pod_name, hacount, list(mpaths)[0])
 
+    @pytest.mark.tier1
     @ddt.data(
         {"volumetype": "dist-rep:3"},
         {"resturl": "http://10.0.0.1:8080"},
@@ -194,6 +195,7 @@ class TestStorageClassCases(BaseClass):
         """Validate glusterfile storage with different incorrect parameters"""
         self.create_sc_with_parameter("glusterfile", parameter=parameter)
 
+    @pytest.mark.tier1
     @ddt.data(
         {"resturl": "http://10.0.0.1:8080"},
         {"restsecretname": "fakerestsecretname",
@@ -329,6 +331,7 @@ class TestStorageClassCases(BaseClass):
                 "Invalid chapauthenabled value '%s'" % chapauthenabled
             )
 
+    @pytest.mark.tier1
     def test_create_and_verify_pvc_with_volume_name_prefix(self):
         """create and verify pvc with volname prefix on an app pod"""
         if get_openshift_version() < "3.9":
@@ -355,6 +358,7 @@ class TestStorageClassCases(BaseClass):
             "Failed to read Endpoints of %s on  %s " % (
                 pv_name, self.ocp_master_node[0]))
 
+    @pytest.mark.tier1
     def test_try_to_create_sc_with_duplicated_name(self):
         """Verify SC creation fails with duplicate name"""
         sc_name = "test-sc-duplicated-name-" + utils.get_random_str()
@@ -363,6 +367,7 @@ class TestStorageClassCases(BaseClass):
         with self.assertRaises(AssertionError):
             self.create_storage_class(sc_name=sc_name)
 
+    @pytest.mark.tier1
     @ddt.data('secretName', 'secretNamespace', None)
     def test_sc_glusterfile_missing_parameter(self, parameter):
         """Validate glusterfile storage with missing parameters"""
@@ -392,6 +397,7 @@ class TestStorageClassCases(BaseClass):
         with self.assertRaises(ExecutionError):
             verify_pvc_status_is_bound(node, pvc_name, timeout=1)
 
+    @pytest.mark.tier1
     def test_sc_create_with_clusterid(self):
         """Create storage class with 'cluster id'"""
         h_cluster_list = heketi_cluster_list(

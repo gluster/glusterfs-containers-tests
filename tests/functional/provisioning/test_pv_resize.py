@@ -50,6 +50,7 @@ class TestPvResizeClass(BaseClass):
             g.log.error(msg)
             raise self.skipTest(msg)
 
+    @pytest.mark.tier1
     @ddt.data(
         (True, True),
         (False, True),
@@ -220,6 +221,7 @@ class TestPvResizeClass(BaseClass):
             self.assertEqual(
                 ret, 0, "Failed to write data on the expanded PVC")
 
+    @pytest.mark.tier1
     def test_pv_resize_no_free_space(self):
         """Validate PVC resize fails if there is no free space available"""
         if get_openshift_storage_version() < "3.11.5":
@@ -234,6 +236,7 @@ class TestPvResizeClass(BaseClass):
         """Validate PVC resize when resized by exact available free space"""
         self._pv_resize(exceed_free_space=False)
 
+    @pytest.mark.tier1
     def test_pv_resize_try_shrink_pv_size(self):
         """Validate whether reducing the PV size is allowed"""
         dir_path = "/mnt/"
@@ -270,6 +273,7 @@ class TestPvResizeClass(BaseClass):
         self.assertEqual(
             ret, 0, "Failed to execute command %s on %s" % (cmd, node))
 
+    @pytest.mark.tier1
     def test_pv_resize_when_heketi_down(self):
         """Create a PVC and try to expand it when heketi is down, It should
         fail. After heketi is up, expand PVC should work.
@@ -338,6 +342,7 @@ class TestPvResizeClass(BaseClass):
         wait_for_pod_be_ready(self.node, pod_name, 10, 5)
 
     @skip("Blocked by BZ-1547069")
+    @pytest.mark.tier1
     def test_pvc_resize_size_greater_than_available_space(self):
         """Re-size PVC to greater value than available volume size and then
         expand volume to support maximum size.

@@ -322,6 +322,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info, arbiter_bricks=2, data_bricks=4)
 
+    @pytest.mark.tier1
     # NOTE(vponomar): do not create big volumes setting value less than 64
     # for 'avg_file_size'. It will cause creation of very huge amount of files
     # making one test run very loooooooong.
@@ -391,6 +392,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 "Arbiter brick '%s' was not verified. Looks like it was "
                 "not found on any of gluster PODs/nodes." % brick["name"])
 
+    @pytest.mark.tier1
     @ddt.data(
         (False, False, True, True),
         (True, True, False, False),
@@ -478,6 +480,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 self.assertIn(
                     data_brick.split(':')[0], data_nodes_ip_addresses)
 
+    @pytest.mark.tier1
     def test_create_delete_pvcs_to_make_gluster_reuse_released_space(self):
         """Validate reuse of volume space after deletion of PVCs"""
         min_storage_gb = 10
@@ -588,6 +591,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info, arbiter_bricks=2, data_bricks=4)
 
+    @pytest.mark.tier1
     @ddt.data(True, False)
     def test_expand_arbiter_volume_setting_tags_on_nodes_or_devices(
             self, node_tags):
@@ -675,6 +679,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         for brick in bricks['data_list']:
             self.assertIn(brick['name'].split(':')[0], data_hosts)
 
+    @pytest.mark.tier1
     @ddt.data(
         (4, '250M', True),
         (8, '122M', True),
@@ -811,6 +816,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                     openshift_ops.cmd_run_on_gluster_pod_or_node(
                         self.node, cmd, gluster_node_ip)
 
+    @pytest.mark.tier1
     def test_arbiter_scaled_heketi_and_gluster_volume_mapping(self):
         """Test to validate PVC, Heketi & gluster volume mapping
         for large no of PVC's
@@ -836,6 +842,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         gluster_ops.match_heketi_and_gluster_volumes_by_prefix(
             heketi_volume_names, "{}_".format(prefix))
 
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_arbiter_volume_node_tag_removal(self):
         """Test remove tags from nodes and check if arbiter volume is

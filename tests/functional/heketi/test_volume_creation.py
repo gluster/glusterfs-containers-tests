@@ -156,6 +156,7 @@ class TestVolumeCreationTestCases(BaseClass):
                 vol_fail,
                 "Volume should have not been created. Out: %s" % vol_fail)
 
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_volume_create_replica_2(self):
         """Validate creation of a replica 2 volume"""
@@ -186,6 +187,7 @@ class TestVolumeCreationTestCases(BaseClass):
                          "Brick amount is expected to be 2. "
                          "Actual amount is '%s'" % brick_amount)
 
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_volume_create_snapshot_enabled(self):
         """Validate volume creation with snapshot enabled"""
@@ -374,6 +376,7 @@ class TestVolumeCreationTestCases(BaseClass):
                % (vol_name, gluster_v_info['brickCount']))
         self.assertFalse(int(gluster_v_info['brickCount']) % 3)
 
+    @pytest.mark.tier1
     def test_create_volume_with_same_name(self):
         """Test create two volumes with the same name and verify that 2nd one
         is failing with the appropriate error.

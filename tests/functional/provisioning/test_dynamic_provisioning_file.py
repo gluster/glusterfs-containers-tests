@@ -481,6 +481,7 @@ class TestDynamicProvisioningP0(BaseClass):
         oc_delete(self.node, 'pv', pv_name)
         wait_for_resource_absence(self.node, 'pv', pv_name)
 
+    @pytest.mark.tier1
     def test_usage_of_default_storage_class(self):
         """Validate PVs creation for SC with default custom volname prefix"""
 

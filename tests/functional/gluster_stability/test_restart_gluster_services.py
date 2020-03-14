@@ -4,6 +4,7 @@ from unittest import skip
 
 import ddt
 from glusto.core import Glusto as g
+import pytest
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs.gluster_ops import (
@@ -168,6 +169,7 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
         wait_to_heal_complete()
 
     @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
+    @pytest.mark.tier1
     @ddt.data(SERVICE_BLOCKD, SERVICE_TCMU, SERVICE_TARGET)
     def test_restart_services_provision_volume_and_run_io(self, service):
         """Restart gluster service then validate volumes"""
@@ -210,6 +212,7 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
         self.validate_volumes_and_blocks()
 
     @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
+    @pytest.mark.tier1
     def test_target_side_failures_brick_failure_on_block_hosting_volume(self):
         """Target side failures - Brick failure on block hosting volume"""
         skip_msg = (
@@ -247,6 +250,7 @@ class GlusterStabilityTestSetup(GlusterBlockBaseClass):
         self.validate_volumes_and_blocks()
 
     @skip("Blocked by BZ-1634745, BZ-1635736, BZ-1636477")
+    @pytest.mark.tier1
     def test_start_stop_block_volume_service(self):
         """Validate block hosting volume by start/stop operation
 

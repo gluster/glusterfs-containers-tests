@@ -8,6 +8,7 @@ except ImportError:
 
 import ddt
 from glusto.core import Glusto as g
+import pytest
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import heketi_ops
@@ -119,6 +120,7 @@ class TestHeketiZones(baseclass.BaseClass):
                     (node_info["zone"], node_info['hostnames']['storage']))
         return online_nodes
 
+    @pytest.mark.tier1
     @ddt.data(
         (3, "strict", False),
         (3, "strict", True),

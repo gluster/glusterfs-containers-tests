@@ -329,6 +329,7 @@ class TestHeketiDeviceOperations(BaseClass):
             "Some of the '%s' volume bricks is present of the removed "
             "'%s' device." % (vol_info['id'], lowest_device_id))
 
+    @pytest.mark.tier1
     def test_heketi_device_removal_with_insuff_space(self):
         """Validate heketi with device removal insufficient space"""
 
@@ -417,6 +418,7 @@ class TestHeketiDeviceOperations(BaseClass):
                 heketi_device_disable, heketi_node, heketi_url, device_id)
             raise
 
+    @pytest.mark.tier1
     def test_heketi_device_delete(self):
         """Test Heketi device delete operation"""
 
@@ -476,6 +478,7 @@ class TestHeketiDeviceOperations(BaseClass):
                "after the device deletion" % (device_id, node_id))
         self.assertNotIn(device_id, node_info_after_deletion, msg)
 
+    @pytest.mark.tier1
     def test_heketi_device_info(self):
         """Validate whether device related information is displayed"""
 

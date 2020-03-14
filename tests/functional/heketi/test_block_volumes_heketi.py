@@ -219,6 +219,7 @@ class TestBlockVolumeOps(BaseClass):
             self.assertEqual(v, vol_info[bhv_name]
                              ["options"][k])
 
+    @pytest.mark.tier1
     @ddt.data(True, False)
     def test_create_blockvolume_with_different_auth_values(self, auth_value):
         """To validate block volume creation with different auth values"""
@@ -266,6 +267,7 @@ class TestBlockVolumeOps(BaseClass):
             ("Block volume Names are not same %s as %s",
              (block_vol_info["name"], vol_name)))
 
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_create_max_num_blockhostingvolumes(self):
         num_of_bv = 10
@@ -362,6 +364,7 @@ class TestBlockVolumeOps(BaseClass):
         # Check if all blockhosting volumes are deleted from heketi
         self.assertFalse(new_bhv_list)
 
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_targetcli_when_block_hosting_volume_down(self):
         """Validate no inconsistencies occur in targetcli when block volumes

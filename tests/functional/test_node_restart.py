@@ -1,6 +1,7 @@
 from unittest import skip
 
 from glusto.core import Glusto as g
+import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.exceptions import ExecutionError
@@ -99,6 +100,7 @@ class TestNodeRestart(BaseClass):
                 self.oc_node, gluster_pod, service, "active", state)
 
     @skip("Blocked by BZ-1652913")
+    @pytest.mark.tier1
     def test_node_restart_check_volume(self):
         df_cmd = "df --out=target | sed 1d | grep /var/lib/heketi"
         fstab_cmd = "grep '%s' /var/lib/heketi/fstab"

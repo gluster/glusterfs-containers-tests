@@ -1,5 +1,6 @@
 from glusto.core import Glusto as g
 from glustolibs.gluster.volume_ops import get_volume_info
+import pytest
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import heketi_ops
@@ -7,6 +8,7 @@ from openshiftstoragelibs import podcmd
 
 
 class TestDisableHeketiDevice(baseclass.BaseClass):
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_create_volumes_enabling_and_disabling_heketi_devices(self):
         """Validate enable/disable of heketi device"""

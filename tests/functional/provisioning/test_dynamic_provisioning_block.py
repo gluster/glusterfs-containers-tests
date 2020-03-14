@@ -93,6 +93,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         """
         self.dynamic_provisioning_glusterblock(set_hacount=True)
 
+    @pytest.mark.tier1
     def test_dynamic_provisioning_glusterblock_hacount_false(self):
         """Validate storage-class mandatory parameters for block
         """
@@ -165,6 +166,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             ret, 0,
             "Failed to execute command %s on %s" % (write_data_cmd, self.node))
 
+    @pytest.mark.tier1
     def test_dynamic_provisioning_glusterblock_gluster_pod_or_node_failure(
             self):
         """Create glusterblock PVC when gluster pod or node is down."""
@@ -228,6 +230,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         ret, out, err = async_io.async_communicate()
         self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd, self.node))
 
+    @pytest.mark.tier1
     def test_glusterblock_logs_presence_verification(self):
         """Validate presence of glusterblock provisioner POD and it's status"""
 
@@ -445,6 +448,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                           % (free_space, free_size))
 
     @skip("Blocked by BZ-1714292")
+    @pytest.mark.tier1
     def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_neg(
             self):
         """Verify that block volume creation fails when we create block
@@ -501,6 +505,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         verify_pvc_status_is_bound(self.node, pvc_name)
 
     @skip("Blocked by BZ-1714292")
+    @pytest.mark.tier1
     def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_pos(
             self):
         """Verify that block volume creation succeed when we create BHV
@@ -527,6 +532,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         self.create_and_wait_for_pvc(pvc_size=(default_bhv_size + 1))
 
     @skip("Blocked by BZ-1714292")
+    @pytest.mark.tier1
     def test_expansion_of_block_hosting_volume_using_heketi(self):
         """Verify that after expanding block hosting volume we are able to
         consume the expanded space"""
@@ -605,6 +611,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                     pvc_size=(expand_size - 1), pvc_amount=1)
 
     @skip("Blocked by BZ-1769426")
+    @pytest.mark.tier1
     def test_targetcli_failure_during_block_pvc_creation(self):
         h_node, h_server = self.heketi_client_node, self.heketi_server_url
 
@@ -726,6 +733,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # Wait for all the PVCs to be in bound state
         wait_for_pvcs_be_bound(self.node, pvc_names, timeout=300, wait_step=5)
 
+    @pytest.mark.tier1
     def test_creation_of_pvc_when_one_node_is_down(self):
         """Test PVC creation when one node is down than hacount"""
         node_count = len(self.gluster_servers)

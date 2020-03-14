@@ -54,6 +54,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             "Heketi volume list %s is not equal to gluster volume list %s"
             % (node_ips, hostnames))
 
+    @pytest.mark.tier1
     def test_heketi_node_info(self):
         """Test heketi node info operation
         """
@@ -244,6 +245,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             storage_ip, ep_addresses)
         self.assertIn(storage_ip, ep_addresses, err_msg)
 
+    @pytest.mark.tier1
     def test_heketi_node_add_with_invalid_cluster(self):
         """Test heketi node add operation with invalid cluster id"""
         storage_hostname, cluster_id = None, utils.get_random_str(size=33)
@@ -530,6 +532,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             for node_id in h_nodes_list[2:]:
                 self.addCleanup(h.heketi_node_enable, h_node, h_url, node_id)
 
+    @pytest.mark.tier1
     @ddt.data(
         ("volume", "create"),
         ("volume", "delete"),

@@ -18,6 +18,7 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             self.skipTest("heketi-client package %s does not support server "
                           "state examine gluster" % version.v_str)
 
+    @pytest.mark.tier1
     def test_volume_inconsistencies(self):
         # Examine Gluster cluster and Heketi that there is no inconsistencies
         out = heketi_ops.heketi_examine_gluster(
@@ -73,6 +74,7 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             "%svolume count doesn't match expected "
             "result %s, actual result is %s" % (vol_type, count, vol_count))
 
+    @pytest.mark.tier1
     def test_compare_node_count_with_db_check_info(self):
         """Validate nodes count using heketi db check"""
 

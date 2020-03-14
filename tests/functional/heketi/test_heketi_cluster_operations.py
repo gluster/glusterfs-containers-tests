@@ -1,5 +1,6 @@
 import ddt
 from glusto.core import Glusto as g
+import pytest
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
@@ -10,6 +11,7 @@ from openshiftstoragelibs import heketi_ops
 class TestClusterOperationsTestCases(baseclass.BaseClass):
     """Class for heketi cluster creation related test cases"""
 
+    @pytest.mark.tier1
     @ddt.data("", "block", "file")
     def test_heketi_cluster_create(self, disable_volume_type):
         """Test heketi cluster creation"""
@@ -35,6 +37,7 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
                 cluster_info["block"], err_msg % ("block", "False"))
             self.assertTrue(cluster_info["file"], err_msg % ("file", "False"))
 
+    @pytest.mark.tier1
     def test_heketi_cluster_list(self):
         """Test and validateheketi cluster list operation"""
         # Create heketi cluster
@@ -53,6 +56,7 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
             % (cluster_info["id"], cluster_list["clusters"]))
         self.assertIn(cluster_info["id"], cluster_list["clusters"], err_msg)
 
+    @pytest.mark.tier1
     def test_heketi_cluster_info(self):
         """Test and validateheketi cluster info operation"""
         # Create heketi cluster
@@ -78,6 +82,7 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
         for param, value in params:
             self.assertEqual(get_cluster_info[param], value)
 
+    @pytest.mark.tier1
     def test_heketi_cluster_delete(self):
         """Test and validateheketi cluster delete operation"""
         # Create heketi cluster
@@ -97,6 +102,7 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
             % (cluster_info["id"], cluster_list["clusters"]))
         self.assertNotIn(cluster_info["id"], cluster_list["clusters"], err_msg)
 
+    @pytest.mark.tier1
     def test_create_heketi_cluster_and_add_node(self):
         """Test heketi node add to a newly created cluster"""
         storage_host_info = g.config.get("additional_gluster_servers")

@@ -91,6 +91,7 @@ class TestHeketiVolume(BaseClass):
             "of Heketi volumes before and after volume creation: %s\n%s" % (
                 existing_h_vol_list, h_vol_list))
 
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_create_vol_and_retrieve_vol_info(self):
         """Validate heketi and gluster volume info"""
@@ -174,6 +175,7 @@ class TestHeketiVolume(BaseClass):
             "\n%s" % (volume_ids[2], existing_volumes))
         g.log.info("Sucessfully verified the topology info")
 
+    @pytest.mark.tier1
     def test_to_check_deletion_of_cluster(self):
         """Validate deletion of cluster with volumes"""
         # List heketi volumes
@@ -277,6 +279,7 @@ class TestHeketiVolume(BaseClass):
             self.heketi_client_node, heketi_url, node_id, json=True)
         self.assertEqual(node_info['state'].lower(), 'online')
 
+    @pytest.mark.tier1
     def test_blockvolume_create_no_free_space(self):
         """Validate error is returned when free capacity is exhausted"""
 
@@ -336,6 +339,7 @@ class TestHeketiVolume(BaseClass):
                  max_block_hosting_vol_size, blockvol2, block_hosting_vol,
                  '\n'.join(file_volumes_debug_info))))
 
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_heketi_volume_create_with_cluster_node_down(self):
         if len(self.gluster_servers) < 5:
@@ -375,6 +379,7 @@ class TestHeketiVolume(BaseClass):
             volume_name, g_vol_list)
         self.assertIn(volume_name, g_vol_list, msg)
 
+    @pytest.mark.tier1
     def test_verify_pending_entries_in_db(self):
         """Verify pending entries of volumes and bricks in db during
         volume creation from heketi side

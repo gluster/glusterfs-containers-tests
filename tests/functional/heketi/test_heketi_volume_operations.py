@@ -3,6 +3,7 @@ from glustolibs.gluster.snap_ops import (
     snap_delete,
     snap_list,
 )
+import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.command import cmd_run
@@ -28,6 +29,7 @@ class TestHeketiVolumeOperations(BaseClass):
         super(TestHeketiVolumeOperations, cls).setUpClass()
         cls.volume_size = 1
 
+    @pytest.mark.tier1
     def test_heketi_with_default_options(self):
         """
         Test to create volume with default options.
@@ -47,6 +49,7 @@ class TestHeketiVolumeOperations(BaseClass):
                           "Expected Size: %s, Actual Size: %s"
                           % (self.volume_size, vol_info['size'])))
 
+    @pytest.mark.tier1
     def test_heketi_with_expand_volume(self):
         """
         Test volume expand and size if updated correctly in heketi-cli info
@@ -80,6 +83,7 @@ class TestHeketiVolumeOperations(BaseClass):
                           "Size: %s" % (str(expected_size),
                                         str(volume_info['size']))))
 
+    @pytest.mark.tier1
     def test_heketi_volume_mount(self):
         self.node = self.ocp_master_node[0]
         try:
@@ -126,6 +130,7 @@ class TestHeketiVolumeOperations(BaseClass):
             cmd_run_on_gluster_pod_or_node(self.node, 'ls %s/%s' % (
                 brick['path'], _file), brick_host)
 
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_heketi_volume_snapshot_create(self):
         """Test heketi volume snapshot create operation"""
