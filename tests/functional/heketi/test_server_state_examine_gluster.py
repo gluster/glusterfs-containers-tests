@@ -136,3 +136,34 @@ class TestHeketiServerStateExamineGluster(BaseClass):
                    "info {} is not same".format(
                        db_bricks_count, topology_bricks_count))
             self.assertEqual(topology_bricks_count, db_bricks_count, msg)
+
+    @pytest.mark.tier1
+    def test_compare_block_volumes(self):
+        """Validate blockvolume count using heketi gluster examine"""
+        # Create some blockvolumes
+        size = 1
+        for i in range(5):
+            volume = heketi_ops.heketi_blockvolume_create(
+                self.heketi_client_node, self.heketi_server_url, size,
+                json=True)['id']
+            self.addCleanup(
+                heketi_ops.heketi_blockvolume_delete,
+                self.heketi_client_node, self.heketi_server_url, volume)
+
+        # Get the list of blockvolumes from heketi gluster examine
+        out = heketi_ops.heketi_examine_gluster(
+            self.heketi_client_node, self.heketi_server_url)
+        examine_blockvolumes, clusters = [], out['heketidb']['clusterentries']
+        for cluster in clusters.values():
+            examine_blockvolumes += cluster['Info']['blockvolumes']
+
+        # Get list of blockvolume from heketi blockvolume list
+        heketi_block_volumes = heketi_ops.heketi_blockvolume_list(
+            self.heketi_client_node, self.heketi_server_url,
+            json=True)['blockvolumes']
+
+        # Compare volume list
+        msg = ("Heketi blockvolume list {} and list of blockvolumes in heketi "
+               "gluster examine {} are not same".format(
+                   heketi_block_volumes, examine_blockvolumes))
+        self.assertEqual(heketi_block_volumes, examine_blockvolumes, msg)
