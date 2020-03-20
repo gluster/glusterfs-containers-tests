@@ -114,7 +114,7 @@ class TestDynamicProvisioningP0(BaseClass):
         g.log.info("test_dynamic_provisioning_glusterfile")
         self.dynamic_provisioning_glusterfile(False)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_dynamic_provisioning_glusterfile_volname_prefix(self):
         """Validate dynamic provisioning for gluster file with vol name prefix
         """
