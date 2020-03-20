@@ -89,3 +89,49 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             calculated_nodes_count, db_nodes_count,
             "Nodes count from 'DB check' (%s) doesn't match calculated nodes "
             "count (%s)." % (db_nodes_count, calculated_nodes_count))
+
+    @ddt.data('device_count', 'node_count', 'bricks_count')
+    def test_verify_db_check(self, count_type):
+        """Validate the nodes, devices and bricks count in heketi db"""
+        # Get the total number of  nodes, devices and bricks from db check
+        db_info = heketi_ops.heketi_db_check(
+            self.heketi_client_node, self.heketi_server_url)
+        db_devices_count = db_info["devices"]["total"]
+        db_nodes_count = db_info["nodes"]["total"]
+        db_bricks_count = db_info["bricks"]["total"]
+
+        # Get the total number of nodes, devices and bricks from topology info
+        topology_info = heketi_ops.heketi_topology_info(
+            self.heketi_client_node, self.heketi_server_url, json=True)
+        topology_devices_count, topology_nodes_count = 0, 0
+        topology_bricks_count = 0
+        for cluster in topology_info['clusters']:
+            topology_nodes_count += len(cluster['nodes'])
+
+            if count_type == 'bricks_count' or 'device_count':
+                for node in cluster['nodes']:
+                    topology_devices_count += len(node['devices'])
+
+                    if count_type == 'bricks_count':
+                        for device in node['devices']:
+                            topology_bricks_count += len(device['bricks'])
+
+        # Compare the device count
+        if count_type == 'device_count':
+            msg = ("Devices count in db check {} and in topology info {} is "
+                   "not same".format(db_devices_count, topology_devices_count))
+            self.assertEqual(topology_devices_count, db_devices_count, msg)
+
+        # Compare the node count
+        elif count_type == 'node_count':
+            msg = (
+                "Nodes count in db check {} and nodes count in topology info "
+                "{} is not same".format(db_nodes_count, topology_nodes_count))
+            self.assertEqual(topology_nodes_count, db_nodes_count, msg)
+
+        # Compare the bricks count
+        elif count_type == 'bricks_count':
+            msg = ("Bricks count in db check {} and bricks count in topology "
+                   "info {} is not same".format(
+                       db_bricks_count, topology_bricks_count))
+            self.assertEqual(topology_bricks_count, db_bricks_count, msg)
