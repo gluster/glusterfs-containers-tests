@@ -166,16 +166,8 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
 
         return storage_hostname, storage_ip
 
-    @pytest.mark.tier0
     @podcmd.GlustoPod()
-    def test_heketi_node_add_with_valid_cluster(self):
-        """Test heketi node add operation with valid cluster id"""
-        if (openshift_storage_version.get_openshift_storage_version()
-                < "3.11.4"):
-            self.skipTest(
-                "This test case is not supported for < OCS 3.11.4 builds due "
-                "to bug BZ-1732831")
-
+    def heketi_node_add_with_valid_cluster(self):
         h_client, h_server = self.heketi_client_node, self.heketi_server_url
         ocp_node = self.ocp_master_node[0]
 
@@ -244,6 +236,43 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
         err_msg = "Hostname %s not present in endpoints %s" % (
             storage_ip, ep_addresses)
         self.assertIn(storage_ip, ep_addresses, err_msg)
+
+    @pytest.mark.tier0
+    def test_heketi_node_add_with_valid_cluster(self):
+        """Test heketi node add operation with valid cluster id"""
+        if (openshift_storage_version.get_openshift_storage_version()
+                < "3.11.4"):
+            self.skipTest(
+                "This test case is not supported for < OCS 3.11.4 builds due "
+                "to bug BZ-1732831")
+
+        # Add node to valid cluster id
+        self.heketi_node_add_with_valid_cluster()
+
+    def test_validate_heketi_node_add_with_db_check(self):
+        """Test heketi db check after node add operation"""
+        if (openshift_storage_version.get_openshift_storage_version()
+                < "3.11.4"):
+            self.skipTest(
+                "This test case is not supported for < OCS 3.11.4 builds due "
+                "to bug BZ-1732831")
+
+        # Get the total number of nodes in heketi db
+        intial_db_info = heketi_ops.heketi_db_check(
+            self.heketi_client_node, self.heketi_server_url, json=True)
+        initial_node_count = intial_db_info['nodes']['total']
+
+        # Add node to valid cluster id
+        self.heketi_node_add_with_valid_cluster()
+
+        # Verify the addition of node in heketi db
+        final_db_info = heketi_ops.heketi_db_check(
+            self.heketi_client_node, self.heketi_server_url, json=True)
+        final_node_count = final_db_info['nodes']['total']
+        msg = (
+            "Initial node count {} and final node count {} in heketi db is"
+            " not as expected".format(initial_node_count, final_node_count))
+        self.assertEqual(initial_node_count + 1, final_node_count, msg)
 
     @pytest.mark.tier1
     def test_heketi_node_add_with_invalid_cluster(self):
