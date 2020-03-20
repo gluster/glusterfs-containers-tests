@@ -447,7 +447,6 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                           "only %s free space is available"
                           % (free_space, free_size))
 
-    @skip("Blocked by BZ-1714292")
     @pytest.mark.tier1
     def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_neg(
             self):
@@ -464,7 +463,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
         self.verify_free_space(default_bhv_size + reserve_size + 2)
 
-        with self.assertRaises(ExecutionError):
+        with self.assertRaises(AssertionError):
             # create a block vol greater than default BHV size
             bvol_info = heketi_blockvolume_create(
                 self.heketi_client_node, self.heketi_server_url,
@@ -504,7 +503,6 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
         verify_pvc_status_is_bound(self.node, pvc_name)
 
-    @skip("Blocked by BZ-1714292")
     @pytest.mark.tier1
     def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_pos(
             self):
@@ -531,7 +529,6 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # create a block pvc greater than default BHV size
         self.create_and_wait_for_pvc(pvc_size=(default_bhv_size + 1))
 
-    @skip("Blocked by BZ-1714292")
     @pytest.mark.tier1
     def test_expansion_of_block_hosting_volume_using_heketi(self):
         """Verify that after expanding block hosting volume we are able to
