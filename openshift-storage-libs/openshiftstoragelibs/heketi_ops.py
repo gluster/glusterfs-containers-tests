@@ -100,13 +100,15 @@ def _set_heketi_global_flags(heketi_server_url, **kwargs):
 
 
 def heketi_volume_create(heketi_client_node, heketi_server_url, size,
-                         **kwargs):
+                         raise_on_error=True, **kwargs):
     """Creates heketi volume with the given user options.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         size (str): Volume size
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -199,20 +201,23 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
                persistent_volume_file_arg, redundancy_arg, replica_arg,
                snapshot_factor_arg, json_arg, secret_arg, user_arg))
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
 
 def heketi_volume_info(heketi_client_node, heketi_server_url, volume_id,
-                       **kwargs):
+                       raise_on_error=True, **kwargs):
     """Executes heketi volume info command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         volume_id (str): Volume ID
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -236,14 +241,15 @@ def heketi_volume_info(heketi_client_node, heketi_server_url, volume_id,
     cmd = "heketi-cli -s %s volume info %s %s %s %s" % (
         heketi_server_url, volume_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
 
 def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
-                         expand_size, **kwargs):
+                         expand_size, raise_on_error=True, **kwargs):
     """Executes heketi volume expand command.
 
     Args:
@@ -251,6 +257,8 @@ def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
         heketi_server_url (str): Heketi server url
         volume_id (str): Volume ID
         expand_size (str): volume expand size
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -278,8 +286,9 @@ def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
                heketi_server_url, volume_id, expand_size, json_arg,
                admin_key, user))
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
@@ -322,12 +331,15 @@ def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
     return out
 
 
-def heketi_volume_list(heketi_client_node, heketi_server_url, **kwargs):
+def heketi_volume_list(
+        heketi_client_node, heketi_server_url, raise_on_error=True, **kwargs):
     """Executes heketi volume list command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -352,18 +364,22 @@ def heketi_volume_list(heketi_client_node, heketi_server_url, **kwargs):
     cmd = "heketi-cli -s %s volume list %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
 
-def heketi_topology_info(heketi_client_node, heketi_server_url, **kwargs):
+def heketi_topology_info(
+        heketi_client_node, heketi_server_url, raise_on_error=True, **kwargs):
     """Executes heketi topology info command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -388,8 +404,9 @@ def heketi_topology_info(heketi_client_node, heketi_server_url, **kwargs):
     cmd = "heketi-cli -s %s topology info %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
@@ -437,12 +454,15 @@ def hello_heketi(heketi_client_node, heketi_server_url, **kwargs):
     return True
 
 
-def heketi_cluster_create(heketi_client_node, heketi_server_url, **kwargs):
+def heketi_cluster_create(
+        heketi_client_node, heketi_server_url, raise_on_error=True, **kwargs):
     """Executes heketi cluster create command with provided options.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -475,20 +495,23 @@ def heketi_cluster_create(heketi_client_node, heketi_server_url, **kwargs):
         cmd += " --file=false"
 
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if kwargs.get("json", False):
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if kwargs.get("json", False) and out:
         return json.loads(out)
     return out
 
 
 def heketi_cluster_delete(heketi_client_node, heketi_server_url, cluster_id,
-                          **kwargs):
+                          raise_on_error=True, **kwargs):
     """Executes heketi cluster delete command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         cluster_id (str): Cluster ID
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -513,18 +536,21 @@ def heketi_cluster_delete(heketi_client_node, heketi_server_url, cluster_id,
     cmd = "heketi-cli -s %s cluster delete %s %s %s %s" % (
         heketi_server_url, cluster_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
 def heketi_cluster_info(heketi_client_node, heketi_server_url, cluster_id,
-                        **kwargs):
+                        raise_on_error=True, **kwargs):
     """Executes heketi cluster info command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         cluster_id (str): Volume ID
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -549,18 +575,22 @@ def heketi_cluster_info(heketi_client_node, heketi_server_url, cluster_id,
     cmd = "heketi-cli -s %s cluster info %s %s %s %s" % (
         heketi_server_url, cluster_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
 
-def heketi_cluster_list(heketi_client_node, heketi_server_url, **kwargs):
+def heketi_cluster_list(
+        heketi_client_node, heketi_server_url, raise_on_error=True, **kwargs):
     """Executes heketi cluster list command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -585,14 +615,15 @@ def heketi_cluster_list(heketi_client_node, heketi_server_url, **kwargs):
     cmd = "heketi-cli -s %s cluster list %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
 
 def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
-                      node_id, **kwargs):
+                      node_id, raise_on_error=True, **kwargs):
     """Executes heketi device add command.
 
     Args:
@@ -600,6 +631,8 @@ def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
         heketi_server_url (str): Heketi server url
         device name (str): Device name to add
         node_id (str): Node id to add the device
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -623,18 +656,21 @@ def heketi_device_add(heketi_client_node, heketi_server_url, device_name,
     cmd = "heketi-cli -s %s device add --name=%s --node=%s %s %s %s" % (
         heketi_server_url, device_name, node_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
 def heketi_device_delete(heketi_client_node, heketi_server_url, device_id,
-                         **kwargs):
+                         raise_on_error=True, **kwargs):
     """Executes heketi device delete command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         device id (str): Device id to delete
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -658,18 +694,21 @@ def heketi_device_delete(heketi_client_node, heketi_server_url, device_id,
     cmd = "heketi-cli -s %s device delete %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
 def heketi_device_disable(heketi_client_node, heketi_server_url, device_id,
-                          **kwargs):
+                          raise_on_error=True, **kwargs):
     """Executes heketi device disable command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         device_id (str): Device id to disable device
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -692,18 +731,21 @@ def heketi_device_disable(heketi_client_node, heketi_server_url, device_id,
     cmd = "heketi-cli -s %s device disable %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
 def heketi_device_enable(heketi_client_node, heketi_server_url, device_id,
-                         **kwargs):
+                         raise_on_error=True, **kwargs):
     """Executes heketi device enable command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         device_id (str): Device id to enable device
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -726,18 +768,21 @@ def heketi_device_enable(heketi_client_node, heketi_server_url, device_id,
     cmd = "heketi-cli -s %s device enable %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
 def heketi_device_info(heketi_client_node, heketi_server_url, device_id,
-                       **kwargs):
+                       raise_on_error=True, **kwargs):
     """Executes heketi device info command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         device_id (str): Device ID
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -762,22 +807,24 @@ def heketi_device_info(heketi_client_node, heketi_server_url, device_id,
     cmd = "heketi-cli -s %s device info %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         device_info = json.loads(out)
         return device_info
-    else:
-        return out
+    return out
 
 
 def heketi_device_remove(heketi_client_node, heketi_server_url, device_id,
-                         **kwargs):
+                         raise_on_error=True, **kwargs):
     """Executes heketi device remove command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         device_id (str): Device id to remove device
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -801,12 +848,15 @@ def heketi_device_remove(heketi_client_node, heketi_server_url, device_id,
     cmd = "heketi-cli -s %s device remove %s %s %s %s" % (
         heketi_server_url, device_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
-def heketi_node_add(heketi_client_node, heketi_server_url, zone, cluster_id,
-                    management_host_name, storage_host_name, **kwargs):
+def heketi_node_add(
+        heketi_client_node, heketi_server_url, zone, cluster_id,
+        management_host_name, storage_host_name, raise_on_error=True,
+        **kwargs):
     """Executes heketi node add command.
 
     Args:
@@ -816,6 +866,8 @@ def heketi_node_add(heketi_client_node, heketi_server_url, zone, cluster_id,
         cluster_id (str): The cluster in which the node should reside
         management_host_name (str): Management host name
         storage_host_name (str): Sotage host name
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -847,21 +899,23 @@ def heketi_node_add(heketi_client_node, heketi_server_url, zone, cluster_id,
             zone, cluster_id, management_host_name, storage_host_name))
 
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
-    else:
-        return out
+    return out
 
 
 def heketi_node_delete(heketi_client_node, heketi_server_url, node_id,
-                       **kwargs):
+                       raise_on_error=True, **kwargs):
     """Executes heketi node delete command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url.
         node_id (str): Node id to delete
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -885,18 +939,21 @@ def heketi_node_delete(heketi_client_node, heketi_server_url, node_id,
     cmd = "heketi-cli -s %s node delete %s %s %s %s" % (
         heketi_server_url, node_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
 def heketi_node_remove(heketi_client_node, heketi_server_url, node_id,
-                       **kwargs):
+                       raise_on_error=True, **kwargs):
     """Executes heketi node remove command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         node_id (str): Node id to remove node
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -919,18 +976,21 @@ def heketi_node_remove(heketi_client_node, heketi_server_url, node_id,
     cmd = "heketi-cli -s %s node remove %s %s %s" % (
         heketi_server_url, node_id, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
 def heketi_node_disable(heketi_client_node, heketi_server_url, node_id,
-                        **kwargs):
+                        raise_on_error=True, **kwargs):
     """Executes heketi node disable command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         node_id (str): Node id to disable node
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -954,18 +1014,21 @@ def heketi_node_disable(heketi_client_node, heketi_server_url, node_id,
     cmd = "heketi-cli -s %s node disable %s %s %s %s" % (
         heketi_server_url, node_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
 def heketi_node_enable(heketi_client_node, heketi_server_url, node_id,
-                       **kwargs):
+                       raise_on_error=True, **kwargs):
     """Executes heketi node enable command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         node_id (str): Node id to enable device
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -989,17 +1052,21 @@ def heketi_node_enable(heketi_client_node, heketi_server_url, node_id,
     cmd = "heketi-cli -s %s node enable %s %s %s %s" % (
         heketi_server_url, node_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     return out
 
 
-def heketi_node_info(heketi_client_node, heketi_server_url, node_id, **kwargs):
+def heketi_node_info(heketi_client_node, heketi_server_url, node_id,
+                     raise_on_error=True, **kwargs):
     """Executes heketi node info command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         node_id (str): Node ID
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -1024,18 +1091,22 @@ def heketi_node_info(heketi_client_node, heketi_server_url, node_id, **kwargs):
     cmd = "heketi-cli -s %s node info %s %s %s %s" % (
         heketi_server_url, node_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
 
-def heketi_node_list(heketi_client_node, heketi_server_url, **kwargs):
+def heketi_node_list(heketi_client_node, heketi_server_url,
+                     raise_on_error=True, **kwargs):
     """Execute CLI 'heketi node list' command and parse its output.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed
         heketi_server_url (str): Heketi server url to perform request to
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -1054,22 +1125,26 @@ def heketi_node_list(heketi_client_node, heketi_server_url, **kwargs):
     cmd = "heketi-cli -s %s node list %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
 
     heketi_node_id_list = []
-    for node in HEKETI_NODES.findall(out.strip()):
-        heketi_node_id_list.append(node[0])
+    if out:
+        for node in HEKETI_NODES.findall(out.strip()):
+            heketi_node_id_list.append(node[0])
     return heketi_node_id_list
 
 
 def heketi_blockvolume_info(heketi_client_node, heketi_server_url,
-                            block_volume_id, **kwargs):
+                            block_volume_id, raise_on_error=True, **kwargs):
     """Executes heketi blockvolume info command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         block_volume_id (str): block volume ID
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -1094,20 +1169,23 @@ def heketi_blockvolume_info(heketi_client_node, heketi_server_url,
     cmd = "heketi-cli -s %s blockvolume info %s %s %s %s" % (
         heketi_server_url, block_volume_id, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
 
 def heketi_blockvolume_create(heketi_client_node, heketi_server_url, size,
-                              **kwargs):
+                              raise_on_error=True, **kwargs):
     """Executes heketi blockvolume create
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         size (int): blockvolume size
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -1163,8 +1241,9 @@ def heketi_blockvolume_create(heketi_client_node, heketi_server_url, size,
                          clusters_arg, ha_arg, name_arg,
                          admin_key, user, json_arg))
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
@@ -1208,12 +1287,15 @@ def heketi_blockvolume_delete(heketi_client_node, heketi_server_url,
     return out
 
 
-def heketi_blockvolume_list(heketi_client_node, heketi_server_url, **kwargs):
+def heketi_blockvolume_list(
+        heketi_client_node, heketi_server_url, raise_on_error=True, **kwargs):
     """Executes heketi blockvolume list command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -1239,8 +1321,9 @@ def heketi_blockvolume_list(heketi_client_node, heketi_server_url, **kwargs):
     cmd = "heketi-cli -s %s blockvolume list %s %s %s" % (
         heketi_server_url, json_arg, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    if json_arg:
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
         return json.loads(out)
     return out
 
@@ -1277,8 +1360,8 @@ def heketi_blockvolume_list_by_name_prefix(
     return block_vol_regex.findall(block_vols.strip())
 
 
-def verify_volume_name_prefix(hostname, prefix, namespace, pvc_name,
-                              heketi_server_url, **kwargs):
+def verify_volume_name_prefix(
+        hostname, prefix, namespace, pvc_name, heketi_server_url, **kwargs):
     """Check whether heketi volume is present with volname prefix or not.
 
     Args:
@@ -1315,7 +1398,7 @@ def verify_volume_name_prefix(hostname, prefix, namespace, pvc_name,
 
 
 def set_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
-             **kwargs):
+             raise_on_error=True, **kwargs):
     """Set any tags on Heketi node or device.
 
     Args:
@@ -1330,6 +1413,8 @@ def set_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
             eg. "4f9c0249834919dd372e8fb3344cd7bd"
         - tag (str) : This is a tag which we want to set
             eg. "arbiter:required"
+        - raise_on_error (bool): whether or not to raise exception
+          in case of an error.
     Kwargs:
         user (str) : username
         secret (str) : secret for that user
@@ -1352,13 +1437,15 @@ def set_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
     cmd = ("heketi-cli -s %s %s settags %s %s %s %s" %
            (heketi_server_url, source, source_id, tag, user, secret))
     cmd = TIMEOUT_PREFIX + cmd
-    heketi_cmd_run(heketi_client_node, cmd)
+    heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     g.log.info("Tagging of %s to %s is successful" % (source, tag))
     return True
 
 
-def set_arbiter_tag(heketi_client_node, heketi_server_url, source,
-                    source_id, arbiter_tag_value, **kwargs):
+def set_arbiter_tag(
+        heketi_client_node, heketi_server_url, source, source_id,
+        arbiter_tag_value, raise_on_error=True, **kwargs):
     """Set Arbiter tags on Heketi node or device.
 
     Args:
@@ -1373,6 +1460,8 @@ def set_arbiter_tag(heketi_client_node, heketi_server_url, source,
             eg. "4f9c0249834919dd372e8fb3344cd7bd"
         - arbiter_tag_value (str) : This is a tag which we want to set
             Allowed values are "required", "disabled" and "supported".
+        - raise_on_error (bool): whether or not to raise exception
+            in case of an error.
     Kwargs:
         user (str) : username
         secret (str) : secret for that user
@@ -1392,8 +1481,9 @@ def set_arbiter_tag(heketi_client_node, heketi_server_url, source,
 
     if arbiter_tag_value in ('required', 'disabled', 'supported'):
         arbiter_tag_value = "arbiter:%s" % arbiter_tag_value
-        return set_tags(heketi_client_node, heketi_server_url,
-                        source, source_id, arbiter_tag_value, **kwargs)
+        return set_tags(
+            heketi_client_node, heketi_server_url, source, source_id,
+            arbiter_tag_value, raise_on_error=raise_on_error, **kwargs)
 
     msg = ("Incorrect value we can use 'required', 'disabled', 'supported'"
            "instead of %s" % arbiter_tag_value)
@@ -1402,7 +1492,7 @@ def set_arbiter_tag(heketi_client_node, heketi_server_url, source,
 
 
 def rm_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
-            **kwargs):
+            raise_on_error=True, **kwargs):
     """Remove any kind of tags from Heketi node or device.
 
     Args:
@@ -1416,6 +1506,8 @@ def rm_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
         - sorrce_id (str) : id of node or device
             eg. "4f9c0249834919dd372e8fb3344cd7bd"
         - tag (str) : This is a tag which we want to remove.
+        - raise_on_error (bool): whether or not to raise exception
+            in case of an error.
     Kwargs:
         user (str) : username
         secret (str) : secret for that user
@@ -1437,13 +1529,14 @@ def rm_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
     cmd = ("heketi-cli -s %s %s rmtags %s %s %s %s" %
            (heketi_server_url, source, source_id, tag, user, secret))
     cmd = TIMEOUT_PREFIX + cmd
-    heketi_cmd_run(heketi_client_node, cmd)
+    heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     g.log.info("Removal of %s tag from %s is successful." % (tag, source))
     return True
 
 
 def rm_arbiter_tag(heketi_client_node, heketi_server_url, source, source_id,
-                   **kwargs):
+                   raise_on_error=True, **kwargs):
     """Remove Arbiter tag from Heketi node or device.
 
     Args:
@@ -1456,6 +1549,8 @@ def rm_arbiter_tag(heketi_client_node, heketi_server_url, source, source_id,
                          Allowed values are "node" and "device".
         - source_id (str) : ID of Heketi node or device.
             eg. "4f9c0249834919dd372e8fb3344cd7bd"
+        - raise_on_error (bool): whether or not to raise exception
+            in case of an error.
     Kwargs:
         user (str) : username
         secret (str) : secret for that user
@@ -1473,8 +1568,9 @@ def rm_arbiter_tag(heketi_client_node, heketi_server_url, source, source_id,
         g.log.error(msg)
         raise NotImplementedError(msg)
 
-    return rm_tags(heketi_client_node, heketi_server_url,
-                   source, source_id, 'arbiter', **kwargs)
+    return rm_tags(
+        heketi_client_node, heketi_server_url, source, source_id, 'arbiter',
+        raise_on_error=raise_on_error, **kwargs)
 
 
 def get_heketi_metrics(heketi_client_node, heketi_server_url,
@@ -1523,12 +1619,15 @@ def get_heketi_metrics(heketi_client_node, heketi_server_url,
     return parse_prometheus_data(out)
 
 
-def heketi_examine_gluster(heketi_client_node, heketi_server_url):
+def heketi_examine_gluster(
+        heketi_client_node, heketi_server_url, raise_on_error=True):
     """Execute heketi command to examine output from gluster servers.
 
     Args:
         - heketi_client_node (str): Node where we want to run our commands.
         - heketi_server_url (str): This is a heketi server url.
+        - raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Raises:
         NotImplementedError: if heketi version is not expected
@@ -1551,8 +1650,11 @@ def heketi_examine_gluster(heketi_client_node, heketi_server_url):
     cmd = ("heketi-cli server state examine gluster -s %s %s %s"
            % (heketi_server_url, user, secret))
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    return json.loads(out)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if out:
+        return json.loads(out)
+    return out
 
 
 def get_block_hosting_volume_list(
@@ -1618,12 +1720,14 @@ def get_total_free_space(heketi_client_node, heketi_server_url):
 
 
 def heketi_server_operations_list(
-        heketi_client_node, heketi_server_url, **kwargs):
+        heketi_client_node, heketi_server_url, raise_on_error=True, **kwargs):
     """Executes heketi server operations list command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Returns:
         list: list of server operations pending
@@ -1645,7 +1749,8 @@ def heketi_server_operations_list(
     cmd = "heketi-cli -s %s %s %s server operations list" % (
         heketi_server_url, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
     if out:
         operations = []
         for operation in HEKETI_OPERATIONS.findall(out.strip()):
@@ -1710,12 +1815,15 @@ def heketi_server_operation_cleanup(
         raise exceptions.ExecutionError(err_msg)
 
 
-def heketi_db_check(heketi_client_node, heketi_server_url, **kwargs):
+def heketi_db_check(
+        heketi_client_node, heketi_server_url, raise_on_error=True, **kwargs):
     """Execute 'heketi db check' command.
 
     Args:
         - heketi_client_node (str): Node where we want to run our commands.
         - heketi_server_url (str): This is a heketi server url.
+        - raise_on_error (bool): whether or not to raise exception
+              in case of an error.
 
     Raises:
         NotImplementedError: if heketi version is not expected
@@ -1739,18 +1847,24 @@ def heketi_db_check(heketi_client_node, heketi_server_url, **kwargs):
     cmd = "heketi-cli db check %s %s %s" % (
         heketi_server_url, user, secret)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
-    return json.loads(out)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if out:
+        return json.loads(out)
+    return out
 
 
 def heketi_volume_endpoint_patch(
-        heketi_client_node, heketi_server_url, volume_id, **kwargs):
+        heketi_client_node, heketi_server_url, volume_id,
+        raise_on_error=True, **kwargs):
     """Execute heketi volume endpoint patch command.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         volume_id (str): Volume ID
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
 
     Kwargs:
         The keys, values in kwargs are:
@@ -1777,9 +1891,12 @@ def heketi_volume_endpoint_patch(
     cmd = "heketi-cli -s %s volume endpoint patch %s %s %s" % (
         heketi_server_url, volume_id, admin_key, user)
     cmd = TIMEOUT_PREFIX + cmd
-    out = heketi_cmd_run(heketi_client_node, cmd)
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
 
-    return json.loads(out)
+    if out:
+        return json.loads(out)
+    return out
 
 
 def get_heketi_volume_and_brick_count_list(
