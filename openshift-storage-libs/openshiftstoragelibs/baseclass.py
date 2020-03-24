@@ -321,7 +321,7 @@ class BaseClass(unittest.TestCase):
 
     def create_and_wait_for_pvcs(
             self, pvc_size=1, pvc_name_prefix="autotests-pvc", pvc_amount=1,
-            sc_name=None, timeout=120, wait_step=3, skip_waiting=False,
+            sc_name=None, timeout=600, wait_step=10, skip_waiting=False,
             skip_cleanup=False):
         """Create multiple PVC's not waiting for it
 
@@ -400,10 +400,11 @@ class BaseClass(unittest.TestCase):
 
     def create_and_wait_for_pvc(
             self, pvc_size=1, pvc_name_prefix='autotests-pvc', sc_name=None,
-            skip_cleanup=False):
+            timeout=300, wait_step=10, skip_cleanup=False):
         self.pvc_name = self.create_and_wait_for_pvcs(
             pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix,
-            sc_name=sc_name, skip_cleanup=skip_cleanup)[0]
+            sc_name=sc_name, timeout=timeout, wait_step=wait_step,
+            skip_cleanup=skip_cleanup)[0]
         return self.pvc_name
 
     def create_pvcs_not_waiting(

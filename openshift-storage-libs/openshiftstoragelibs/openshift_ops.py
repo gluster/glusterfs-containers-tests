@@ -1183,7 +1183,7 @@ def get_pvc_status(hostname, pvc_name):
     return output
 
 
-def wait_for_pvcs_be_bound(hostname, pvc_names, timeout=120, wait_step=3):
+def wait_for_pvcs_be_bound(hostname, pvc_names, timeout=300, wait_step=10):
     """Wait for bunch of PVCs to be in 'Bound' state.
 
     Args:
@@ -1246,7 +1246,7 @@ def wait_for_pvcs_be_bound(hostname, pvc_names, timeout=120, wait_step=3):
         raise exceptions.ExecutionError(error_msg)
 
 
-def wait_for_pvc_be_bound(hostname, pvc_name, timeout=120, wait_step=3):
+def wait_for_pvc_be_bound(hostname, pvc_name, timeout=300, wait_step=10):
     return wait_for_pvcs_be_bound(
         hostname, pvc_name, timeout=timeout, wait_step=wait_step)
 
