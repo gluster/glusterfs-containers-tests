@@ -3,6 +3,7 @@
 
 import contextlib
 import random
+import tempfile
 import threading
 import time
 
@@ -94,15 +95,12 @@ def temp_config(ocp_node, cfg):
     Returns:
         str: A path to a temporary file.
     """
-    conn = g.rpyc_get_connection(ocp_node, user="root")
-    tmp = conn.modules.tempfile.NamedTemporaryFile()
-    try:
-        tmp.write(yaml.safe_dump(cfg))
+    with tempfile.NamedTemporaryFile() as tmp:
+        tmp.write(yaml.safe_dump(cfg).encode())
         tmp.flush()
         filename = tmp.name
+        g.upload(ocp_node, filename, filename)
         yield filename
-    finally:
-        tmp.close()
 
 
 def wait_for_claim(ocp_node, pvc_name, timeout=60, interval=2):

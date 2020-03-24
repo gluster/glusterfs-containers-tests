@@ -1,4 +1,8 @@
+import os
+import tempfile
+
 from glusto.core import Glusto as g
+import six
 import yaml
 
 from openshiftstoragelibs.command import cmd_run
@@ -66,43 +70,51 @@ def enable_pvc_resize(master_node):
         g.log.error(msg)
         raise NotSupportedException(msg)
 
+    with tempfile.NamedTemporaryFile(delete=False) as temp:
+        temp_filename = temp.name
+
     try:
-        conn = g.rpyc_get_connection(master_node, user="root")
-        if conn is None:
-            err_msg = ("Failed to get rpyc connection of node %s"
-                       % master_node)
-            g.log.error(err_msg)
-            raise ExecutionError(err_msg)
+        g.download(master_node, MASTER_CONFIG_FILEPATH, temp_filename)
+    except Exception as e:
+        err_msg = (
+            "Failed to download '{}' from master node '{}' due to"
+            "exception\n{}".format(
+                MASTER_CONFIG_FILEPATH, master_node, six.text_type(e)))
+        raise ExecutionError(err_msg)
 
-        with conn.builtin.open(MASTER_CONFIG_FILEPATH, 'r') as f:
-            data = yaml.load(f, Loader=yaml.FullLoader)
-            dict_add = data['admissionConfig']['pluginConfig']
-            if "PersistentVolumeClaimResize" in dict_add:
-                g.log.info("master-config.yaml file is already edited")
-                return True
-            dict_add['PersistentVolumeClaimResize'] = {
-                'configuration': {
-                    'apiVersion': 'v1',
-                    'disable': 'false',
-                    'kind': 'DefaultAdmissionConfig'}}
-            data['admissionConfig']['pluginConfig'] = dict_add
-            kube_config = data['kubernetesMasterConfig']
-            for key in ('apiServerArguments', 'controllerArguments'):
-                kube_config[key] = (
-                    kube_config.get(key)
-                    if isinstance(kube_config.get(key), dict) else {})
-                value = ['ExpandPersistentVolumes=true']
-                kube_config[key]['feature-gates'] = value
-        with conn.builtin.open(MASTER_CONFIG_FILEPATH, 'w+') as f:
-            yaml.dump(data, f, default_flow_style=False)
-    except Exception as err:
-        raise ExecutionError("failed to edit master-config.yaml file "
-                             "%s on %s" % (err, master_node))
-    finally:
-        g.rpyc_close_connection(master_node, user="root")
+    with open(temp_filename, 'r') as f:
+        data = yaml.load(f, Loader=yaml.FullLoader)
+        dict_add = data['admissionConfig']['pluginConfig']
+        if "PersistentVolumeClaimResize" in dict_add:
+            g.log.info("master-config.yaml file is already edited")
+            return True
+        dict_add['PersistentVolumeClaimResize'] = {
+            'configuration': {
+                'apiVersion': 'v1',
+                'disable': 'false',
+                'kind': 'DefaultAdmissionConfig'}}
+        data['admissionConfig']['pluginConfig'] = dict_add
+        kube_config = data['kubernetesMasterConfig']
+        for key in ('apiServerArguments', 'controllerArguments'):
+            kube_config[key] = (
+                kube_config.get(key)
+                if isinstance(kube_config.get(key), dict) else {})
+            value = ['ExpandPersistentVolumes=true']
+            kube_config[key]['feature-gates'] = value
 
-    g.log.info("successfully edited master-config.yaml file "
-               "%s" % master_node)
+    with open(temp_filename, 'w+') as f:
+        yaml.dump(data, f, default_flow_style=False)
+
+    try:
+        g.upload(master_node, temp_filename, MASTER_CONFIG_FILEPATH)
+    except Exception as e:
+        err_msg = (
+            "Failed to upload '{}' to master node '{}' due to"
+            "exception\n{}".format(
+                master_node, MASTER_CONFIG_FILEPATH, six.text_type(e)))
+        raise ExecutionError(err_msg)
+    os.unlink(temp_filename)
+
     if version == "3.9":
         cmd = ("systemctl restart atomic-openshift-master-api "
                "atomic-openshift-master-controllers")
