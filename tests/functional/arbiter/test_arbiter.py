@@ -1033,3 +1033,207 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             "replica count is different for volume {} Actual:{} "
             "Expected : 3".format(
                 volume_name, volume_name['replicaCount'])))
+
+    def _arbiter_volume_node_tag_operations(self, node_tags):
+        """Verify arbiter volume creation with different arbiter tags on
+        different nodes
+        """
+        h_volume_size, vol_amount, arbiter_tag_node_ip = 1, 5, None
+        bricks_list = []
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+
+        h_nodes = heketi_ops.heketi_node_list(h_client, h_url)
+        self.assertTrue(h_nodes, "Failed to get heketi node list")
+
+        for i, node_id in enumerate(h_nodes):
+            node_info = heketi_ops.heketi_node_info(
+                h_client, h_url, node_id, json=True)
+            self.assertTrue(
+                node_info,
+                "Failed to get the heketi node info for node id"
+                " {}".format(node_id))
+
+            # Add tags on 3 nodes and disable remaining
+            node_tag = node_tags[i] if i < 3 else 'disabled'
+            revert_to_tag = node_info.get('tags', {}).get('arbiter')
+            self._set_arbiter_tag_with_further_revert(
+                h_client, h_url, 'node', node_id, node_tag, revert_to_tag)
+
+            h_info = heketi_ops.heketi_node_info(
+                h_client, h_url, node_id, json=True)
+            self.assertTrue(
+                h_info,
+                "Failed to get the heketi node info for node id"
+                " {}".format(node_id))
+            err_msg = "Failed to fetch {} from the heketi node info {}"
+            h_node_id = h_info['id']
+            self.assertTrue(h_node_id, err_msg.format('Node id', h_node_id))
+            h_node_ip = h_info['hostnames']['storage']
+            self.assertTrue(h_node_ip, err_msg.format('ip', h_info))
+            h_node_tag = h_info.get('tags', {}).get('arbiter')
+
+            # Make sure that the tags are removed and new tags are added
+            err_msg = "Failed to remove and add {} tags to node id {}"
+            if node_tags.count(None) > 1:
+                self.assertEqual(
+                    h_node_tag, node_tag, err_msg.format(node_tag, node_id))
+            else:
+                if h_node_tag == 'required':
+                    # To have a count of node having arbiter tag
+                    arbiter_tag_node_ip = h_node_ip
+
+                    # To have count of node id having arbiter tag
+                    arbiter_tag_node_id = h_node_id
+                self.assertEqual(
+                    h_node_tag, node_tag, err_msg.format(node_tag, node_id))
+
+        # Create 5 volumes for verification
+        for count in range(vol_amount):
+            try:
+                g_vol_option = 'user.heketi.arbiter true'
+                h_volume = heketi_ops.heketi_volume_create(
+                    h_client, h_url, h_volume_size,
+                    gluster_volume_options=g_vol_option, json=True)
+
+                # Verify volume creation with the expected result for the
+                # given tags on nodes
+                if not node_tags[3]:
+                    raise AssertionError(
+                        "Expecting volume should not be created as tags on"
+                        " nodes are {}".format(node_tags))
+
+                err_msg = "Failed fetch {} from {}"
+                h_vol_id = h_volume["id"]
+                self.assertTrue(h_vol_id, err_msg.format('id', h_volume))
+                h_vol_name = h_volume["name"]
+                self.assertTrue(h_vol_id, err_msg.format('name', h_volume))
+                self.addCleanup(
+                    heketi_ops.heketi_volume_delete, h_client, h_url,
+                    h_vol_id, h_vol_name, gluster_volume_options=g_vol_option)
+
+                g_vol_list = volume_ops.get_volume_list(
+                    "auto_get_gluster_endpoint")
+                self.assertIn(
+                    h_vol_name, g_vol_list,
+                    "Failed to find heketi volume name {} in gluster"
+                    " volume list {}".format(h_vol_name, g_vol_list))
+
+                g_vol_info = volume_ops.get_volume_info(
+                    'auto_get_gluster_endpoint', h_vol_name)
+                self.assertTrue(
+                    g_vol_info,
+                    "Failed to get the details of the volume "
+                    "{}".format(h_vol_name))
+
+                for brick_details in g_vol_info[h_vol_name]["bricks"]["brick"]:
+                    self.assertTrue(
+                        brick_details['isArbiter'],
+                        "Expecting 0 or 1 to identify arbiter brick")
+
+                    # Get the bricks details where arbiter volume is present
+                    if brick_details['isArbiter'][0] == '1':
+                        self.assertTrue(
+                            brick_details["name"],
+                            "Brick details are empty for "
+                            "{}".format(h_vol_name))
+                        brick_ip_name = brick_details["name"]
+                        bricks_list.append(brick_ip_name)
+            except AssertionError:
+                # Verify volume creation with the expected result for the
+                # given tags on nodes
+                if node_tags[3]:
+                    raise
+                return
+
+        # Get the bricks ip on which arbiter volume is created
+        arbiter_brick_ip = {
+            brick.strip().split(":")[0] for brick in bricks_list}
+        self.assertTrue(
+            arbiter_brick_ip,
+            "Brick ip not found in {}".format(bricks_list))
+
+        # Verify heketi topology info for tags and ip
+        h_topology_info = heketi_ops.heketi_topology_info(
+            h_client, h_url, raise_on_error=True, json=True)
+        self.assertTrue(
+            h_topology_info,
+            "Failed to fetch heketi topology info")
+        er_msg = "Failed to find the {} from the heketi topology info {}"
+        for i in range(len(h_nodes)):
+            h_node_info = h_topology_info['clusters'][0]['nodes'][i]
+            self.assertTrue(
+                h_node_info,
+                er_msg.format('node details', h_topology_info))
+            h_node_id = h_node_info['id']
+            self.assertTrue(
+                h_node_id,
+                er_msg.format('node id', h_topology_info))
+            h_node_ip = h_node_info['hostnames']['storage']
+            self.assertTrue(
+                h_node_ip,
+                er_msg.format('ip', h_topology_info))
+            h_node_tag = h_node_info.get('tags', {}).get('arbiter')
+
+            # Verify tags from node info and topology info
+            node_tag = node_tags[i] if i < 3 else 'disabled'
+            err_msg = ("Expecting {} {} from node info and {} from topology"
+                       " info should be same")
+            self.assertEqual(
+                node_tag, h_node_tag,
+                err_msg.format('tags', node_tag, h_node_tag))
+
+            if h_node_tag == 'required':
+                # Verify the ip on which arbiter tag is required
+                self.assertEqual(
+                    h_node_ip, arbiter_tag_node_ip,
+                    err_msg.format('ip', h_node_ip, arbiter_tag_node_ip))
+
+                # Verify the node id on which arbiter tag is required
+                self.assertEqual(
+                    h_node_id, arbiter_tag_node_id,
+                    err_msg.format('node id', h_node_id, arbiter_tag_node_id))
+
+        # Verify if the count of no arbiter tag on the node is more
+        # than one out of 3 nodes then ip will be on more than 1 node
+        if node_tags.count(None) > 1:
+            self.assertGreaterEqual(
+                len(arbiter_brick_ip), 1,
+                "Expecting more than one IP but received "
+                "{}".format(arbiter_brick_ip))
+        else:
+            self.assertEqual(
+                len(arbiter_brick_ip), 1,
+                "Expecting one IP but received "
+                "{}".format(arbiter_brick_ip))
+            self.assertEqual(
+                len(arbiter_brick_ip), len(arbiter_tag_node_ip),
+                "Expecting the count of bricks were the volume is"
+                " created {} and number of nodes having the arbiter"
+                " tag {} ".format(arbiter_brick_ip, arbiter_tag_node_ip))
+            self.assertEqual(
+                arbiter_brick_ip.pop(), arbiter_tag_node_ip[0],
+                "Did not match ip of the bricks were the arbiter volume "
+                "is created {} and and number of nodes having the arbiter"
+                " tag {}".format(arbiter_brick_ip, arbiter_tag_node_ip))
+
+    @pytest.mark.tier1
+    @ddt.data(
+        ((None, None, None, True),
+         ('required', 'disabled', 'disabled', True)),
+        (('disabled', 'disabled', 'required', True),
+         ('required', 'disabled', 'disabled', True)),
+        ('required', 'required', 'disabled', False),
+        ('disabled', 'disabled', 'disabled', False),
+        ('required', 'required', 'required', False),
+        ('disabled', None, None, True),
+        (None, 'required', 'required', False))
+    @podcmd.GlustoPod()
+    def test_arbiter_volume_with_different_tags_on_nodes(self, node_tags):
+        """
+        Validate of arbiter volume creation with different tags
+        """
+        if len(node_tags) == 2:
+            self._arbiter_volume_node_tag_operations(node_tags[0])
+            self._arbiter_volume_node_tag_operations(node_tags[1])
+        else:
+            self._arbiter_volume_node_tag_operations(node_tags)
