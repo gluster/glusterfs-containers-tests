@@ -221,7 +221,7 @@ class TestPvResizeClass(BaseClass):
             self.assertEqual(
                 ret, 0, "Failed to write data on the expanded PVC")
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_pv_resize_no_free_space(self):
         """Validate PVC resize fails if there is no free space available"""
         if get_openshift_storage_version() < "3.11.5":
@@ -342,7 +342,7 @@ class TestPvResizeClass(BaseClass):
         wait_for_pod_be_ready(self.node, pod_name, 10, 5)
 
     @skip("Blocked by BZ-1547069")
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_pvc_resize_size_greater_than_available_space(self):
         """Re-size PVC to greater value than available volume size and then
         expand volume to support maximum size.

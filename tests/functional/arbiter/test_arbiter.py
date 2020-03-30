@@ -480,7 +480,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 self.assertIn(
                     data_brick.split(':')[0], data_nodes_ip_addresses)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_create_delete_pvcs_to_make_gluster_reuse_released_space(self):
         """Validate reuse of volume space after deletion of PVCs"""
         min_storage_gb = 10
@@ -816,7 +816,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                     openshift_ops.cmd_run_on_gluster_pod_or_node(
                         self.node, cmd, gluster_node_ip)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_arbiter_scaled_heketi_and_gluster_volume_mapping(self):
         """Test to validate PVC, Heketi & gluster volume mapping
         for large no of PVC's

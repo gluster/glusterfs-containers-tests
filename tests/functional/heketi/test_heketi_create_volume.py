@@ -339,7 +339,7 @@ class TestHeketiVolume(BaseClass):
                  max_block_hosting_vol_size, blockvol2, block_hosting_vol,
                  '\n'.join(file_volumes_debug_info))))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @podcmd.GlustoPod()
     def test_heketi_volume_create_with_cluster_node_down(self):
         if len(self.gluster_servers) < 5:

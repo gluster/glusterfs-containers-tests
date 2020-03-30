@@ -753,7 +753,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # Wait for all the PVCs to be in bound state
         wait_for_pvcs_be_bound(self.node, pvc_names, timeout=300, wait_step=5)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_creation_of_pvc_when_one_node_is_down(self):
         """Test PVC creation when one node is down than hacount"""
         node_count = len(self.gluster_servers)

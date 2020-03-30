@@ -374,7 +374,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         # Verify that all the paths are up
         self.verify_all_paths_are_up_in_multipath(mpath, hacount, node)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_initiator_side_failure_restart_pod_when_target_node_is_down(self):
         """Restart app pod when one gluster node is down"""
         # Skip test if does not meets requirements
@@ -583,7 +583,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
         return initiator_nodes[0]
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_initiator_and_target_on_diff_node_abrupt_reboot_of_initiator_node(
             self):
         """Abrupt reboot initiator node to make sure paths rediscovery is
@@ -1062,7 +1062,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         # Create and validate 100 app pod creations with block PVs attached
         self.bulk_app_pods_creation_with_block_pv(app_pod_count=100)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_delete_block_volume_with_one_node_down(self):
         """Validate deletion of block volume when one node is down"""
 
@@ -1103,7 +1103,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.heketi_client_node, self.heketi_server_url,
             block_volume["id"])
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_create_block_pvcs_with_network_failure(self):
         """Block port 24010 while creating PVC's, run I/O's and verify
            multipath"""
@@ -1138,7 +1138,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.verify_iscsi_sessions_and_multipath(pvc_name, dc_with_pod[0])
             oc_rsh(self.node, dc_with_pod[1], cmd_run_io % 'file3')
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data('active', 'passive', 'all_passive')
     def test_run_io_and_block_port_on_active_path_network_failure(
             self, path='active'):
@@ -1189,7 +1189,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         oc_rsh(self.node, pod_name, cmd_run_io % file1)
         self.verify_iscsi_sessions_and_multipath(self.pvc_name, dc_name)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_initiator_failures_reboot_initiator_node_when_target_node_is_down(
             self):
         """Restart initiator node when gluster node is down, to make sure paths
@@ -1325,7 +1325,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                        "heketi pod logs" % vol_names)
             raise AssertionError(err_msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_delete_block_pvcs_with_network_failure(self):
         """Block port 24010 while deleting PVC's"""
         pvc_amount, pvc_delete_amount, is_bhv_exist = 10, 5, True
@@ -1533,7 +1533,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             for blockvol in gluster_vol_info:
                 self.assertNotIn("blockvol_", blockvol)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_create_and_delete_block_pvcs_with_network_failure(self):
         """Create and delete volumes after blocking the port 24010 on 51% of
         the nodes"""
