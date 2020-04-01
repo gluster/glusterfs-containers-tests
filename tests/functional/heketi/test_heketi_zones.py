@@ -120,34 +120,7 @@ class TestHeketiZones(baseclass.BaseClass):
                     (node_info["zone"], node_info['hostnames']['storage']))
         return online_nodes
 
-    @pytest.mark.tier1
-    @ddt.data(
-        (3, "strict", False),
-        (3, "strict", True),
-        (4, "strict", False),
-        (4, "strict", True),
-        (1, "none", False),
-        (1, "none", True),
-        (2, "none", False),
-        (2, "none", True),
-        (3, "none", False),
-        (3, "none", True),
-        # PVC expansion cases:
-        (3, "strict", False, True),
-        (3, "strict", True, True),
-        (1, "none", False, True),
-        (1, "none", True, True),
-        (2, "none", False, True),
-        (2, "none", True, True),
-        (3, "none", False, True),
-        (3, "none", True, True),
-    )
-    @ddt.unpack
-    def test_check_pvc_placement_based_on_the_heketi_zones(
-            self, zone_count, heketi_zone_checking, is_arbiter_vol,
-            expand=False):
-        # TODO(vponomar): implement setting env vars for the Heketi dc.
-
+    def _check_for_available_zones(self, zone_count):
         # Check amount of available online heketi nodes
         online_nodes = self._get_online_nodes()
         node_count = len(online_nodes)
@@ -172,17 +145,9 @@ class TestHeketiZones(baseclass.BaseClass):
                     "option is set to 'False'." % (
                         zone_count, actual_heketi_zones_amount))
 
-        # Create storage class setting "user.heketi.zone-checking" option up
-        prefix = "autotests-heketi-zones"
-        sc_name = self.create_storage_class(
-            sc_name_prefix=prefix, vol_name_prefix=prefix,
-            allow_volume_expansion=expand,
-            is_arbiter_vol=is_arbiter_vol,
-            heketi_zone_checking=heketi_zone_checking)
-
-        # Create PVC using above storage class
-        pvc_name = self.create_and_wait_for_pvc(
-            pvc_name_prefix=prefix, sc_name=sc_name)
+    def _validate_brick_placement_in_correct_zone_or_with_expand_pvc(
+            self, heketi_zone_checking, pvc_name, zone_count, expand=False):
+        online_nodes = self._get_online_nodes()
 
         for i in range(2):
             # Validate brick placement if heketi zone checking is 'strict'
@@ -219,6 +184,53 @@ class TestHeketiZones(baseclass.BaseClass):
                 openshift_ops.verify_pvc_size(self.node, pvc_name, expand_size)
             else:
                 break
+
+    @pytest.mark.tier1
+    @ddt.data(
+        (3, "strict", False),
+        (3, "strict", True),
+        (4, "strict", False),
+        (4, "strict", True),
+        (1, "none", False),
+        (1, "none", True),
+        (2, "none", False),
+        (2, "none", True),
+        (3, "none", False),
+        (3, "none", True),
+        # PVC expansion cases:
+        (3, "strict", False, True),
+        (3, "strict", True, True),
+        (1, "none", False, True),
+        (1, "none", True, True),
+        (2, "none", False, True),
+        (2, "none", True, True),
+        (3, "none", False, True),
+        (3, "none", True, True),
+    )
+    @ddt.unpack
+    def test_check_pvc_placement_based_on_the_heketi_zones(
+            self, zone_count, heketi_zone_checking, is_arbiter_vol,
+            expand=False):
+        # TODO(vponomar): implement setting env vars for the Heketi dc.
+
+        # Check amount of available online heketi zones
+        self._check_for_available_zones(zone_count)
+
+        # Create storage class setting "user.heketi.zone-checking" option up
+        prefix = "autotests-heketi-zones"
+        sc_name = self.create_storage_class(
+            sc_name_prefix=prefix, vol_name_prefix=prefix,
+            allow_volume_expansion=expand,
+            is_arbiter_vol=is_arbiter_vol,
+            heketi_zone_checking=heketi_zone_checking)
+
+        # Create PVC using above storage class
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix=prefix, sc_name=sc_name)
+
+        # Validate brick placement and expand if needed
+        self._validate_brick_placement_in_correct_zone_or_with_expand_pvc(
+            heketi_zone_checking, pvc_name, zone_count, expand=expand)
 
         # Make sure that gluster vol has appropriate option set
         vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
