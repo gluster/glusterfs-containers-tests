@@ -249,6 +249,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
         # Add node to valid cluster id
         self.heketi_node_add_with_valid_cluster()
 
+    @pytest.mark.tier1
     def test_validate_heketi_node_add_with_db_check(self):
         """Test heketi db check after node add operation"""
         if (openshift_storage_version.get_openshift_storage_version()

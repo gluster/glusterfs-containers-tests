@@ -90,6 +90,7 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             "Nodes count from 'DB check' (%s) doesn't match calculated nodes "
             "count (%s)." % (db_nodes_count, calculated_nodes_count))
 
+    @pytest.mark.tier0
     @ddt.data('device_count', 'node_count', 'bricks_count')
     def test_verify_db_check(self, count_type):
         """Validate the nodes, devices and bricks count in heketi db"""
