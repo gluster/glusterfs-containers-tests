@@ -1017,7 +1017,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             'volume count is 9 ' % volume_count)
         self.assertEqual(9, volume_count, msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_initiator_side_failures_create_100_app_pods_with_block_pv(self):
 
         # Skip test case if OCS version in lower than 3.11.4
