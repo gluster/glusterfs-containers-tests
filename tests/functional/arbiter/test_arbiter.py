@@ -1014,7 +1014,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         vol_name = vol_create_info['name']
 
         # calculating size of data and arbiter bricks
-        size_list = [size*1024*1024, size*1024*16]
+        size_list = [size * 1024 * 1024, size * 1024 * 16]
         for brick_size in vol_create_info['bricks']:
             self.assertIn(
                 brick_size['size'], size_list, "Failed to check brick size")
