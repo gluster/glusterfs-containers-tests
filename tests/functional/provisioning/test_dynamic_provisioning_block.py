@@ -283,10 +283,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
         gluster_pods = oc_get_pods(
             self.ocp_client[0], selector="glusterfs-node=pod")
-        if gluster_pods:
-            cmd = "tail -n 5 /var/log/glusterfs/gluster-block/%s.log"
-        else:
-            cmd = "tail -n 5 /var/log/gluster-block/%s.log"
+        cmd = "tail -n 5 /var/log/glusterfs/gluster-block/%s.log"
         for g_host in g_hosts:
             for log in logs:
                 out = cmd_run_on_gluster_pod_or_node(
