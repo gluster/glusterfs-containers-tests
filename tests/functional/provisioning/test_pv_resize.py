@@ -224,6 +224,11 @@ class TestPvResizeClass(BaseClass):
     @pytest.mark.tier2
     def test_pv_resize_no_free_space(self):
         """Validate PVC resize fails if there is no free space available"""
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as CRS version check "
+                "is not implemented")
+
         if get_openshift_storage_version() < "3.11.5":
             self.skipTest(
                 "This test case is not supported for < OCS 3.11.5 builds due "

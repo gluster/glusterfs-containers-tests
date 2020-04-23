@@ -252,6 +252,11 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
     @pytest.mark.tier1
     def test_validate_heketi_node_add_with_db_check(self):
         """Test heketi db check after node add operation"""
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as CRS version check "
+                "is not implemented")
+
         if (openshift_storage_version.get_openshift_storage_version()
                 < "3.11.4"):
             self.skipTest(
