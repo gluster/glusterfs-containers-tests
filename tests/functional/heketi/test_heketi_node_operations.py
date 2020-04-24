@@ -240,6 +240,11 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
     @pytest.mark.tier0
     def test_heketi_node_add_with_valid_cluster(self):
         """Test heketi node add operation with valid cluster id"""
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as CRS version check "
+                "is not implemented")
+
         if (openshift_storage_version.get_openshift_storage_version()
                 < "3.11.4"):
             self.skipTest(
