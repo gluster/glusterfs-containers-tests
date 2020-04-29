@@ -934,7 +934,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         for w in Waiter(900, 10):
             if not temp_pvc_node.items():
                 break
-            for pvc, new_node in temp_pvc_node.items():
+            for pvc, new_node in list(temp_pvc_node.items()):
                 if new_node != dc_and_pod_names[pvc][2]:
                     iscsi = get_iscsi_session(
                         dc_and_pod_names[pvc][2],
