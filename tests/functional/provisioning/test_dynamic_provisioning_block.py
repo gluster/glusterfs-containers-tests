@@ -42,7 +42,6 @@ from openshiftstoragelibs.openshift_ops import (
     oc_create_pvc,
     oc_delete,
     oc_get_custom_resource,
-    oc_get_pods,
     oc_rsh,
     scale_dc_pod_amount_and_wait,
     verify_pvc_status_is_bound,
@@ -281,8 +280,6 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # Perform checks on Gluster nodes/PODs
         logs = ("gluster-block-configshell", "gluster-blockd")
 
-        gluster_pods = oc_get_pods(
-            self.ocp_client[0], selector="glusterfs-node=pod")
         cmd = "tail -n 5 /var/log/glusterfs/gluster-block/%s.log"
         for g_host in g_hosts:
             for log in logs:
