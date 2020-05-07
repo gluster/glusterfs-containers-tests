@@ -2,8 +2,10 @@ import ddt
 import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import heketi_version
+from openshiftstoragelibs import node_ops
 from openshiftstoragelibs import openshift_ops
 
 
@@ -151,3 +153,25 @@ class TestHeketiServerStateExamineGluster(BaseClass):
                "gluster examine {} are not same".format(
                    heketi_block_volumes, examine_blockvolumes))
         self.assertEqual(heketi_block_volumes, examine_blockvolumes, msg)
+
+    @pytest.mark.tier2
+    def test_validate_report_after_node_poweroff(self):
+        """Validate node report in heketi gluster examine after poweroff"""
+        # Skip test if not able to connect to Cloud Provider
+        try:
+            node_ops.find_vm_name_by_ip_or_hostname(self.node)
+        except (NotImplementedError, exceptions.ConfigError) as err:
+            self.skipTest(err)
+
+        # Power off one of the gluster node
+        g_node = list(self.gluster_servers_info.values())[0]['manage']
+        vm_name = node_ops.find_vm_name_by_ip_or_hostname(g_node)
+        self.power_off_gluster_node_vm(vm_name, g_node)
+
+        # Check the information of offline node in gluster examine output
+        msg = "could not fetch data from node {}".format(g_node)
+        examine_msg = heketi_ops.heketi_examine_gluster(
+            self.heketi_client_node, self.heketi_server_url)['report'][1]
+        self.assertEqual(
+            examine_msg, msg, "Failed to generate error report for node {} in"
+            " gluster examine output".format(g_node))
