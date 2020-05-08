@@ -33,7 +33,8 @@ from openshiftstoragelibs import exceptions
 
 
 OPENSHIFT_STORAGE_VERSION_RE = r"(?:v?)(\d+)(?:\.)(\d+)(?:\.(\d+))?.*"
-BUILDS_LABEL_TAG_REGEX = r"^LABEL.(ocs|cns)\.tags=\"v(.*),v(.*)\"$"
+BUILDS_LABEL_TAG_REGEX_1 = r"^LABEL.(ocs|cns)\.tags=\"v(.*),v(.*)\"$"
+BUILDS_LABEL_TAG_REGEX_2 = r"^ENV ocsVersion=\"(.*)\"$"
 OPENSHIFT_STORAGE_VERSION = None
 
 
@@ -60,17 +61,26 @@ def _get_openshift_storage_version_str(hostname=None):
         "oc rsh %s "
         "find . -name \"Dockerfile-rhgs3-rhgs-server-rhel7*\" "
         r"-exec awk '/%s/{print $0}' {} \; "
-        "| tail -1" %
-        (gluster_pod, BUILDS_LABEL_TAG_REGEX))
-    out = command.cmd_run(buildinfo_cmd, hostname)
+        "| tail -1")
 
-    build_tag_match = re.search(BUILDS_LABEL_TAG_REGEX, out)
-    if not build_tag_match:
-        error_msg = "Unexpected BUILD LABEL tag expression: '%s'" % out
+    # Get ocs/cns tag LABEL and check if 'ocsVersion' is present in tag
+    out = command.cmd_run(
+        buildinfo_cmd % (gluster_pod, BUILDS_LABEL_TAG_REGEX_1), hostname)
+    build_tag_match = re.search(BUILDS_LABEL_TAG_REGEX_1, out)
+    if build_tag_match and "${ocsVersion}" not in build_tag_match.group(2):
+        return (build_tag_match.group(2)).strip()
+
+    # Get 'ocsVersion' environment variable
+    out = command.cmd_run(
+        buildinfo_cmd % (gluster_pod, BUILDS_LABEL_TAG_REGEX_2), hostname)
+    build_tag_match = re.search(BUILDS_LABEL_TAG_REGEX_2, out)
+    if build_tag_match:
+        return (build_tag_match.group(1)).strip()
+    else:
+        error_msg = (
+            "Unexpected BUILD LABEL or OcsVersion tag expression: '%s'" % out)
         g.log.error(error_msg)
         raise exceptions.ExecutionError(error_msg)
-
-    return (build_tag_match.group(2)).strip()
 
 
 def _parse_openshift_storage_version(openshift_storage_version_str):
