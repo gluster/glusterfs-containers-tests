@@ -5,21 +5,17 @@ try:
 except ImportError:
     # py2
     import json
-from unittest import skip
 
 import ddt
 from glusto.core import Glusto as g
-import six
 import pytest
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import command
-from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import openshift_storage_libs
 from openshiftstoragelibs import utils
-from openshiftstoragelibs.waiter import Waiter
 
 
 @ddt.ddt
@@ -303,24 +299,13 @@ class TestHeketiZones(baseclass.BaseClass):
         return zone_devices_nodes
 
     def _check_heketi_pod_to_come_up_after_changing_env(self):
-        err_str = 'Err: Error from server (NotFound): pods "{}" not found'
-        for w in Waiter(120, 5):
-            heketi_pod = openshift_ops.get_pod_names_from_dc(
-                self.node, self.heketi_dc_name)[0]
-            try:
-                openshift_ops.wait_for_pod_be_ready(
-                    self.node, heketi_pod, 1, 1)
-            except (exceptions.ExecutionError, AssertionError) as e:
-                if err_str.format(heketi_pod) not in six.text_type(e):
-                    raise
-                continue
-
-            break
-
-        if w.expired:
-            raise AssertionError(
-                "Heketi pod failing to come up after changing value of env "
-                "inside heketi dc")
+        # Wait for heketi pod get to restart
+        heketi_pod = openshift_ops.get_pod_names_from_dc(
+            self.node, self.heketi_dc_name)[0]
+        openshift_ops.wait_for_resource_absence(self.node, "pod", heketi_pod)
+        new_heketi_pod = openshift_ops.get_pod_names_from_dc(
+            self.node, self.heketi_dc_name)[0]
+        openshift_ops.wait_for_pod_be_ready(self.node, new_heketi_pod)
 
     def _set_zone_checking_option_in_heketi_dc_or_create_sc(
             self, is_set_env, prefix):
@@ -380,7 +365,6 @@ class TestHeketiZones(baseclass.BaseClass):
 
         return app_pods
 
-    @skip("Blocked by BZ-1828249")
     @pytest.mark.tier1
     @ddt.data(
         (3, False),
@@ -467,7 +451,6 @@ class TestHeketiZones(baseclass.BaseClass):
             openshift_ops.wait_for_pod_be_ready(
                 self.node, pod_name, timeout=5, wait_step=2)
 
-    @skip("Blocked by BZ-1828249")
     @pytest.mark.tier1
     @ddt.data(
         (3, False),
