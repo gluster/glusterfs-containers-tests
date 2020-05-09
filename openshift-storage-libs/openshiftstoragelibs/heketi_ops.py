@@ -2033,3 +2033,37 @@ def heketi_volume_list_by_name_prefix(
 
     vol_regex = re.compile(HEKETI_VOLUME % prefix)
     return vol_regex.findall(h_volumes.strip())
+
+
+def validate_dev_path_vg_and_uuid(
+        heketi_client_node, heketi_server_url, hostname, device_id):
+    """Validate dev_path between node and heketi
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url.
+        hostname (str): Hostname of the node to which device is attached.
+        device_id (str): Device id to match the uuid and vg with node.
+
+    Returns:
+        bool: True if uuid and vg entry in heketi matches the actual values
+              else False
+    """
+    # Get dev_name, vg and uuid from heketi
+    dev_info = heketi_device_info(
+        heketi_client_node, heketi_server_url, device_id, json=True)
+    dev_name, h_uuid = dev_info["name"], dev_info["pv_uuid"]
+    bricks = dev_info["bricks"]
+    if bricks:
+        h_vg = bricks[0]["path"].split("/")[5]
+
+    # Collect data from the node
+    cmd = "pvs --noheadings -o vg_name,uuid -S name={}".format(dev_name)
+    n_vg, n_uuid = command.cmd_run(cmd, hostname=hostname).split()
+
+    # Compare the vg from node and heketi
+    if bricks and h_vg != n_vg:
+        return False
+
+    # Compare the uuid from node and heketi
+    return n_uuid == h_uuid
