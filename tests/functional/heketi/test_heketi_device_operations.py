@@ -17,6 +17,7 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_topology_info,
     heketi_volume_create,
     heketi_volume_delete,
+    validate_dev_path_vg_and_uuid,
 )
 from openshiftstoragelibs import utils
 
@@ -569,3 +570,24 @@ class TestHeketiDeviceOperations(BaseClass):
             heketi_device_delete(h_node, h_url, device_delete_id)
             self.addCleanup(
                 heketi_device_add, h_node, h_url, device_name, node_id)
+
+    @pytest.mark.tier0
+    def test_dev_path_mapping_basic_validation(self):
+        """Validate dev_path of all the devices"""
+        node_with_devices = dict()
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # Get the hostname  and devices attached to each host
+        topology_info = heketi_topology_info(h_node, h_url, json=True)
+        for cluster in topology_info['clusters']:
+            for node in cluster['nodes']:
+                node_with_devices[node['hostnames']['manage'][0]] = [
+                    device['id'] for device in node['devices']]
+
+        # Validate dev_path of each device
+        for node, devices in node_with_devices.items():
+            for dev in list(devices):
+                is_true = validate_dev_path_vg_and_uuid(
+                    h_node, h_url, node, dev)
+                self.assertTrue(is_true, "Failed to verify dv_path for the "
+                                "device {}".format(dev))
