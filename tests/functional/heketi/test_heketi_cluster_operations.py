@@ -5,6 +5,7 @@ import pytest
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs.waiter import Waiter
 
 
 @ddt.ddt
@@ -210,3 +211,27 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
         zone = node_details[0]["zone"]
         self.assertEqual(
             zone, storage_zone, err_msg % ("zone", zone, storage_zone))
+
+    @pytest.mark.tier1
+    def test_heketi_server_operations_cleanup_on_idle_setup(self):
+        """Run heketi db clean up on an idle setup"""
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+        err_msg = "There should not be any pending operations list {}"
+
+        # Verify the server operations
+        for waiter_add in Waiter(300, 20):
+            initial_ops = heketi_ops.heketi_server_operations_list(
+                h_node, h_url)
+            if not initial_ops:
+                break
+        if waiter_add.expired:
+            self.assertFalse(initial_ops, err_msg.format(initial_ops))
+
+        # Run cleanup
+        cleanup = heketi_ops.heketi_server_operation_cleanup(h_node, h_url)
+        self.assertFalse(
+            cleanup, "Cleanup command failed with message {}".format(cleanup))
+
+        # Verify the server operations
+        final_ops = heketi_ops.heketi_server_operations_list(h_node, h_url)
+        self.assertFalse(final_ops, err_msg.format(final_ops))
