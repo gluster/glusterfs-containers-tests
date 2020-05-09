@@ -13,6 +13,7 @@ from openshiftstoragelibs.exceptions import (
 )
 from openshiftstoragelibs.heketi_ops import (
     get_block_hosting_volume_list,
+    get_total_free_space,
     heketi_blockvolume_create,
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
@@ -38,6 +39,7 @@ from openshiftstoragelibs.openshift_ops import (
     get_gluster_pod_names_by_pvc_name,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
+    match_pvc_and_pv,
     oc_create_app_dc_with_io,
     oc_create_pvc,
     oc_delete,
@@ -52,6 +54,7 @@ from openshiftstoragelibs.openshift_ops import (
     wait_for_resources_absence,
 )
 from openshiftstoragelibs.openshift_version import get_openshift_version
+from openshiftstoragelibs import utils
 from openshiftstoragelibs.waiter import Waiter
 
 
@@ -834,3 +837,33 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             " No. of BHV before the test : {} \n"
             " No. of BHV after the test : {}".format(len(bhv_list), bhv_post))
         self.assertEqual(bhv_post, (len(bhv_list) + 2), err_msg)
+
+    @pytest.mark.tier1
+    def test_100gb_block_pvc_create_and_delete_twice(self):
+        """Validate creation and deletion of blockvoume of size 100GB"""
+        # Define required space, bhv size required for on 100GB block PVC
+        size, bhv_size, required_space = 100, 103, 309
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+        prefix = 'autotest-pvc-{}'.format(utils.get_random_str(size=5))
+
+        # Skip test if required free space is not available
+        free_space = get_total_free_space(
+            self.heketi_client_node, self.heketi_server_url)[0]
+        if free_space < required_space:
+            self.skipTest("Available free space {} is less than the required "
+                          "free space {}".format(free_space, required_space))
+
+        # Create block hosting volume of 103GB required for 100GB block PVC
+        bhv = heketi_volume_create(
+            h_node, h_url, bhv_size, block=True, json=True)['id']
+        self.addCleanup(heketi_volume_delete, h_node, h_url, bhv)
+
+        for _ in range(2):
+            # Create PVC of size 100GB
+            pvc_name = self.create_and_wait_for_pvc(
+                pvc_size=size, pvc_name_prefix=prefix)
+            match_pvc_and_pv(self.node, prefix)
+
+            # Delete the PVC
+            oc_delete(self.node, 'pvc', pvc_name)
+            wait_for_resource_absence(self.node, 'pvc', pvc_name)
