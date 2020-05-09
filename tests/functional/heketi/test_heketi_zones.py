@@ -447,6 +447,42 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
+    @pytest.mark.tier1
+    @ddt.data(3, 4)
+    def test_check_arbiter_pvc_placement_zone_check_in_dc(self, zone_count):
+        heketi_zone_checking = "strict"
+
+        # Check amount of available online heketi zones
+        self._check_for_available_zones(zone_count)
+
+        # Create storage class with arbiter option set
+        sc_name = self.create_storage_class(
+            sc_name_prefix=self.prefix, vol_name_prefix=self.prefix,
+            is_arbiter_vol=True)
+
+        # Set "user.heketi.zone-checking" to strict inside heketi dc
+        self._set_zone_check_env_in_heketi_dc(heketi_zone_checking)
+
+        # Create a PVC
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix=self.prefix, sc_name=sc_name)
+
+        # Validate brick placement
+        self._validate_brick_placement_in_correct_zone_or_with_expand_pvc(
+            heketi_zone_checking, pvc_name, zone_count)
+
+        # Make sure that gluster vol has appropriate option set
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, pvc_name)
+        self.assertIn('user.heketi.zone-checking', vol_info['options'])
+        self.assertEqual(vol_info['options']['user.heketi.zone-checking'],
+                         heketi_zone_checking)
+        self.assertIn('user.heketi.arbiter', vol_info['options'])
+        self.assertEqual(vol_info['options']['user.heketi.arbiter'], 'true')
+
+        # Create app DC with the above PVC
+        self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
+
     def _get_online_devices_and_nodes_with_zone(self):
         """
         This function returns the list of nodes and devices associated to zone
