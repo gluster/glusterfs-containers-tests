@@ -208,12 +208,24 @@ class TestHeketiZones(baseclass.BaseClass):
         (2, "none", True, True),
         (3, "none", False, True),
         (3, "none", True, True),
+        # Cases with minimum 4 nodes
+        (3, "strict", False, False, 4),
+        (3, "strict", True, False, 4),
+
     )
     @ddt.unpack
     def test_check_pvc_placement_based_on_the_heketi_zones(
             self, zone_count, heketi_zone_checking, is_arbiter_vol,
-            expand=False):
+            expand=False, node_count=None):
         # TODO(vponomar): implement setting env vars for the Heketi dc.
+
+        # Check amount of available online nodes
+        if node_count:
+            online_node_count = len(self._get_online_nodes())
+            if online_node_count < node_count:
+                self.skipTest(
+                    'Available node count {} is less than expected node '
+                    'count {}'.format(online_node_count, node_count))
 
         # Check amount of available online heketi zones
         self._check_for_available_zones(zone_count)
