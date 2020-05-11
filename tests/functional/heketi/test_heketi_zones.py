@@ -12,6 +12,7 @@ import pytest
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import command
+from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import openshift_storage_libs
@@ -231,6 +232,10 @@ class TestHeketiZones(baseclass.BaseClass):
 
     @pytest.mark.tier1
     @ddt.data(
+        (1, "strict", False),
+        (1, "strict", True),
+        (2, "strict", False),
+        (2, "strict", True),
         (3, "strict", False),
         (3, "strict", True),
         (4, "strict", False),
@@ -282,28 +287,35 @@ class TestHeketiZones(baseclass.BaseClass):
         if is_set_env:
             self._set_zone_check_env_in_heketi_dc(heketi_zone_checking)
 
-        # Create PVC using above storage class
-        pvc_name = self.create_and_wait_for_pvc(
-            pvc_name_prefix=prefix, sc_name=sc_name)
+        # PVC creation should fail when zones are below 3 and check is strict
+        if heketi_zone_checking == "strict" and zone_count < 3:
+            self.assertRaises(
+                exceptions.ExecutionError, self.create_and_wait_for_pvc,
+                pvc_name_prefix=prefix, sc_name=sc_name, timeout=30)
 
-        # Validate brick placement and expand if needed
-        self._validate_brick_placement_in_correct_zone_or_with_expand_pvc(
-            heketi_zone_checking, pvc_name, zone_count, expand=expand)
+        else:
+            # Create PVC using above storage class
+            pvc_name = self.create_and_wait_for_pvc(
+                pvc_name_prefix=prefix, sc_name=sc_name)
 
-        # Make sure that gluster vol has appropriate option set
-        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
-            self.node, pvc_name)
-        self.assertIn('user.heketi.zone-checking', vol_info['options'])
-        self.assertEqual(
-            vol_info['options']['user.heketi.zone-checking'],
-            heketi_zone_checking)
-        if is_arbiter_vol:
-            self.assertIn('user.heketi.arbiter', vol_info['options'])
+            # Validate brick placement and expand if needed
+            self._validate_brick_placement_in_correct_zone_or_with_expand_pvc(
+                heketi_zone_checking, pvc_name, zone_count, expand=expand)
+
+            # Make sure that gluster vol has appropriate option set
+            vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+                self.node, pvc_name)
+            self.assertIn('user.heketi.zone-checking', vol_info['options'])
             self.assertEqual(
-                vol_info['options']['user.heketi.arbiter'], 'true')
+                vol_info['options']['user.heketi.zone-checking'],
+                heketi_zone_checking)
+            if is_arbiter_vol:
+                self.assertIn('user.heketi.arbiter', vol_info['options'])
+                self.assertEqual(
+                    vol_info['options']['user.heketi.arbiter'], 'true')
 
-        # Create app DC with the above PVC
-        self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
+            # Create app DC with the above PVC
+            self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
     def _get_online_devices_and_nodes_with_zone(self):
         """
