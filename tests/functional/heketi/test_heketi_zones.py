@@ -187,6 +187,48 @@ class TestHeketiZones(baseclass.BaseClass):
             else:
                 break
 
+    def _check_heketi_pod_to_come_up_after_changing_env(self):
+        # Wait for heketi pod get to restart
+        heketi_pod = openshift_ops.get_pod_names_from_dc(
+            self.node, self.heketi_dc_name)[0]
+        openshift_ops.wait_for_resource_absence(self.node, "pod", heketi_pod)
+        new_heketi_pod = openshift_ops.get_pod_names_from_dc(
+            self.node, self.heketi_dc_name)[0]
+        openshift_ops.wait_for_pod_be_ready(
+            self.node, new_heketi_pod, wait_step=20)
+
+    def _set_zone_check_env_in_heketi_dc(self, heketi_zone_checking):
+        # Set env option zone checking in heketi dc
+        set_env = (
+            'HEKETI_POST_REQUEST_VOLUME_OPTIONS="user.heketi.zone-checking'
+            ' {}"').format(heketi_zone_checking)
+        unset_env, e_list = "HEKETI_POST_REQUEST_VOLUME_OPTIONS-", "--list"
+        cmd_set_env = (
+            "oc set env dc/{} {}".format(self.heketi_dc_name, set_env))
+        cmd_unset_env = (
+            "oc set env dc/{} {}".format(self.heketi_dc_name, unset_env))
+        command.cmd_run(cmd_set_env, hostname=self.node)
+        self._check_heketi_pod_to_come_up_after_changing_env()
+        self.addCleanup(self._check_heketi_pod_to_come_up_after_changing_env)
+        self.addCleanup(command.cmd_run, cmd_unset_env, hostname=self.node)
+
+        # List all envs and validate if env is set successfully
+        env = set_env.replace('"', '')
+        cmd_list_env = (
+            "oc set env dc/{} {}".format(self.heketi_dc_name, e_list))
+        env_list = command.cmd_run(cmd_list_env, hostname=self.node)
+        self.assertIn(env, env_list, "Failed to set env {}".format(env))
+
+    def _create_sc_for_zone_check_tc(self, prefix, heketi_zone_checking,
+                                     expand=False, is_arbiter_vol=False):
+        # Create storage class setting "user.heketi.zone-checking" up
+        sc_name = self.create_storage_class(
+            sc_name_prefix=prefix, vol_name_prefix=prefix,
+            allow_volume_expansion=expand, is_arbiter_vol=is_arbiter_vol,
+            heketi_zone_checking=heketi_zone_checking)
+
+        return sc_name
+
     @pytest.mark.tier1
     @ddt.data(
         (3, "strict", False),
@@ -211,13 +253,12 @@ class TestHeketiZones(baseclass.BaseClass):
         # Cases with minimum 4 nodes
         (3, "strict", False, False, 4),
         (3, "strict", True, False, 4),
-
     )
     @ddt.unpack
     def test_check_pvc_placement_based_on_the_heketi_zones(
             self, zone_count, heketi_zone_checking, is_arbiter_vol,
-            expand=False, node_count=None):
-        # TODO(vponomar): implement setting env vars for the Heketi dc.
+            expand=False, node_count=None, is_create_sc=True,
+            is_set_env=False):
 
         # Check amount of available online nodes
         if node_count:
@@ -230,13 +271,16 @@ class TestHeketiZones(baseclass.BaseClass):
         # Check amount of available online heketi zones
         self._check_for_available_zones(zone_count)
 
-        # Create storage class setting "user.heketi.zone-checking" option up
-        prefix = "autotests-heketi-zones"
-        sc_name = self.create_storage_class(
-            sc_name_prefix=prefix, vol_name_prefix=prefix,
-            allow_volume_expansion=expand,
-            is_arbiter_vol=is_arbiter_vol,
-            heketi_zone_checking=heketi_zone_checking)
+        # Create storage class if test case  requiures creation of sc
+        prefix, sc_name = "autotests-heketi-zones", None
+        if is_create_sc:
+            sc_name = self._create_sc_for_zone_check_tc(
+                prefix, heketi_zone_checking,
+                expand=expand, is_arbiter_vol=is_arbiter_vol)
+
+        # Set zone check env in heketi dc if test case requires that
+        if is_set_env:
+            self._set_zone_check_env_in_heketi_dc(heketi_zone_checking)
 
         # Create PVC using above storage class
         pvc_name = self.create_and_wait_for_pvc(
@@ -310,49 +354,6 @@ class TestHeketiZones(baseclass.BaseClass):
 
         return zone_devices_nodes
 
-    def _check_heketi_pod_to_come_up_after_changing_env(self):
-        # Wait for heketi pod get to restart
-        heketi_pod = openshift_ops.get_pod_names_from_dc(
-            self.node, self.heketi_dc_name)[0]
-        openshift_ops.wait_for_resource_absence(self.node, "pod", heketi_pod)
-        new_heketi_pod = openshift_ops.get_pod_names_from_dc(
-            self.node, self.heketi_dc_name)[0]
-        openshift_ops.wait_for_pod_be_ready(self.node, new_heketi_pod)
-
-    def _set_zone_checking_option_in_heketi_dc_or_create_sc(
-            self, is_set_env, prefix):
-        sc_name = None
-        if is_set_env:
-            # Set env option for strict zone checking in heketi dc
-            set_env = ('HEKETI_POST_REQUEST_VOLUME_OPTIONS='
-                       '"user.heketi.zone-checking strict"')
-            unset_env, e_list = "HEKETI_POST_REQUEST_VOLUME_OPTIONS-", "--list"
-            cmd_set_env = (
-                "oc set env dc/{} {}".format(self.heketi_dc_name, set_env))
-            cmd_unset_env = (
-                "oc set env dc/{} {}".format(self.heketi_dc_name, unset_env))
-            command.cmd_run(cmd_set_env, hostname=self.node)
-            self._check_heketi_pod_to_come_up_after_changing_env()
-            self.addCleanup(
-                self._check_heketi_pod_to_come_up_after_changing_env)
-            self.addCleanup(command.cmd_run, cmd_unset_env, hostname=self.node)
-
-            # List all envs and validate if env is set successfully
-            env = set_env.replace('"', '')
-            cmd_list_env = (
-                "oc set env dc/{} {}".format(self.heketi_dc_name, e_list))
-            env_list = command.cmd_run(cmd_list_env, hostname=self.node)
-            self.assertIn(env, env_list, "Failed to set env {}".format(env))
-
-        else:
-            # Create storage class setting "user.heketi.zone-checking" up
-            heketi_zone_checking = "strict"
-            sc_name = self.create_storage_class(
-                sc_name_prefix=prefix, vol_name_prefix=prefix,
-                heketi_zone_checking=heketi_zone_checking)
-
-        return sc_name
-
     def _create_dcs_and_check_brick_placement(
             self, prefix, sc_name, heketi_zone_checking, zone_count):
         app_pods = []
@@ -390,7 +391,7 @@ class TestHeketiZones(baseclass.BaseClass):
     def test_check_node_disable_based_on_heketi_zone(
             self, zone_count, is_disable_on_different_zone, is_set_env=False):
         """Validate node disable in different heketi zones"""
-        expected_node_count, heketi_zone_checking = 4, "strict"
+        expected_node_count, heketi_zone_checking, sc_name = 4, "strict", None
         prefix = "hzone-{}".format(utils.get_random_str())
 
         # Check amount of available online nodes
@@ -406,9 +407,13 @@ class TestHeketiZones(baseclass.BaseClass):
         # Get the online devices and nodes w.r.t. to zone
         zone_devices_nodes = self._get_online_devices_and_nodes_with_zone()
 
-        # Set heketi zone checking option to "strict"
-        sc_name = self._set_zone_checking_option_in_heketi_dc_or_create_sc(
-            is_set_env, prefix)
+        # Create sc or else directly set env to "strict" inside dc
+        is_create_sc = not is_set_env
+        if is_create_sc:
+            self._create_sc_for_zone_check_tc(
+                prefix, heketi_zone_checking)
+        if is_set_env:
+            self._set_zone_check_env_in_heketi_dc(heketi_zone_checking)
 
         # Choose a zone and node_id to disable the device
         for zone, nodes_and_devices in zone_devices_nodes.items():
@@ -477,7 +482,7 @@ class TestHeketiZones(baseclass.BaseClass):
             self, zone_count, is_disable_on_different_zone, is_set_env=False):
         """Validate device disable in different heketi zones"""
         online_device_count, expected_device_count = 0, 4
-        expected_node_count, heketi_zone_checking = 4, "strict"
+        expected_node_count, heketi_zone_checking, sc_name = 4, "strict", None
         prefix = "hzone-{}".format(utils.get_random_str())
 
         # Check amount of available online nodes
@@ -503,9 +508,13 @@ class TestHeketiZones(baseclass.BaseClass):
                 "available device count {}".format(
                     expected_device_count, online_device_count))
 
-        # Set heketi zone checking option to "strict"
-        sc_name = self._set_zone_checking_option_in_heketi_dc_or_create_sc(
-            is_set_env, prefix)
+        # Create sc or else directly set env to "strict" inside dc
+        is_create_sc = not is_set_env
+        if is_create_sc:
+            sc_name = self._create_sc_for_zone_check_tc(
+                prefix, heketi_zone_checking)
+        if is_set_env:
+            self._set_zone_check_env_in_heketi_dc(heketi_zone_checking)
 
         # Choose a zone and device_id to disable the device
         for zone, nodes_and_devices in zone_devices_nodes.items():
