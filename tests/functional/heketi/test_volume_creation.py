@@ -255,8 +255,17 @@ class TestVolumeCreationTestCases(BaseClass):
         device.
         """
         h_node, h_url = self.heketi_client_node, self.heketi_server_url
-        topology = heketi_ops.heketi_topology_info(h_node, h_url, json=True)
 
+        # Remove existing BHV to calculate freespace
+        bhv_list = heketi_ops.get_block_hosting_volume_list(h_node, h_url)
+        if bhv_list:
+            for bhv in bhv_list:
+                bhv_info = heketi_ops.heketi_volume_info(
+                    h_node, h_url, bhv, json=True)
+                if bhv_info['blockinfo'].get('blockvolume') is None:
+                    heketi_ops.heketi_volume_delete(h_node, h_url, bhv)
+
+        topology = heketi_ops.heketi_topology_info(h_node, h_url, json=True)
         nodes_free_space, nodes_ips = [], []
         selected_nodes, selected_devices = [], []
         cluster = topology['clusters'][0]
@@ -368,15 +377,15 @@ class TestVolumeCreationTestCases(BaseClass):
 
         # Verify distCount in gluster v info
         msg = "Volume %s distCount is %s instead of distCount as 3" % (
-            vol_name, gluster_v_info['distCount'])
+            vol_name, int(gluster_v_info['distCount']))
         self.assertEqual(
-            six.text_type(int(gluster_v_info['brickCount']) / 3),
-            gluster_v_info['distCount'])
+            int(gluster_v_info['brickCount']) // 3,
+            int(gluster_v_info['distCount']), msg)
 
         # Verify bricks count in gluster v info
         msg = ("Volume %s does not have bricks count multiple of 3. It has %s"
                % (vol_name, gluster_v_info['brickCount']))
-        self.assertFalse(int(gluster_v_info['brickCount']) % 3)
+        self.assertFalse(int(gluster_v_info['brickCount']) % 3, msg)
 
     @pytest.mark.tier1
     def test_create_volume_with_same_name(self):
