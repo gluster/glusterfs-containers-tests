@@ -10,6 +10,8 @@ from openshiftstoragelibs.exceptions import (
     ExecutionError,
     NotSupportedException,
 )
+from openshiftstoragelibs.openshift_ops import (
+    oc_get_custom_resource)
 from openshiftstoragelibs.openshift_version import get_openshift_version
 from openshiftstoragelibs import waiter
 
@@ -30,9 +32,13 @@ def validate_multipath_pod(hostname, podname, hacount, mpath):
          bool: True if successful, otherwise raises exception
     """
 
-    cmd = "oc get pods -o wide | grep %s | awk '{print $7}'" % podname
-    pod_nodename = cmd_run(cmd, hostname)
+    pod_nodename_list = oc_get_custom_resource(
+        hostname, 'pod', custom=':.spec.nodeName', name=podname)
+    if not pod_nodename_list:
+        raise ExecutionError(
+            "Failed to get ip for pod from hostname {}".format(hostname))
 
+    pod_nodename = pod_nodename_list[0]
     active_node_count, enable_node_count = (1, hacount - 1)
     cmd = "multipath -ll %s | grep 'status=active' | wc -l" % mpath
     active_count = int(cmd_run(cmd, pod_nodename))
