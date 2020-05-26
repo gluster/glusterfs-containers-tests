@@ -224,8 +224,8 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
                 h_node, h_url)
             if not initial_ops:
                 break
-        if waiter_add.expired:
-            self.assertFalse(initial_ops, err_msg.format(initial_ops))
+        if waiter_add.expired and initial_ops:
+            self.skipTest(err_msg.format(initial_ops))
 
         # Run cleanup
         cleanup = heketi_ops.heketi_server_operation_cleanup(h_node, h_url)
