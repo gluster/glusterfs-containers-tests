@@ -461,17 +461,25 @@ class TestHeketiVolume(BaseClass):
         h_db_check_bricks_before = h_db_check_before["bricks"]
         h_db_check_vol_before = h_db_check_before["{}volumes".format(vol_type)]
 
-        # Check file/block volume pending operations before creation.
-        if h_db_check_vol_before["pending"]:
-            self.skipTest(
-                "Skip TC due to unexpected {}volumes pending operations"
-                .format(vol_type))
+        # Verify file/block volumes pending operation before creation
+        # Wait for few min's if found and pending operation or skip tc
+        for w in waiter.Waiter(timeout=300, interval=10):
+            h_db_check_before = heketi_db_check(h_node, h_url)
+            h_db_check_bricks_before = h_db_check_before["bricks"]
+            h_db_check_vol_before = h_db_check_before["{}volumes".format(
+                vol_type)]
 
-        # Check bricks pending operations before creation.
-        if h_db_check_bricks_before["pending"]:
+            if(not(h_db_check_vol_before["pending"]
+                    and h_db_check_bricks_before["pending"])):
+                break
+
+        if w.expired:
             self.skipTest(
-                "Skip TC due to unexpected bricks pending operations for"
-                " {}volume".format(vol_type))
+                "Skip TC due to unexpected {} volumes or {} bricks pending"
+                " operations for {}volume".format(
+                    h_db_check_vol_before["pending"],
+                    h_db_check_bricks_before["pending"],
+                    vol_type))
 
         # Fetch BHV list
         if vol_type == 'block':
