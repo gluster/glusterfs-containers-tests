@@ -25,7 +25,7 @@ class TestDisableHeketiDevice(baseclass.BaseClass):
 
         # Disable 4th and other nodes
         if len(node_id_list) > 3:
-            for node in node_id_list[3:]:
+            for node_id in node_id_list[3:]:
                 heketi_ops.heketi_node_disable(
                     self.heketi_client_node, self.heketi_server_url, node_id)
                 self.addCleanup(
