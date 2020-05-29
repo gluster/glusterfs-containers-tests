@@ -791,8 +791,8 @@ def heketi_device_info(heketi_client_node, heketi_server_url, device_id,
             - user : (str)|None
 
     Returns:
-        Str: device info as raw CLI output if "json" arg is not provided.
-        Dict: device info parsed to dict if "json" arg is provided.
+        str: device info as raw CLI output if "json" arg is not provided.
+        dict: device info parsed to dict if "json" arg is provided.
 
     Raises:
         exceptions.ExecutionError: if command fails.
@@ -876,8 +876,8 @@ def heketi_node_add(
             - user : (str)|None
 
     Returns:
-        Str: Node info as raw CLI output if "json" arg is not provided.
-        Dict: Node info parsed to dict if "json" arg is provided.
+        str: Node info as raw CLI output if "json" arg is not provided.
+        dict: Node info parsed to dict if "json" arg is provided.
 
     Raises:
         exceptions.AssertionError: if command fails.
@@ -1114,7 +1114,7 @@ def heketi_node_list(heketi_client_node, heketi_server_url,
             - secret : (str)|None
             - user : (str)|None
     Returns:
-        list of strings which are node IDs
+        list : node IDs which are of type str
 
     Raises: openshiftstoragelibs.exceptions.ExecutionError when command fails.
     """
@@ -1419,7 +1419,7 @@ def set_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
         user (str) : username
         secret (str) : secret for that user
     Returns:
-        True : if successful
+        bool : True on success, else False
     Raises:
         ValueError : when improper input data are provided.
         exceptions.ExecutionError : when command fails.
@@ -1466,7 +1466,7 @@ def set_arbiter_tag(
         user (str) : username
         secret (str) : secret for that user
     Returns:
-        True : if successful
+        bool : True on success, else False
     Raises:
         ValueError : when improper input data are provided.
         exceptions.ExecutionError : when command fails.
@@ -1512,7 +1512,7 @@ def rm_tags(heketi_client_node, heketi_server_url, source, source_id, tag,
         user (str) : username
         secret (str) : secret for that user
     Returns:
-        True : if successful
+        bool : True on success, else False
     Raises:
         ValueError : when improper input data are provided.
         exceptions.ExecutionError : when command fails.
@@ -1555,7 +1555,7 @@ def rm_arbiter_tag(heketi_client_node, heketi_server_url, source, source_id,
         user (str) : username
         secret (str) : secret for that user
     Returns:
-        True : if successful
+        bool : True on success, else False
     Raises:
         ValueError : when improper input data are provided.
         exceptions.ExecutionError : when command fails.
@@ -1634,7 +1634,7 @@ def heketi_examine_gluster(
         exceptions.ExecutionError: if command fails.
 
     Returns:
-        dictionary: if successful
+        dict: gluster examine output on success
     """
 
     version = heketi_version.get_heketi_version(heketi_client_node)
@@ -1698,7 +1698,7 @@ def get_total_free_space(heketi_client_node, heketi_server_url):
         - heketi_server_url (str): This is a heketi server url.
 
     Returns:
-        int: if successful
+        tuple : tuple of total free space and number of nodes, if successful
 
     """
     device_free_spaces = []
@@ -1830,7 +1830,7 @@ def heketi_db_check(
         exceptions.AssertionError: if command fails.
 
     Returns:
-        dictionary: if successful
+        dict: heketi db check output on success
     """
 
     version = heketi_version.get_heketi_version(heketi_client_node)
@@ -1913,7 +1913,7 @@ def get_heketi_volume_and_brick_count_list(
             - user : (str)|None
 
     Returns:
-        list of tuples containing volume name and brick count
+        list : list of tuples containing volume name and brick count
 
         example:
         [('heketidbstorage', 3), ('vol_dcedb64fae938d8a72d0749c2159fcdb', 6)]
