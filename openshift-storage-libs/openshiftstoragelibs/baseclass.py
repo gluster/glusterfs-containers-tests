@@ -544,7 +544,8 @@ class BaseClass(unittest.TestCase):
         gluster_host_label = "glusterfs=storage-host"
         gluster_pod_label = "glusterfs=storage-pod"
         oc_label(
-            self.ocp_client[0], "node", storage_hostname, gluster_host_label)
+            self.ocp_client[0], "node", storage_hostname, gluster_host_label,
+            overwrite=True)
         self.addCleanup(
             wait_for_pods_be_ready,
             self.ocp_client[0], len(self.gluster_servers),

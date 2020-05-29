@@ -612,17 +612,21 @@ def oc_get_all_pvs(ocp_node):
     return oc_get_yaml(ocp_node, 'pv', None)
 
 
-def oc_label(hostname, rtype, rname, label):
+def oc_label(hostname, rtype, rname, label, overwrite=False):
     """Add label for given resource
     Args:
         hostname (str): Node where we want to run our commands.
         rtype (str): Type of resource.
         rname (str): Name of resource.
+        overwrite(bool): True if glusterfs already has a value.
+            False by default.
 
     Raises:
         AssertionError: In case adding label to resource fails.
     """
-    cmd = "oc label %s %s %s" % (rtype, rname, label)
+    cmd = "oc label {} {} {}".format(rtype, rname, label)
+    if overwrite:
+        cmd += " --overwrite"
     out = command.cmd_run(cmd, hostname=hostname)
 
     return out
