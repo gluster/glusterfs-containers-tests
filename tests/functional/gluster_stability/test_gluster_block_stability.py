@@ -596,6 +596,19 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         """Abrupt reboot initiator node to make sure paths rediscovery is
         happening.
         """
+        # Skip the test if iscsi-initiator-utils version is not the expected
+        e_pkg_version = '6.2.0.874-13'
+        cmd = ("rpm -q iscsi-initiator-utils"
+               " --queryformat '%{version}-%{release}\n'"
+               "| cut -d '.' -f 1,2,3,4")
+        for g_server in self.gluster_servers:
+            out = self.cmd_run(cmd, g_server)
+            if parse_version(out) < parse_version(e_pkg_version):
+                self.skipTest(
+                    "Skip test since isci initiator utils version actual: %s "
+                    "is less than expected: %s on node %s, for more info "
+                    "refer to BZ-1624670" % (out, e_pkg_version, g_server))
+
         ini_node = self.get_initiator_node_and_mark_other_nodes_unschedulable()
 
         # Create 5 PVC's and 5 DC's
@@ -608,7 +621,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         # Run I/O on app pods
         _file, base_size, count = '/mnt/file', 4096, 1000
         file_size = base_size * count
-        cmd_run_io = 'dd if=/dev/urandom of=%s bs=%s count=%s' % (
+        cmd_run_io = 'dd if=/dev/urandom of=%s bs=%s count=%s conv=fsync' % (
             _file, base_size, count)
 
         for _, pod_name in dcs.values():
@@ -617,6 +630,19 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         # Reboot initiator node where all the app pods are running
         node_reboot_by_command(ini_node)
         wait_for_ocp_node_be_ready(self.node, ini_node)
+
+        # wait fot pods to restart after reboot
+        err = 'Pod sandbox changed, it will be killed and re-created.'
+        for _, pod_name in dcs.values():
+            events = wait_for_events(
+                self.node, obj_name=pod_name, obj_type='Pod',
+                event_reason='SandboxChanged', event_type='Normal',
+                timeout=300)
+            for event in events:
+                if err in event['message']:
+                    break
+            msg = "Did not found '%s' in events '%s'" % (err, events)
+            self.assertTrue((err in event['message']), msg)
 
         # Wait for pods to be ready after node reboot
         pod_names = scale_dcs_pod_amount_and_wait(
