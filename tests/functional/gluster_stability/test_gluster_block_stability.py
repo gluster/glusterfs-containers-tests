@@ -1025,51 +1025,6 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         self.assertEqual(9, volume_count, msg)
 
     @pytest.mark.tier2
-    def test_initiator_side_failures_create_100_app_pods_with_block_pv(self):
-
-        # Skip test case if OCS version in lower than 3.11.4
-        if get_openshift_storage_version() < "3.11.4":
-            self.skipTest("Skipping test case due to BZ-1607520, which is"
-                          " fixed in OCS 3.11.4")
-
-        # Skip the test if iscsi-initiator-utils version is not the expected
-        e_pkg_version = '6.2.0.874-13'
-        cmd = ("rpm -q iscsi-initiator-utils"
-               " --queryformat '%{version}-%{release}\n'"
-               "| cut -d '.' -f 1,2,3,4")
-        for g_server in self.gluster_servers:
-            out = self.cmd_run(cmd, g_server)
-            if parse_version(out) < parse_version(e_pkg_version):
-                self.skipTest(
-                    "Skip test since isci initiator utils version actual: %s "
-                    "is less than expected: %s on node %s, for more info "
-                    "refer to BZ-1624670" % (out, e_pkg_version, g_server))
-
-        nodes = oc_get_schedulable_nodes(self.node)
-
-        # Get list of all gluster nodes
-        g_pods = get_ocp_gluster_pod_details(self.node)
-        g_nodes = [pod['pod_hostname'] for pod in g_pods]
-
-        # Skip test case if required schedulable node count not met
-        if len(set(nodes) - set(g_nodes)) < 1:
-            self.skipTest("skipping test case because it needs at least one"
-                          " node schedulable")
-
-        # Make containerized Gluster nodes unschedulable
-        if g_nodes:
-            # Make gluster nodes unschedulable
-            oc_adm_manage_node(self.node, '--schedulable=false', nodes=g_nodes)
-
-            # Make gluster nodes schedulable
-            self.addCleanup(
-                oc_adm_manage_node, self.node, '--schedulable=true',
-                nodes=g_nodes)
-
-        # Create and validate 100 app pod creations with block PVs attached
-        self.bulk_app_pods_creation_with_block_pv(app_pod_count=100)
-
-    @pytest.mark.tier2
     def test_delete_block_volume_with_one_node_down(self):
         """Validate deletion of block volume when one node is down"""
 
