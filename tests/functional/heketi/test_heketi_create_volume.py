@@ -36,7 +36,10 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_info,
     heketi_volume_list,
 )
-from openshiftstoragelibs.openshift_ops import cmd_run_on_gluster_pod_or_node
+from openshiftstoragelibs.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
+    wait_for_service_status_on_gluster_pod_or_node,
+)
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import waiter
@@ -376,11 +379,15 @@ class TestHeketiVolume(BaseClass):
         finally:
             for gluster_server in self.gluster_servers[:2]:
                 self.addCleanup(
+                    wait_for_service_status_on_gluster_pod_or_node,
+                    self.ocp_master_node[0], 'glusterd', 'active', 'running',
+                    gluster_server)
+                self.addCleanup(
                     cmd_run_on_gluster_pod_or_node, self.ocp_master_node[0],
                     cmd_glusterd_start, gluster_node=gluster_server)
 
         # Verify volume creation at the gluster side
-        g_vol_list = get_volume_list('auto_get_gluster_endpoint')
+        g_vol_list = get_volume_list(self.gluster_servers[2])
         self.assertTrue(g_vol_list, "Failed to get gluster volume list")
 
         msg = "volume: %s not found in the volume list: %s" % (
