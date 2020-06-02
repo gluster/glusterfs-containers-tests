@@ -200,11 +200,20 @@ class TestHeketiZones(baseclass.BaseClass):
             self.node, new_heketi_pod, wait_step=20)
 
     def _set_zone_check_env_in_heketi_dc(self, heketi_zone_checking):
-        # Set env option zone checking in heketi dc
         set_env = (
             'HEKETI_POST_REQUEST_VOLUME_OPTIONS="user.heketi.zone-checking'
             ' {}"').format(heketi_zone_checking)
         unset_env, e_list = "HEKETI_POST_REQUEST_VOLUME_OPTIONS-", "--list"
+        env = set_env.replace('"', '')
+
+        # Check if zone checking env is already set, then do nothing
+        cmd_list_env = (
+            "oc set env dc/{} {}".format(self.heketi_dc_name, e_list))
+        env_list = command.cmd_run(cmd_list_env, hostname=self.node)
+        if env in env_list:
+            return
+
+        # Set zone checking env option inside heketi dc
         cmd_set_env = (
             "oc set env dc/{} {}".format(self.heketi_dc_name, set_env))
         cmd_unset_env = (
@@ -215,11 +224,8 @@ class TestHeketiZones(baseclass.BaseClass):
         self.addCleanup(command.cmd_run, cmd_unset_env, hostname=self.node)
 
         # List all envs and validate if env is set successfully
-        env = set_env.replace('"', '')
-        cmd_list_env = (
-            "oc set env dc/{} {}".format(self.heketi_dc_name, e_list))
-        env_list = command.cmd_run(cmd_list_env, hostname=self.node)
-        self.assertIn(env, env_list, "Failed to set env {}".format(env))
+        new_env_list = command.cmd_run(cmd_list_env, hostname=self.node)
+        self.assertIn(env, new_env_list, "Failed to set env {}".format(env))
 
     @pytest.mark.tier1
     @ddt.data(
@@ -409,6 +415,34 @@ class TestHeketiZones(baseclass.BaseClass):
                          heketi_zone_checking)
         self.assertIn('user.heketi.arbiter', vol_info['options'])
         self.assertEqual(vol_info['options']['user.heketi.arbiter'], 'true')
+
+        # Create app DC with the above PVC
+        self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
+
+    @pytest.mark.tier1
+    @ddt.data(3, 4)
+    def test_pvc_placement_with_zone_check_set_in_dc(self, zone_count):
+        heketi_zone_checking = "strict"
+
+        # Check amount of available online heketi zones
+        self._check_for_available_zones(zone_count)
+
+        # Set "user.heketi.zone-checking" to strict inside heketi dc
+        self._set_zone_check_env_in_heketi_dc(heketi_zone_checking)
+
+        # Create a PVC
+        pvc_name = self.create_and_wait_for_pvc(pvc_name_prefix=self.prefix)
+
+        # Validate brick placement
+        self._validate_brick_placement_in_correct_zone_or_with_expand_pvc(
+            heketi_zone_checking, pvc_name, zone_count)
+
+        # Make sure that gluster vol has appropriate option set
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, pvc_name)
+        self.assertIn('user.heketi.zone-checking', vol_info['options'])
+        self.assertEqual(vol_info['options']['user.heketi.zone-checking'],
+                         heketi_zone_checking)
 
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
