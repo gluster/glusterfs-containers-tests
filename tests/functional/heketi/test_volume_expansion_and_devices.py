@@ -370,9 +370,6 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
                 h_node, h_server_url, additional_device_name, node_id)
             additional_devices_attached.update(
                 {node_id: additional_device_name})
-
-        # Schedule cleanup of the added devices
-        for node_id in additional_devices_attached.keys():
             node_info = heketi_ops.heketi_node_info(
                 h_node, h_server_url, node_id, json=True)
             for device in node_info["devices"]:
