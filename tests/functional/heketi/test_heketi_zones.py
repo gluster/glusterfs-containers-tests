@@ -483,6 +483,48 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
+    @ddt.data(
+        (1, False),
+        (1, True),
+        (2, False),
+        (2, True),
+    )
+    @ddt.unpack
+    def test_pvc_placement_and_expansion_with_zone_check_set_in_dc(
+            self, zone_count, is_arbiter):
+        heketi_zone_checking, expand_size = "strict", 2
+
+        # Create storage class setting expansion and arbiter option up
+        sc_name = self.create_storage_class(
+            sc_name_prefix=self.prefix, vol_name_prefix=self.prefix,
+            allow_volume_expansion=True, is_arbiter_vol=True)
+
+        # Create PVC using above storage class
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix=self.prefix, sc_name=sc_name)
+
+        # Check amount of available online heketi zones
+        self._check_for_available_zones(zone_count)
+
+        # Set "user.heketi.zone-checking" to strict inside heketi dc
+        self._set_zone_check_env_in_heketi_dc(heketi_zone_checking)
+
+        # Expand PVC
+        openshift_storage_libs.enable_pvc_resize(self.node)
+        openshift_ops.resize_pvc(self.node, pvc_name, expand_size)
+        openshift_ops.verify_pvc_size(self.node, pvc_name, expand_size)
+
+        # Make sure that gluster vol has appropriate option set
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, pvc_name)
+        if is_arbiter:
+            self.assertIn('user.heketi.arbiter', vol_info['options'])
+            self.assertEqual(
+                vol_info['options']['user.heketi.arbiter'], 'true')
+
+        # Create app DC with the above PVC
+        self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
+
     def _get_online_devices_and_nodes_with_zone(self):
         """
         This function returns the list of nodes and devices associated to zone
