@@ -483,6 +483,7 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
+    @pytest.mark.tier1
     @ddt.data(
         (1, False),
         (1, True),
@@ -521,6 +522,46 @@ class TestHeketiZones(baseclass.BaseClass):
             self.assertIn('user.heketi.arbiter', vol_info['options'])
             self.assertEqual(
                 vol_info['options']['user.heketi.arbiter'], 'true')
+
+        # Create app DC with the above PVC
+        self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
+
+    @pytest.mark.tier1
+    @ddt.data(
+        ("strict", "strict"),
+        ("none", "strict"),
+        ("strict", "none"),
+    )
+    @ddt.unpack
+    def test_check_pvc_placement_with_zone_check_in_sc_and_dc_both(
+            self, check_in_dc, check_in_sc):
+        zone_count = 3
+
+        # Check amount of available online heketi zones
+        self._check_for_available_zones(zone_count)
+
+        # Create storage class with arbiter option set
+        sc_name = self.create_storage_class(
+            sc_name_prefix=self.prefix, vol_name_prefix=self.prefix,
+            heketi_zone_checking=check_in_sc)
+
+        # Set "user.heketi.zone-checking" to strict inside heketi dc
+        self._set_zone_check_env_in_heketi_dc(check_in_dc)
+
+        # Create a PVC
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix=self.prefix, sc_name=sc_name)
+
+        # Validate brick placement
+        self._validate_brick_placement_in_correct_zone_or_with_expand_pvc(
+            check_in_dc, pvc_name, zone_count)
+
+        # Make sure that gluster vol has appropriate option set
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, pvc_name)
+        self.assertIn('user.heketi.zone-checking', vol_info['options'])
+        self.assertEqual(vol_info['options']['user.heketi.zone-checking'],
+                         check_in_dc)
 
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
