@@ -149,7 +149,7 @@ class TestHeketiVolume(BaseClass):
         # Run unique actions to Validate whether deleting a dist-rep
         # volume is handled by heketi else return
         if not validate_cleanup:
-            return
+            return vol_id
 
         # Get the free space after creating heketi volume
         free_space_after_creating_vol = self._get_free_space()
@@ -198,7 +198,7 @@ class TestHeketiVolume(BaseClass):
     @pytest.mark.tier0
     def test_to_create_and_delete_dist_rep_vol(self):
         """Validate 2x3 vol type creation when the volume cannot be
-           carved out of a single device
+           carved out of a single device and the delete the volume
         """
         self._create_distributed_replica_vol(validate_cleanup=True)
 
@@ -208,3 +208,13 @@ class TestHeketiVolume(BaseClass):
         """Validate distributed replicated bhv using heketi-cli"""
         self._create_distributed_replica_vol(
             validate_cleanup, block=True)
+
+    @pytest.mark.tier0
+    def test_to_create_dist_rep_vol(self):
+        """Validate 2x3 vol type creation when the volume cannot be
+           carved out of a single device
+        """
+        vol_id = self._create_distributed_replica_vol(validate_cleanup=False)
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, vol_id)
