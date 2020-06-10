@@ -388,69 +388,6 @@ class TestHeketiVolume(BaseClass):
         self.assertIn(volume_name, g_vol_list, msg)
 
     @pytest.mark.tier1
-    def test_verify_pending_entries_in_db(self):
-        """Verify pending entries of volumes and bricks in db during
-        volume creation from heketi side
-        """
-        h_volume_size = 100
-        h_db_chk_bfr_v_creation = heketi_db_check(
-            self.heketi_client_node, self.heketi_server_url)
-
-        if (h_db_chk_bfr_v_creation["bricks"]["pending"] != 0
-                or h_db_chk_bfr_v_creation["volumes"]["pending"] != 0):
-            self.skipTest(
-                "Skip TC due to unexpected bricks/volumes pending operations")
-
-        # Verify bricks and volume pending operation before creation
-        self.assertEqual(h_db_chk_bfr_v_creation["bricks"]["pending"], 0)
-        self.assertEqual(h_db_chk_bfr_v_creation["volumes"]["pending"], 0)
-
-        # Temporary replace g.run with g.async_run in heketi_volume_create func
-        # to be able to run it in background.Also, avoid parsing the output as
-        # it won't be json at that moment. Parse it after reading the async
-        # operation results.
-
-        def run_async(cmd, hostname, raise_on_error=True):
-            return g.run_async(host=hostname, command=cmd)
-
-        with mock.patch.object(
-                json, 'loads', side_effect=(lambda j: j)):
-            with mock.patch.object(command, 'cmd_run', side_effect=run_async):
-                h_vol_creation_async_op = heketi_volume_create(
-                    self.heketi_client_node,
-                    self.heketi_server_url, h_volume_size, json=True)
-
-        for w in waiter.Waiter(timeout=5, interval=1):
-            h_db_chk_during_v_creation = heketi_db_check(
-                self.heketi_client_node, self.heketi_server_url)
-            if h_db_chk_during_v_creation["bricks"]["pending"] != 0:
-                break
-        if w.expired:
-            err_msg = "No pending operation in Heketi db"
-            g.log.error(err_msg)
-            raise exceptions.ExecutionError(err_msg)
-
-        retcode, stdout, stderr = h_vol_creation_async_op.async_communicate()
-        heketi_vol = json.loads(stdout)
-        volume_id = heketi_vol["id"]
-        self.addCleanup(
-            heketi_volume_delete, self.heketi_client_node,
-            self.heketi_server_url, volume_id, raise_on_error=True)
-
-        # Verify volume pending operation during creation
-        self.assertFalse(h_db_chk_during_v_creation["bricks"]["pending"] % 3)
-        self.assertEqual(
-            h_db_chk_bfr_v_creation["volumes"]["pending"] + 1,
-            h_db_chk_during_v_creation["volumes"]["pending"])
-
-        h_db_chk_after_v_creation = heketi_db_check(
-            self.heketi_client_node, self.heketi_server_url)
-
-        # Verify bricks and volume pending operation after creation
-        self.assertEqual(h_db_chk_after_v_creation["bricks"]["pending"], 0)
-        self.assertEqual(h_db_chk_after_v_creation["volumes"]["pending"], 0)
-
-    @pytest.mark.tier1
     @ddt.data('', 'block')
     def test_verify_delete_heketi_volumes_pending_entries_in_db(
             self, vol_type):
