@@ -587,8 +587,9 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create sc or else directly set env to "strict" inside dc
         is_create_sc = not is_set_env
         if is_create_sc:
-            self._create_sc_for_zone_check_tc(
-                self.prefix, heketi_zone_checking)
+            sc_name = self.create_storage_class(
+                sc_name_prefix=self.prefix, vol_name_prefix=self.prefix,
+                heketi_zone_checking=heketi_zone_checking)
         if is_set_env:
             self._set_zone_check_env_in_heketi_dc(heketi_zone_checking)
 
@@ -687,8 +688,9 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create sc or else directly set env to "strict" inside dc
         is_create_sc = not is_set_env
         if is_create_sc:
-            sc_name = self._create_sc_for_zone_check_tc(
-                self.prefix, heketi_zone_checking)
+            sc_name = self.create_storage_class(
+                sc_name_prefix=self.prefix, vol_name_prefix=self.prefix,
+                heketi_zone_checking=heketi_zone_checking)
         if is_set_env:
             self._set_zone_check_env_in_heketi_dc(heketi_zone_checking)
 
