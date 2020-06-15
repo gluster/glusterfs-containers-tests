@@ -124,35 +124,40 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             self.assertEqual(topology_bricks_count, db_bricks_count, msg)
 
     @pytest.mark.tier1
-    def test_compare_block_volumes(self):
-        """Validate blockvolume count using heketi gluster examine"""
-        # Create some blockvolumes
-        size = 1
-        for i in range(5):
-            volume = heketi_ops.heketi_blockvolume_create(
-                self.heketi_client_node, self.heketi_server_url, size,
-                json=True)['id']
-            self.addCleanup(
-                heketi_ops.heketi_blockvolume_delete,
-                self.heketi_client_node, self.heketi_server_url, volume)
+    @ddt.data('', 'block')
+    def test_compare_heketi_volumes(self, vol_type):
+        """Validate file/block volume count using heketi gluster examine"""
+        # Create some file/block volumes
+        vol_size = 1
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
 
-        # Get the list of blockvolumes from heketi gluster examine
+        for i in range(5):
+            volume = eval(
+                "heketi_ops.heketi_{}volume_create".format(vol_type))(
+                h_node, h_url, vol_size, json=True)['id']
+            self.addCleanup(
+                eval("heketi_ops.heketi_{}volume_delete".format(vol_type)),
+                h_node, h_url, volume)
+
+        # Get the list of file/block volumes from heketi gluster examine
         out = heketi_ops.heketi_examine_gluster(
             self.heketi_client_node, self.heketi_server_url)
-        examine_blockvolumes, clusters = [], out['heketidb']['clusterentries']
+        examine_volumes, clusters = [], out['heketidb']['clusterentries']
         for cluster in clusters.values():
-            examine_blockvolumes += cluster['Info']['blockvolumes']
+            examine_volumes += cluster['Info']['{}volumes'.format(vol_type)]
 
-        # Get list of blockvolume from heketi blockvolume list
-        heketi_block_volumes = heketi_ops.heketi_blockvolume_list(
-            self.heketi_client_node, self.heketi_server_url,
-            json=True)['blockvolumes']
+        # Get list of file/block volume from heketi blockvolume list
+        heketi_volumes = eval(
+            "heketi_ops.heketi_{}volume_list".format(vol_type))(
+            h_node, h_url, json=True)['{}volumes'.format(vol_type)]
 
-        # Compare volume list
-        msg = ("Heketi blockvolume list {} and list of blockvolumes in heketi "
-               "gluster examine {} are not same".format(
-                   heketi_block_volumes, examine_blockvolumes))
-        self.assertEqual(heketi_block_volumes, examine_blockvolumes, msg)
+        # Compare file/block volume list
+        self.assertEqual(
+            heketi_volumes,
+            examine_volumes,
+            "Heketi {}volume list {} and list of blockvolumes in heketi "
+            "gluster examine {} are not same".format(
+                vol_type, heketi_volumes, examine_volumes))
 
     @pytest.mark.tier2
     def test_validate_report_after_node_poweroff(self):
