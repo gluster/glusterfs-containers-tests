@@ -8,6 +8,7 @@ import pytest
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.command import cmd_run
 from openshiftstoragelibs.heketi_ops import (
+    get_total_free_space,
     heketi_node_info,
     heketi_volume_create,
     heketi_volume_delete,
@@ -239,3 +240,20 @@ class TestHeketiVolumeOperations(BaseClass):
             snap_list_before, snap_list_after,
             "Expecting Snapshot count before {} and after creation {} to be "
             "same".format(snap_list_before, snap_list_after))
+
+    @pytest.mark.tier1
+    def test_heketi_volume_create_mutiple_sizes(self):
+        """Validate creation of heketi volume with differnt sizes"""
+        sizes, required_space = [15, 50, 100], 495
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # Skip test if space is not available
+        available_space = get_total_free_space(h_node, h_url)[0]
+        if required_space > available_space:
+            self.skipTest("Required space {} greater than the available space "
+                          "{}".format(required_space, available_space))
+
+        # Create volume 3 times, each time different size
+        for size in sizes:
+            vol_id = heketi_volume_create(h_node, h_url, size, json=True)['id']
+            self.addCleanup(heketi_volume_delete, h_node, h_url, vol_id)
