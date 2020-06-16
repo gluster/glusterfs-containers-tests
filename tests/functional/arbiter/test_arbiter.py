@@ -17,6 +17,7 @@ from openshiftstoragelibs import utils
 
 BRICK_REGEX = r"^(.*):\/var\/lib\/heketi\/mounts\/(.*)\/brick$"
 HEKETI_VOLS = re.compile(r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(\S+)")
+DEVICE_REGEX = re.compile(r"vg_\w*")
 
 
 @ddt.ddt
@@ -1237,3 +1238,254 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             self._arbiter_volume_node_tag_operations(node_tags[1])
         else:
             self._arbiter_volume_node_tag_operations(node_tags)
+
+    @pytest.mark.tier1
+    @podcmd.GlustoPod()
+    def test_create_arbiter_volume_with_avg_file_size_and_expand(self):
+        """
+        Test to verfiy creation of arbiter volume with avg file size
+        and expand it
+        """
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+        device_tags = ['disabled', 'disabled', 'required']
+        bricks_list, heketi_vg_path, bricks_list_after = [], [], []
+        device_list_arbiter, g_arbiter_vg = [], []
+        arbiter_brick_size_before, arbiter_brick_size_after = 0, 0
+        h_volume_size, expand_size = 5, 10
+
+        # Fetch the available size for each brick
+        cmd = "df -h {} | awk '{{print $4}}' | tail -1"
+
+        node_ids = heketi_ops.heketi_node_list(h_client, h_url)
+        self.assertTrue(node_ids, "Failed to get heketi node list")
+        err_msg = "Failed to add {} tags from device id{}"
+        for i, node_id in enumerate(node_ids):
+            node_info = heketi_ops.heketi_node_info(
+                h_client, h_url, node_id, json=True)
+            for device in node_info['devices']:
+                device_info = heketi_ops.heketi_device_info(
+                    h_client, h_url, device['id'], json=True)
+                self._set_arbiter_tag_with_further_revert(
+                    h_client, h_url, 'device', device['id'],
+                    device_tags[i] if i < 3 else 'disabled',
+                    device_info.get('tags', {}).get('arbiter'))
+
+                device_info = heketi_ops.heketi_device_info(
+                    h_client, h_url, device['id'], json=True)
+                h_node_ip = node_info['hostnames']['storage']
+
+                # Fetch the ip of nodes having tag arbiter: requied
+                if device_info.get('tags', {}).get('arbiter') == 'required':
+                    arbiter_tag_node_ip = h_node_ip
+
+                    # Fetch the device name were arbiter: requied
+                    device_list_arbiter.append(device)
+
+                # Make sure that all tags are placed properly
+                err_msg = "Failed to add {} tags for device {} of node {}"
+                device_tag = device_tags[i] if i < 3 else 'disabled'
+                self.assertEqual(
+                    device_info['tags']['arbiter'], device_tag,
+                    err_msg.format(device_tag, device['id'], node_id))
+
+        v_option = 'user.heketi.arbiter true, user.heketi.average-file-size 4'
+        h_volume = heketi_ops.heketi_volume_create(
+            h_client, h_url, h_volume_size,
+            gluster_volume_options=v_option, json=True)
+        h_vol_id = h_volume["id"]
+        h_vol_name = h_volume["name"]
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, h_client, h_url,
+            h_vol_id, h_vol_name, gluster_volume_options=v_option)
+
+        g_vol_list = volume_ops.get_volume_list("auto_get_gluster_endpoint")
+        self.assertIn(
+            h_vol_name, g_vol_list,
+            "Failed to find heketi volume name {} in gluster"
+            " volume list {}".format(h_vol_name, g_vol_list))
+
+        # Get the device info only if arbiter: requied
+        for device in device_list_arbiter:
+            device_info = heketi_ops.heketi_device_info(
+                h_client, h_url, device['id'], json=True)
+
+            # Fetch vg from device info were arbiter tag is required
+            if device_info['bricks']:
+                vg = device_info['bricks'][0]['path']
+                self.assertTrue(
+                    vg, "Failed to find the details of the bricks")
+                device_vg = DEVICE_REGEX.findall(vg)
+                self.assertTrue(
+                    device_vg,
+                    "Failed to fetch the device vg from {}".format(vg))
+                heketi_vg_path.append(device_vg[0])
+
+        g_vol_info = volume_ops.get_volume_info(
+            'auto_get_gluster_endpoint', h_vol_name)
+        self.assertTrue(
+            g_vol_info,
+            "Failed to get the details of the volume {}".format(h_vol_name))
+
+        # Fetch brick count before expansion
+        brick_count_before = g_vol_info[h_vol_name]['brickCount']
+
+        # Fetch the details of arbiter bricks
+        for brick_details in g_vol_info[h_vol_name]["bricks"]["brick"]:
+            arbiter_brick = brick_details['isArbiter']
+            self.assertTrue(
+                arbiter_brick,
+                "Expecting 0 or 1 to identify arbiter brick but found "
+                "{}".format(arbiter_brick))
+
+            # Get the bricks details where arbiter volume is present
+            if arbiter_brick[0] == '1':
+                self.assertTrue(
+                    brick_details["name"],
+                    "Brick details are empty for {}".format(h_vol_name))
+                bricks_list.append(brick_details["name"])
+
+        # Get the bricks ip on which arbiter volume is created
+        arbiter_brick_ip = {
+            brick.strip().split(":")[0] for brick in bricks_list}
+        self.assertTrue(
+            arbiter_brick_ip, "Brick ip not found in {}".format(bricks_list))
+
+        # Fetch vg from the bricks where arbiter volume is present
+        for brick in bricks_list:
+            device_vg = DEVICE_REGEX.findall(brick)
+            self.assertTrue(
+                device_vg,
+                "Failed to fetch the device vg from {}".format(brick))
+            if device_vg[0] not in g_arbiter_vg:
+                g_arbiter_vg.append(device_vg[0])
+        self.assertTrue(
+            g_arbiter_vg, "Failed to find the device with aribter tag")
+
+        # verify if vg match from gluster and and heketi
+        for device in g_arbiter_vg:
+            self.assertIn(
+                device, heketi_vg_path,
+                "Failed to match vg {} from gluster  with vg {} from heketi "
+                "side".format(device, heketi_vg_path))
+
+        # Verify heketi topology info for tags
+        h_topology_info = heketi_ops.heketi_topology_info(
+            h_client, h_url, raise_on_error=True, json=True)
+        self.assertTrue(
+            h_topology_info, "Failed to fetch heketi topology info")
+        er_msg = "Failed to find the {} from the heketi topology info {}"
+        for i, node in enumerate(range(len(
+                h_topology_info['clusters'][0]['nodes']))):
+            node_details = h_topology_info['clusters'][0]['nodes'][node]
+            for device in range(len(node_details['devices'])):
+                h_device_info = node_details['devices'][device]
+                self.assertTrue(
+                    h_device_info, er_msg.format('device info', device))
+                h_device_tag = h_device_info.get('tags', {}).get('arbiter')
+                self.assertTrue(h_device_tag, er_msg.format('tag', device))
+                device_tag = device_tags[i] if i < 3 else 'disabled'
+                err_msg = ("Expecting {} {} from device info and {} from "
+                           "topology info should be same")
+                self.assertEqual(
+                    device_tag, h_device_tag,
+                    err_msg.format('tags', device_tag, h_device_tag))
+
+                if h_device_tag == 'required':
+                    if h_device_info['bricks']:
+                        # verfiy the vg on which arbiter tag is required
+                        vg = (h_device_info['bricks'][0]['path'])
+                        h_device_vg = DEVICE_REGEX.findall(vg)
+                        self.assertTrue(
+                            h_device_vg,
+                            "Failed to fetch the device vg from device info "
+                            "{}".format(vg))
+                        self.assertIn(
+                            h_device_vg[0], heketi_vg_path,
+                            err_msg.format('Vg', h_device_vg, heketi_vg_path))
+
+        # Check if only one arbiter brick ip is present
+        self.assertEqual(
+            len(arbiter_brick_ip), 1,
+            "Expecting one IP but received {}".format(arbiter_brick_ip))
+        self.assertEqual(
+            len(arbiter_brick_ip), len(arbiter_tag_node_ip),
+            "Expecting the count of bricks were the volume is"
+            " created {} and number of nodes having the arbiter"
+            " tag {} ".format(arbiter_brick_ip, arbiter_tag_node_ip))
+        self.assertEqual(
+            arbiter_brick_ip.pop(), arbiter_tag_node_ip[0],
+            "Did not match ip of the bricks were the arbiter volume "
+            "is created {} and and number of nodes having the arbiter"
+            " tag {}".format(arbiter_brick_ip, arbiter_tag_node_ip))
+
+        for i, brick in enumerate(bricks_list):
+            arbiter_brick_ip = brick.strip().split(":")[0]
+            self.assertTrue(
+                arbiter_brick_ip, "Brick ip not found in {}".format(brick))
+            arbiter_bricks_mount_path = brick.strip().split(":")[1]
+            self.assertTrue(
+                arbiter_bricks_mount_path,
+                "Arbiter brick mount path not found in {}".format(brick))
+
+            arbiter_brick_size_before += int(
+                openshift_ops.cmd_run_on_gluster_pod_or_node(
+                    self.node, cmd.format(
+                        arbiter_bricks_mount_path), arbiter_brick_ip)[:-1])
+        # Expand volume
+        heketi_ops.heketi_volume_expand(
+            h_client, h_url, h_vol_id, expand_size, json=True)
+
+        g_vol_info = volume_ops.get_volume_info(
+            'auto_get_gluster_endpoint', h_vol_name)
+
+        # Fetch the bricks count after vol expansion
+        brick_count_after = g_vol_info[h_vol_name]['brickCount']
+        self.assertGreater(
+            brick_count_after, brick_count_before,
+            "Failed to expand the volume {}".format(h_vol_name))
+        for brick_details in g_vol_info[h_vol_name]["bricks"]["brick"]:
+            arbiter_brick = brick_details['isArbiter']
+            self.assertTrue(
+                arbiter_brick,
+                "Expecting 0 or 1 to identify arbiter brick but found "
+                "{}".format(arbiter_brick))
+
+            # Get the bricks details where arbiter volume is present
+            if arbiter_brick[0] == '1':
+                self.assertTrue(
+                    brick_details["name"],
+                    "Brick details are empty for {}".format(h_vol_name))
+                bricks_list_after.append(brick_details["name"])
+
+        # Get the bricks ip on which arbiter volume is created
+        arbiter_brick_ip = {
+            brick.strip().split(":")[0] for brick in bricks_list_after}
+        self.assertTrue(
+            arbiter_brick_ip,
+            "Brick ip not found in {}".format(bricks_list_after))
+
+        # Fetch arbiter brick ip and arbiter bricks mount path length
+
+        for i, brick in enumerate(bricks_list_after):
+            arbiter_brick_ip = brick.strip().split(":")[0]
+            self.assertTrue(
+                arbiter_brick_ip, "Brick ip not found in {}".format(brick))
+            arbiter_bricks_mount_path = brick.strip().split(":")[1]
+            self.assertTrue(
+                arbiter_bricks_mount_path,
+                "Arbiter brick mount path not found in {}".format(brick))
+
+            # Fetching the size of arbiter bricks after volume expansion
+            arbiter_brick_size_after += int(
+                openshift_ops.cmd_run_on_gluster_pod_or_node(
+                    self.node, cmd.format(
+                        arbiter_bricks_mount_path), arbiter_brick_ip)[:-1])
+
+        # Verfiy if the size of arbiter brick increase after expansion
+        self.assertGreater(
+            arbiter_brick_size_after,
+            arbiter_brick_size_before,
+            "Expecting arbiter brick size {} after volume expansion must be "
+            "greater than  arbiter brick size {} before volume "
+            "expansion".format(
+                arbiter_brick_size_after, arbiter_brick_size_before))
