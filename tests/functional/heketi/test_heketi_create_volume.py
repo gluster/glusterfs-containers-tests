@@ -780,3 +780,30 @@ class TestHeketiVolume(BaseClass):
                 self.heketi_server_url, volume_name["bricks"][0]["volume"])
         self.assertIn(
             "transport endpoint is not connected", six.text_type(e.exception))
+
+    @pytest.mark.tier0
+    def test_heketi_volume_create_with_clusterid(self):
+        """Validate creation of heketi volume with clusters argument"""
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # Get one of the cluster id from heketi cluster list
+        creation_cluster_id = heketi_cluster_list(
+            h_node, h_url, json=True)['clusters'][0]
+
+        # Create a heketi volume specific to cluster list
+        volume_id = heketi_volume_create(
+            h_node, h_url, self.volume_size, clusters=creation_cluster_id,
+            json=True)["bricks"][0]["volume"]
+        self.addCleanup(
+            heketi_volume_delete, self.heketi_client_node,
+            self.heketi_server_url, volume_id)
+
+        # Get the cluster id from heketi volume info
+        info_cluster_id = heketi_volume_info(
+            h_node, h_url, volume_id, json=True)['cluster']
+
+        # Match the creation cluster id  with the info cluster id
+        self.assertEqual(
+            info_cluster_id, creation_cluster_id,
+            "Volume creation cluster id {} not matching the info cluster id "
+            "{}".format(creation_cluster_id, info_cluster_id))
