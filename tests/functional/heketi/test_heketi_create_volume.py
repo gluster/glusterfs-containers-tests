@@ -636,13 +636,15 @@ class TestHeketiVolume(BaseClass):
                             h_node, h_url, h_volume_size, json=True))
 
         # Check for pending operations
-        for w in waiter.Waiter(timeout=30, interval=5):
+        for w in waiter.Waiter(timeout=120, interval=10):
             h_db_chk_during = heketi_db_check(h_node, h_url)
 
             h_db_check_bricks_during = h_db_chk_during["bricks"]
             h_db_check_vol_during = h_db_chk_during["{}volumes".format(
                 vol_type)]
-
+            if vol_type == 'block':
+                if h_db_check_vol_during["total"] != vol_count:
+                    continue
             if h_db_check_vol_during["pending"]:
                 break
 
@@ -731,7 +733,7 @@ class TestHeketiVolume(BaseClass):
             self.assertEqual(
                 h_db_check_after["volumes"]["total"],
                 h_db_check_before["volumes"]["total"] + len(total_bhvs),
-                "Total volume before {} and after {} creation not"
+                "Total volume after {} and before {} creation not"
                 " matched".format(
                     h_db_check_after["volumes"]["total"],
                     h_db_check_before["volumes"]["total"]))
