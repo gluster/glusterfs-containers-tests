@@ -173,9 +173,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
         self.verify_iscsi_sessions_and_multipath(self.pvc_name, dc_name)
 
-    @pytest.mark.tier1
-    def test_initiator_side_failures_initiator_and_target_on_different_node(
-            self):
+    def _initiator_and_target_on_different_node_validation_ops(self):
 
         nodes = oc_get_schedulable_nodes(self.node)
 
@@ -202,6 +200,14 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                 oc_adm_manage_node, self.node, '--schedulable=true',
                 nodes=g_nodes)
 
+    @pytest.mark.tier1
+    def test_initiator_side_failures_initiator_and_target_on_different_node(
+            self):
+
+        # Make the gluster nodes nodes unschedulable
+        self._initiator_and_target_on_different_node_validation_ops()
+
+        # Perform validation of intiator side failures
         self.initiator_side_failures()
 
     @pytest.mark.tier1
@@ -449,29 +455,8 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         pod_name = get_pod_name_from_dc(self.node, dc_name)
         wait_for_pod_be_ready(self.node, pod_name, timeout=120, wait_step=5)
 
-    @pytest.mark.tier1
-    def test_initiator_and_target_on_same_node_app_pod_deletion(self):
-        """Test iscsi login and logout functionality on deletion of an app
-        pod when initiator and target are on the same node.
-        """
-        if not self.is_containerized_gluster():
-            self.skipTest("Skipping this TC as it's not supported on non"
-                          " containerized glusterfs setup.")
-
-        schedulable_nodes = oc_get_schedulable_nodes(self.node)
-
-        # Get list of all gluster nodes
-        g_pods = get_ocp_gluster_pod_details(self.node)
-        g_nodes = [pod['pod_hostname'] for pod in g_pods]
-
-        # Get the list of schedulable nodes other than gluster nodes
-        o_nodes = list((set(schedulable_nodes) - set(g_nodes)))
-
-        # Make nodes unschedulable other than gluster nodes
-        oc_adm_manage_node(
-            self.node, '--schedulable=false', nodes=o_nodes)
-        self.addCleanup(
-            oc_adm_manage_node, self.node, '--schedulable=true', nodes=o_nodes)
+    def _validate_app_creation_and_deletion_along_block_validations(self):
+        """Create and delete apps and also valiate iscsi and multipath"""
 
         # Create 10 PVC's and 10 DC's
         pvcs = self.create_and_wait_for_pvcs(pvc_amount=10)
@@ -541,7 +526,6 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
     def get_initiator_node_and_mark_other_nodes_unschedulable(
             self, is_ini_taget_same=False):
-
         ocp_version = get_openshift_version(self.node)
         if ocp_version < '3.10':
             self.skipTest(
@@ -594,6 +578,40 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             nodes=unschedule_nodes)
 
         return initiator_nodes[0]
+
+    @pytest.mark.tier1
+    def test_initiator_and_target_on_same_node_app_pod_deletion(self):
+        """Test iscsi login and logout functionality on deletion of an app
+        pod when initiator and target are on the same node.
+        """
+        schedulable_nodes = oc_get_schedulable_nodes(self.node)
+
+        # Get list of all gluster nodes
+        g_pods = get_ocp_gluster_pod_details(self.node)
+        g_nodes = [pod['pod_hostname'] for pod in g_pods]
+
+        # Get the list of schedulable nodes other than gluster nodes
+        o_nodes = list((set(schedulable_nodes) - set(g_nodes)))
+
+        # Make nodes unschedulable other than gluster nodes
+        oc_adm_manage_node(
+            self.node, '--schedulable=false', nodes=o_nodes)
+        self.addCleanup(
+            oc_adm_manage_node, self.node, '--schedulable=true', nodes=o_nodes)
+
+        # Perform app pod creation and deletion along with block validations
+        self._validate_app_creation_and_deletion_along_block_validations()
+
+    @pytest.mark.tier1
+    def test_initiator_and_target_on_different_node_app_pod_deletion(self):
+        """Perform block validation during app pod deletion and when initiator
+           and target nodes are different"""
+
+        # Make the gluster nodes nodes unschedulable
+        self._initiator_and_target_on_different_node_validation_ops()
+
+        # Perform app pod creation and deletion along with block validations
+        self._validate_app_creation_and_deletion_along_block_validations()
 
     def _validate_iscsi_initiator_utils_version(self):
         # Skip the test if iscsi-initiator-utils version is not the expected
