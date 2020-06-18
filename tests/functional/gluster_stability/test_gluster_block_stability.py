@@ -539,7 +539,8 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.verify_iscsi_sessions_and_multipath(
                 pvc, pvc_and_dc[pvc]['dc_name'])
 
-    def get_initiator_node_and_mark_other_nodes_unschedulable(self):
+    def get_initiator_node_and_mark_other_nodes_unschedulable(
+            self, is_ini_taget_same=False):
 
         ocp_version = get_openshift_version(self.node)
         if ocp_version < '3.10':
@@ -562,9 +563,16 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.node, 'pod', ':.spec.nodeName', selector='glusterfs-node=pod')
         g_nodes = [node[0] for node in g_nodes]
 
-        # Get the list of nodes other than gluster and master
-        o_nodes = list(
-            (set(all_nodes.keys()) - set(g_nodes) - set(master_nodes)))
+        # Get schedulable node
+        schedulable_nodes = oc_get_schedulable_nodes(self.node)
+
+        if is_ini_taget_same:
+            # Get the gluster nodes and assign it to o_nodes
+            o_nodes = set(g_nodes)
+        else:
+            # Get the list of nodes other than gluster and master
+            o_nodes = list(
+                (set(all_nodes.keys()) - set(g_nodes) - set(master_nodes)))
 
         # Find a schedulable nodes in other nodes if not skip the test
         initiator_nodes = [
@@ -572,9 +580,6 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
         if not initiator_nodes:
             self.skipTest('Sufficient schedulable nodes are not available')
-
-        # Get schedulable node
-        schedulable_nodes = oc_get_schedulable_nodes(self.node)
 
         # Get the list of nodes which needs to be marked as unschedulable
         unschedule_nodes = list(
@@ -590,12 +595,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
         return initiator_nodes[0]
 
-    @pytest.mark.tier2
-    def test_initiator_and_target_on_diff_node_abrupt_reboot_of_initiator_node(
-            self):
-        """Abrupt reboot initiator node to make sure paths rediscovery is
-        happening.
-        """
+    def _validate_iscsi_initiator_utils_version(self):
         # Skip the test if iscsi-initiator-utils version is not the expected
         e_pkg_version = '6.2.0.874-13'
         cmd = ("rpm -q iscsi-initiator-utils"
@@ -609,7 +609,9 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                     "is less than expected: %s on node %s, for more info "
                     "refer to BZ-1624670" % (out, e_pkg_version, g_server))
 
-        ini_node = self.get_initiator_node_and_mark_other_nodes_unschedulable()
+    def _perform_initiator_node_reboot_and_block_validations(
+            self, ini_node, is_ini_taget_same=False):
+        """Perform block validations after the reboot of initiator node"""
 
         # Create 5 PVC's and 5 DC's
         pvcs = self.create_and_wait_for_pvcs(pvc_amount=5)
@@ -644,6 +646,11 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             msg = "Did not found '%s' in events '%s'" % (err, events)
             self.assertTrue((err in event['message']), msg)
 
+        if is_ini_taget_same:
+            # Delete pod so it can rediscover paths while creating new pod
+            scale_dcs_pod_amount_and_wait(
+                self.node, [dc[0] for dc in dcs.values()], pod_amount=0)
+
         # Wait for pods to be ready after node reboot
         pod_names = scale_dcs_pod_amount_and_wait(
             self.node, [dc[0] for dc in dcs.values()])
@@ -657,6 +664,38 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.assertIn(six.text_type(file_size), out, msg)
 
             self.verify_iscsi_sessions_and_multipath(pvc, dc_name)
+
+    @pytest.mark.tier2
+    def test_initiator_and_target_on_diff_node_abrupt_reboot_of_initiator_node(
+            self):
+        """Abrupt reboot initiator node to make sure paths rediscovery is
+        happening when intiator and target node is different.
+        """
+        # Valiadte the vesion of iscsi-initiator-utils package
+        self._validate_iscsi_initiator_utils_version()
+
+        # Get an initiator node after making the gluster nodes unschedulable
+        ini_node = self.get_initiator_node_and_mark_other_nodes_unschedulable()
+
+        # Validate iscsi and multipath of app pods after initiator node reboot
+        self._perform_initiator_node_reboot_and_block_validations(ini_node)
+
+    @pytest.mark.tier2
+    def test_initiator_and_target_on_same_node_abrupt_reboot_of_initiator_node(
+            self):
+        """Abrupt reboot initiator node to make sure paths rediscovery is
+        happening when intiator and target node is same.
+        """
+        # Valiadte the vesion of iscsi-initiator-utils package
+        self._validate_iscsi_initiator_utils_version()
+
+        # Get an initiator node after making the gluster nodes unschedulable
+        ini_node = self.get_initiator_node_and_mark_other_nodes_unschedulable(
+            is_ini_taget_same=True)
+
+        # Validate iscsi and multipath of app pods after initiator node reboot
+        self._perform_initiator_node_reboot_and_block_validations(
+            ini_node, is_ini_taget_same=True)
 
     @pytest.mark.tier1
     def test_validate_gluster_ip_utilized_by_blockvolumes(self):
@@ -1189,7 +1228,8 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         except (NotImplementedError, ConfigError) as e:
             self.skipTest(e)
 
-        ini_node = self.get_initiator_node_and_mark_other_nodes_unschedulable()
+        ini_node = self.get_initiator_node_and_mark_other_nodes_unschedulable(
+            is_ini_taget_same=False)
 
         # Create 5 PVC's and DC's
         pvcs = self.create_and_wait_for_pvcs(pvc_amount=5)
