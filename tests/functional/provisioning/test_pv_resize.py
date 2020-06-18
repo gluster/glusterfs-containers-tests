@@ -363,6 +363,34 @@ class TestPvResizeClass(BaseClass):
         # Verify pod is running
         wait_for_pod_be_ready(self.node, pod_name, 10, 5)
 
+    @pytest.mark.tier0
+    def test_pvc_resize_while_ios_are_running(self):
+        """Re-size PVC  while IO's are running"""
+
+        # Create an SC, PVC and app pod
+        sc_name = self.create_storage_class(
+            create_vol_name_prefix=True, allow_volume_expansion=True)
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name, pvc_size=1)
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
+
+        # Run io on the pod for 5 minutes in background
+        cmd_io = ('timeout 5m bash -c -- "while true; do oc exec  {} dd '
+                  'if=/dev/urandom of=/mnt/f1 bs=100K count=2000; '
+                  'done"'.format(pod_name))
+        proc = g.run_async(host=self.node, command=cmd_io)
+
+        # Resize PVC while io's are running and validate resize operation
+        resize_pvc(self.node, pvc_name, 2)
+        verify_pvc_size(self.node, pvc_name, 2)
+        pv_name = get_pv_name_from_pvc(self.node, pvc_name)
+        verify_pv_size(self.node, pv_name, 2)
+
+        # Check if timeout command and ios are successful
+        ret, _, err = proc.async_communicate()
+        msg = "command terminated with exit code"
+        if ret != 124 or msg in str(err):
+            raise ExecutionError("Failed to run io, error {}".format(str(err)))
+
     @skip("Blocked by BZ-1547069")
     @pytest.mark.tier2
     def test_pvc_resize_size_greater_than_available_space(self):
