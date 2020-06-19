@@ -609,6 +609,19 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                     "is less than expected: %s on node %s, for more info "
                     "refer to BZ-1624670" % (out, e_pkg_version, g_server))
 
+    def _wait_for_events_after_node_reboot(self, dcs):
+        err = 'Pod sandbox changed, it will be killed and re-created.'
+        for _, pod_name in dcs.values():
+            events = wait_for_events(
+                self.node, obj_name=pod_name, obj_type='Pod',
+                event_reason='SandboxChanged', event_type='Normal',
+                timeout=300)
+            for event in events:
+                if err in event['message']:
+                    break
+            msg = "Did not found {} in events {}".format(err, events)
+            self.assertTrue((err in event['message']), msg)
+
     def _perform_initiator_node_reboot_and_block_validations(
             self, ini_node, is_ini_taget_same=False):
         """Perform block validations after the reboot of initiator node"""
@@ -633,18 +646,8 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         node_reboot_by_command(ini_node)
         wait_for_ocp_node_be_ready(self.node, ini_node)
 
-        # wait fot pods to restart after reboot
-        err = 'Pod sandbox changed, it will be killed and re-created.'
-        for _, pod_name in dcs.values():
-            events = wait_for_events(
-                self.node, obj_name=pod_name, obj_type='Pod',
-                event_reason='SandboxChanged', event_type='Normal',
-                timeout=300)
-            for event in events:
-                if err in event['message']:
-                    break
-            msg = "Did not found '%s' in events '%s'" % (err, events)
-            self.assertTrue((err in event['message']), msg)
+        # Wait for pods to restart after reboot
+        self._wait_for_events_after_node_reboot(dcs)
 
         if is_ini_taget_same:
             # Delete pod so it can rediscover paths while creating new pod
@@ -1216,12 +1219,15 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         oc_rsh(self.node, pod_name, cmd_run_io % file1)
         self.verify_iscsi_sessions_and_multipath(self.pvc_name, dc_name)
 
-    @pytest.mark.tier2
-    def test_initiator_failures_reboot_initiator_node_when_target_node_is_down(
-            self):
-        """Restart initiator node when gluster node is down, to make sure paths
-        rediscovery is happening.
+    def _perform_block_validations_when_target_node_is_down(
+            self, is_reboot_initiator=False):
+        """Validate iscsi and multipath after the reboot of one target node
+
+        Args:
+            is_reboot_initiator (bool): True if you want to test the reboot
+                of initiator node when target node is down, default is False
         """
+
         # Skip test if not able to connect to Cloud Provider
         try:
             find_vm_name_by_ip_or_hostname(self.node)
@@ -1231,9 +1237,15 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         ini_node = self.get_initiator_node_and_mark_other_nodes_unschedulable(
             is_ini_taget_same=False)
 
-        # Create 5 PVC's and DC's
-        pvcs = self.create_and_wait_for_pvcs(pvc_amount=5)
+        if is_reboot_initiator:
+            # Create 5 PVC's and DC's of size 1gb
+            pvcs = self.create_and_wait_for_pvcs(pvc_amount=5)
+
+        else:
+            # Create 4 PVC's and DC's of size 49gb
+            pvcs = self.create_and_wait_for_pvcs(pvc_size=49, pvc_amount=4)
         dcs = self.create_dcs_with_pvc(pvcs)
+        dc_names = [dc[0] for dc in dcs.values()]
 
         # Run I/O on app pods
         _file, base_size, count = '/mnt/file', 4096, 1000
@@ -1274,18 +1286,19 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         # Find VM Name and power it off
         target_vm_name = find_vm_name_by_ip_or_hostname(target_hostname)
         self.power_off_gluster_node_vm(target_vm_name, target_hostname)
+        if is_reboot_initiator:
+            # Sync I/O
+            for _, pod_name in dcs.values():
+                oc_rsh(self.node, pod_name, "/bin/sh -c 'cd /mnt && sync'")
 
-        # Sync I/O
-        for _, pod_name in dcs.values():
-            oc_rsh(self.node, pod_name, "/bin/sh -c 'cd /mnt && sync'")
+            # Reboot initiator node and wait for events after the reboot
+            node_reboot_by_command(ini_node)
+            wait_for_ocp_node_be_ready(self.node, ini_node)
+            self._wait_for_events_after_node_reboot(dcs)
 
-        # Reboot initiator node where all the app pods are running
-        node_reboot_by_command(ini_node)
-        wait_for_ocp_node_be_ready(self.node, ini_node)
-
-        # Wait for pods to be ready after node reboot
-        dc_names = [dc[0] for dc in dcs.values()]
-        pod_names = scale_dcs_pod_amount_and_wait(self.node, dc_names)
+        else:
+            # Wait for pods to be ready
+            pod_names = scale_dcs_pod_amount_and_wait(self.node, dc_names)
 
         # Verify one path is down, because one gluster node is down
         for iqn, _, _ in vol_info.values():
@@ -1324,6 +1337,22 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
 
             self.verify_all_paths_are_up_in_multipath(
                 list(mpaths)[0], hacount, ini_node, timeout=1)
+
+    @pytest.mark.tier2
+    def test_initiator_failures_reboot_initiator_node_when_target_node_is_down(
+            self):
+        """Restart initiator node when gluster node is down, to make sure paths
+        rediscovery is happening.
+        """
+        self._perform_block_validations_when_target_node_is_down(
+            is_reboot_initiator=True)
+
+    @pytest.mark.tier2
+    def test_block_behaviour_when_target_node_is_down(self):
+        """Test block behaviour of 4 block PVC's accross 2 BHV's when target
+        node is down and make sure paths rediscovery is happening.
+        """
+        self._perform_block_validations_when_target_node_is_down()
 
     def get_vol_id_and_vol_names_from_pvc_names(self, pvc_names):
         vol_details = []
