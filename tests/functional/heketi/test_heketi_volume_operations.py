@@ -14,6 +14,7 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_expand,
     heketi_volume_info,
 )
+from openshiftstoragelibs.gluster_ops import get_gluster_vol_status
 from openshiftstoragelibs.openshift_ops import cmd_run_on_gluster_pod_or_node
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import utils
@@ -160,3 +161,81 @@ class TestHeketiVolumeOperations(BaseClass):
         self.assertIn(
             snap_name, out, "Heketi volume snapshot {} not found in {}"
             .format(snap_name, out))
+
+    def _get_bricks_pids(self, vol_name):
+        """Return list having bricks pids with gluster pod ip"""
+        pids = []
+
+        g_volume_status = get_gluster_vol_status(vol_name)
+        self.assertTrue(
+            g_volume_status, "Failed to get the gluster volume status for the "
+            "volume {}".format(vol_name))
+        for g_node, g_node_data in g_volume_status.items():
+            for process_name, process_data in g_node_data.items():
+                if process_name.startswith("/var"):
+                    pid = process_data["pid"]
+                    pids.append([g_node, pid])
+        return pids
+
+    @pytest.mark.tier1
+    @podcmd.GlustoPod()
+    def test_heketi_volume_snapshot_create_with_one_brick_down(self):
+        """
+        Test heketi volume snapshot create with one brick down
+        """
+        h_vol_size = 1
+        self.node = self.ocp_master_node[0]
+        snap_name = 'snap_creation_test_with_one_brick_down'
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        h_vol_info = heketi_volume_create(h_node, h_url, h_vol_size, json=True)
+        self.addCleanup(heketi_volume_delete, h_node, h_url, h_vol_info["id"])
+        h_volume_name = h_vol_info["name"]
+        pids_before = self._get_bricks_pids(h_volume_name)
+        self.assertTrue(
+            pids_before,
+            "Failed to get the brick process for volume {}".format(
+                h_volume_name))
+
+        # kill only one brick process
+        cmd = "kill -9 {}".format(pids_before[0][1])
+        cmd_run_on_gluster_pod_or_node(self.node, cmd, pids_before[0][0])
+        pids_after = self._get_bricks_pids(h_volume_name)
+        self.assertTrue(
+            pids_after,
+            "Failed to get the brick process for volume {}".format(
+                h_volume_name))
+        self.assertTrue(
+            pids_after[0][1],
+            "Failed to kill brick process {} on brick {}".format(
+                pids_before[0][1], pids_after[0][0]))
+
+        # Get the snapshot list
+        ret, out, err = snap_list('auto_get_gluster_endpoint')
+        self.assertFalse(
+            ret,
+            "Failed to list snapshot from gluster side due to error"
+            " {}".format(err))
+        snap_list_before = out.split("\n")
+        ret, out, err = snap_create(
+            'auto_get_gluster_endpoint', h_volume_name,
+            snap_name, timestamp=False)
+        exp_err_msg = "Snapshot command failed\n"
+        self.assertTrue(
+            ret, "Failed to run snapshot create cmd from gluster side "
+            "with error {}".format(err))
+        self.assertEqual(
+            out, exp_err_msg,
+            "Expecting error msg {} and {} to match".format(
+                out, exp_err_msg))
+
+        # Check for count after snapshot creation
+        ret, out, err = snap_list('auto_get_gluster_endpoint')
+        self.assertFalse(
+            ret,
+            "Failed to list snapshot from gluster with error {}".format(err))
+        snap_list_after = out.split("\n")
+        self.assertEqual(
+            snap_list_before, snap_list_after,
+            "Expecting Snapshot count before {} and after creation {} to be "
+            "same".format(snap_list_before, snap_list_after))
