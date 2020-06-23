@@ -38,6 +38,7 @@ from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_rc,
     get_pv_name_from_pvc,
     oc_create_app_dc_with_io,
+    oc_create_busybox_app_dc_with_io,
     oc_create_pvc,
     oc_create_sc,
     oc_create_secret,
@@ -426,7 +427,7 @@ class BaseClass(unittest.TestCase):
     def create_dcs_with_pvc(
             self, pvc_names, timeout=600, wait_step=5,
             dc_name_prefix='autotests-dc', label=None,
-            skip_cleanup=False):
+            skip_cleanup=False, is_busybox=False):
         """Create bunch of DCs with app PODs which use unique PVCs.
 
         Args:
@@ -435,7 +436,8 @@ class BaseClass(unittest.TestCase):
             timeout (int): timeout value, default value is 600 seconds.
             wait_step( int): wait step, default value is 5 seconds.
             dc_name_prefix(str): name prefix for deployement config.
-            lable (dict): keys and value for adding label into DC.
+            label (dict): keys and value for adding label into DC.
+            is_busybox (bool): True for busybox app pod else default is False
         Returns: dictionary with following structure:
             {
                 "pvc_name_1": ("dc_name_1", "pod_name_1"),
@@ -448,10 +450,11 @@ class BaseClass(unittest.TestCase):
             pvc_names
             if isinstance(pvc_names, (list, set, tuple)) else [pvc_names])
         dc_and_pod_names, dc_names = {}, {}
+        function = (oc_create_busybox_app_dc_with_io if is_busybox else
+                    oc_create_app_dc_with_io)
         for pvc_name in pvc_names:
-            dc_name = oc_create_app_dc_with_io(
-                self.ocp_client[0], pvc_name, dc_name_prefix=dc_name_prefix,
-                label=label)
+            dc_name = function(self.ocp_client[0], pvc_name,
+                               dc_name_prefix=dc_name_prefix, label=label)
             dc_names[pvc_name] = dc_name
             if not skip_cleanup:
                 self.addCleanup(oc_delete, self.ocp_client[0], 'dc', dc_name)
@@ -472,11 +475,11 @@ class BaseClass(unittest.TestCase):
     def create_dc_with_pvc(
             self, pvc_name, timeout=300, wait_step=10,
             dc_name_prefix='autotests-dc', label=None,
-            skip_cleanup=False):
+            skip_cleanup=False, is_busybox=False):
         return self.create_dcs_with_pvc(
             pvc_name, timeout, wait_step,
             dc_name_prefix=dc_name_prefix, label=label,
-            skip_cleanup=skip_cleanup)[pvc_name]
+            skip_cleanup=skip_cleanup, is_busybox=is_busybox)[pvc_name]
 
     def create_heketi_volume_with_name_and_wait(
             self, name, size, raise_on_cleanup_error=True,

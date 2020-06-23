@@ -4,12 +4,14 @@ import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
 import pytest
+from unittest import skip
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import gluster_ops
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import heketi_version
+from openshiftstoragelibs import node_ops
 from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import openshift_version
 from openshiftstoragelibs import podcmd
@@ -1489,3 +1491,72 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             "greater than  arbiter brick size {} before volume "
             "expansion".format(
                 arbiter_brick_size_after, arbiter_brick_size_before))
+
+    @skip("Blocked by BZ-1848895")
+    @pytest.mark.tier2
+    def test_poweroff_gluster_nodes_after_filling_inodes_arbiter_brick(self):
+        """Validate io after filling up the arbiter brick and node poweroff"""
+
+        # Create sc with gluster arbiter info
+        sc_name = self.create_storage_class(is_arbiter_vol=True)
+
+        # Get list of all gluster nodes and mark them unschedulable
+        g_nodes = openshift_ops.oc_get_custom_resource(
+            self.node, 'pod', ':.spec.nodeName', selector='glusterfs-node=pod')
+        g_nodes = [node[0] for node in g_nodes]
+        openshift_ops.oc_adm_manage_node(
+            self.node, '--schedulable=false', nodes=g_nodes)
+        self.addCleanup(openshift_ops.oc_adm_manage_node,
+                        self.node, '--schedulable=true', nodes=g_nodes)
+
+        # Create PVC and corresponding App pod
+        self.create_and_wait_for_pvc(sc_name=sc_name)
+        dc_name, pod_name = self.create_dc_with_pvc(
+            self.pvc_name, is_busybox=True)
+
+        # Get vol info
+        vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(
+            self.node, self.pvc_name)
+        vol_name = vol_info['gluster_vol_id']
+        bricks_list = (
+            self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
+                vol_info))
+        arbiter_brick = bricks_list['arbiter_list'][0]['name'].split(":")[1]
+
+        # Fetch the host ip of the arbiter brick and free inodes data
+        hosts_with_inodes_info = (
+            gluster_ops.get_gluster_vol_free_inodes_with_hosts_of_bricks(
+                vol_name))
+        for node_ip, inodes_info in hosts_with_inodes_info.items():
+            for brick, inodes in inodes_info.items():
+                if arbiter_brick == brick:
+                    arb_free_inodes = inodes
+                    break
+
+        # Create masterfile of size equal to free inodes in bytes
+        mount_path, filename = "/mnt/", "masterfile"
+        dd_cmd = (
+            "dd if=/dev/urandom of={}{} bs=1 count={}".format(
+                mount_path, filename, arb_free_inodes))
+        ret, out, err = openshift_ops.oc_rsh(self.node, pod_name, dd_cmd)
+        self.assertFalse(ret, "Failed to execute command {} on pod {}".format(
+                         dd_cmd, pod_name))
+
+        # Split masterfile to a number which is equal to free inodes
+        split_cmd = (
+            "oc exec {} -- /bin/sh -c 'cd {}; split -b 1 -a 10 {}'".format(
+                pod_name, mount_path, filename))
+        self.cmd_run(split_cmd)
+
+        # Poweroff the node with arbiter brick
+        target_ip = bricks_list['data_list'][0]['name'].split(":")[0]
+        target_vm_name = node_ops.find_vm_name_by_ip_or_hostname(target_ip)
+        self.power_off_gluster_node_vm(target_vm_name, target_ip)
+
+        # Create a file with text test
+        file_cmd = ("oc exec {} -- /bin/sh -c \"echo 'test' > "
+                    "/mnt/file\"".format(pod_name))
+        self.cmd_run(file_cmd)
+
+        # Power on gluster node and wait for the services to be up
+        self.power_on_gluster_node_vm(target_vm_name, target_ip)

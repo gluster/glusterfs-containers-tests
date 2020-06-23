@@ -50,15 +50,17 @@ def wait_to_heal_complete(
 
 
 @podcmd.GlustoPod()
-def get_gluster_vol_status(file_vol):
+def get_gluster_vol_status(file_vol, is_detail=False):
     """Get Gluster vol status.
 
     Args:
         file_vol (str): file volume name.
+        is_detail (bool): True for detailed output else False
     """
     # Get Gluster vol info
+    options = 'detail' if is_detail else ''
     gluster_volume_status = get_volume_status(
-        "auto_get_gluster_endpoint", file_vol)
+        "auto_get_gluster_endpoint", file_vol, options=options)
     if not gluster_volume_status:
         raise AssertionError("Failed to get volume status for gluster "
                              "volume '%s'" % file_vol)
