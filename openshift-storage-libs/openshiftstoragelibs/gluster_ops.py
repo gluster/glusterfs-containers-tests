@@ -300,3 +300,38 @@ def match_heketi_and_gluster_volumes_by_prefix(heketi_volumes, prefix):
                "Difference: {}"
                .format(heketi_volumes, g_volumes, vol_difference))
     assert not vol_difference, err_msg
+
+
+@podcmd.GlustoPod()
+def get_gluster_vol_free_inodes_with_hosts_of_bricks(vol_name):
+    """Get the inodes of gluster volume
+
+    Args:
+        vol_name (str): Name of the gluster volume
+    Returns:
+        dict : Host ip mapped with dict of brick processes and free inodes
+    Example:
+        >>> get_gluster_vol_free_inodes_with_hosts_of_bricks('testvol')
+            {   node_ip1:{
+                    'brick_process1':'free_inodes',
+                    'brick_process2':'free_inodes'},
+                node_ip2:{
+                    'brick_process1':'free_inodes',
+                    'brick_process2':'free_inodes'},
+            }
+    """
+    hosts_with_inodes_info = dict()
+
+    # Get the detailed status of volume
+    vol_status = get_gluster_vol_status(vol_name, is_detail=True)
+
+    # Fetch the node ip, brick processes and free inodes from the status
+    for g_node, g_node_data in vol_status.items():
+        for brick_process, process_data in g_node_data.items():
+            if not brick_process.startswith("/var"):
+                continue
+            if g_node not in hosts_with_inodes_info:
+                hosts_with_inodes_info[g_node] = dict()
+            inodes_info = {brick_process: process_data["inodesFree"]}
+            hosts_with_inodes_info[g_node].update(inodes_info)
+    return hosts_with_inodes_info
