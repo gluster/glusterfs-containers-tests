@@ -2,6 +2,7 @@ from glustolibs.gluster.snap_ops import (
     snap_create,
     snap_delete,
     snap_list,
+    get_snap_list,
 )
 import pytest
 
@@ -257,3 +258,57 @@ class TestHeketiVolumeOperations(BaseClass):
         for size in sizes:
             vol_id = heketi_volume_create(h_node, h_url, size, json=True)['id']
             self.addCleanup(heketi_volume_delete, h_node, h_url, vol_id)
+
+    @pytest.mark.tier1
+    @podcmd.GlustoPod()
+    def test_heketi_volume_snapshot_delete(self):
+        """Test heketi volume snapshot delete operation"""
+        h_volume_size = 1
+        snap_name = 'snap_test_heketi_volume_snapshot_create_1'
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        h_volume_info = heketi_volume_create(
+            h_node, h_url, h_volume_size, json=True)
+        self.addCleanup(
+            heketi_volume_delete, h_node, h_url, h_volume_info["id"])
+
+        # Get the snapshot list before snap creation
+        snap_list_before = get_snap_list('auto_get_gluster_endpoint')
+        self.assertIsNotNone(
+            snap_list_before,
+            "Failed to get the snapshot list {}".format(snap_list_before))
+
+        # Create a snapshot
+        h_volume_name = h_volume_info["name"]
+        ret, _, err = snap_create(
+            'auto_get_gluster_endpoint',
+            h_volume_name, snap_name, timestamp=False)
+        self.addCleanup(
+            podcmd.GlustoPod()(snap_delete),
+            "auto_get_gluster_endpoint", snap_name)
+        self.assertFalse(
+            ret, "Failed to create snapshot {} for heketi volume {} with"
+            " error {}".format(snap_name, h_volume_name, err))
+
+        snap_list = get_snap_list('auto_get_gluster_endpoint')
+        self.assertIsNotNone(
+            snap_list, "Failed to get the snapshot list {}".format(snap_list))
+        self.assertIn(
+            snap_name, snap_list, "Heketi volume snapshot {} not found in {}"
+            .format(snap_name, snap_list))
+
+        # Delete the snapshot
+        ret, _, err = snap_delete('auto_get_gluster_endpoint', snap_name)
+        self.assertFalse(
+            ret, "Failed to delete snapshot {} for heketi volume with err {}"
+            .format(snap_name, err))
+
+        # Check for count after snapshot deletion
+        snap_list_after = get_snap_list('auto_get_gluster_endpoint')
+        self.assertIsNotNone(
+            snap_list_after,
+            "Failed to get the snapshot list {}".format(snap_list_after))
+        self.assertEqual(
+            snap_list_before, snap_list_after,
+            "Expecting Snapshot count before {} and after creation {} to be "
+            "same".format(snap_list_before, snap_list_after))
