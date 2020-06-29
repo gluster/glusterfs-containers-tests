@@ -452,8 +452,9 @@ def oc_create_tiny_pod_with_volume(hostname, pvc_name, pod_name_prefix='',
     return pod_name
 
 
-def oc_delete(ocp_node, rtype, name, raise_on_absence=True):
-    """Delete an OCP resource by name.
+def oc_delete(
+        ocp_node, rtype, name, raise_on_absence=True, collect_logs=False):
+    """Delete an OCP resource by name
 
     Args:
         ocp_node (str): Node on which the ocp command will run.
@@ -463,16 +464,22 @@ def oc_delete(ocp_node, rtype, name, raise_on_absence=True):
                                  exception if value is true,
                                  else return
                                  default value: True
+        collect_logs (bool): Collect logs before deleting resource
     """
-    if not oc_get_yaml(ocp_node, rtype, name,
-                       raise_on_error=raise_on_absence):
+    if not oc_get_yaml(ocp_node, rtype, name, raise_on_error=raise_on_absence):
         return
+
+    if rtype == "pod" and collect_logs:
+        cmd = [
+            'oc', 'logs', name,
+            '&>', '{}_$(date +%Y-%m-%d-%H-%m-%s).log'.format(name)]
+        command.cmd_run(cmd, hostname=ocp_node)
+
     cmd = ['oc', 'delete', rtype, name]
     if openshift_version.get_openshift_version() >= '3.11':
         cmd.append('--wait=false')
 
     command.cmd_run(cmd, hostname=ocp_node)
-    g.log.info('Deleted resource: %r %r', rtype, name)
 
 
 def oc_get_custom_resource(ocp_node, rtype, custom, name=None, selector=None,

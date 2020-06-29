@@ -49,7 +49,8 @@ class TestRestartHeketi(BaseClass):
                                                self.heketi_dc_name)
 
         # delete heketi-pod (it restarts the pod)
-        oc_delete(self.ocp_master_node[0], 'pod', heketi_pod_name)
+        oc_delete(self.ocp_master_node[0], 'pod',
+                  heketi_pod_name, collect_logs=self.heketi_logs_before_delete)
         wait_for_resource_absence(self.ocp_master_node[0],
                                   'pod', heketi_pod_name)
 

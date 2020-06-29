@@ -116,6 +116,9 @@ class BaseClass(unittest.TestCase):
             'storage_class1', cls.storage_classes.get('file_storage_class'))
         cls.secret_type = "kubernetes.io/glusterfs"
 
+        cls.heketi_logs_before_delete = bool(
+            g.config.get("common", {}).get("heketi_logs_before_delete", False))
+
         cmd = "echo -n %s | base64" % cls.heketi_cli_key
         ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
         if ret != 0:

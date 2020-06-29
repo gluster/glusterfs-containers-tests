@@ -105,6 +105,7 @@ common:
     check_heketi_db_inconsistencies: True
     stop_on_first_failure: False
     heketi_command_timeout: 120
+    heketi_logs_before_delete: False
 
 scaleup:
     run_scale_up_on_start: True
