@@ -351,10 +351,9 @@ class TestVolumeCreationTestCases(BaseClass):
             self.skipTest('Required free space %s is not available' % vol_size)
 
         # Create heketi volume with device size + 1
-        vol_info = heketi_ops.heketi_volume_create(
-            h_node, h_url, vol_size, clusters=cluster['id'], json=True)
-        self.addCleanup(
-            heketi_ops.heketi_volume_delete, h_node, h_url, vol_info['id'])
+        vol_info = self.create_heketi_volume_with_name_and_wait(
+            name="volume_size_greater_than_device_size", size=vol_size,
+            json=True)
 
         # Get gluster server IP's from heketi volume info
         glusterfs_servers = heketi_ops.get_vol_file_servers_and_hosts(
