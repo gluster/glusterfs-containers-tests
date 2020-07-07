@@ -39,21 +39,26 @@ class TestVolumeDeleteTestCases(BaseClass):
         frees up used space after deletion
         """
 
-        creation_output_dict = heketi_ops.heketi_volume_create(
+        volume_info = heketi_ops.heketi_volume_create(
             self.heketi_client_node,
             self.heketi_server_url, 10, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete,
+            self.heketi_client_node, self.heketi_server_url,
+            volume_info["id"], raise_on_error=False)
 
-        volume_id = creation_output_dict["name"].strip().split("_")[1]
         free_space_after_creation = self.get_free_space_summary_devices()
 
         heketi_ops.heketi_volume_delete(
-            self.heketi_client_node, self.heketi_server_url, volume_id)
+            self.heketi_client_node, self.heketi_server_url,
+            volume_info["id"])
 
         free_space_after_deletion = self.get_free_space_summary_devices()
 
         self.assertTrue(
             free_space_after_deletion > free_space_after_creation,
-            "Free space is not reclaimed after deletion of %s" % volume_id)
+            "Free space is not reclaimed after deletion "
+            "of %s" % volume_info["id"])
 
     @pytest.mark.tier0
     def test_delete_heketidb_volume(self):
