@@ -617,11 +617,11 @@ class TestHeketiZones(baseclass.BaseClass):
 
     def _create_dcs_and_check_brick_placement(
             self, prefix, sc_name, heketi_zone_checking, zone_count):
-        app_pods = []
+        app_pods, count, label = [], 5, "testlabel=autotest"
 
         # Create multiple PVCs using storage class
         pvc_names = self.create_and_wait_for_pvcs(
-            pvc_name_prefix=prefix, pvc_amount=5, sc_name=sc_name)
+            pvc_name_prefix=prefix, pvc_amount=count, sc_name=sc_name)
 
         # Create app dcs with I/O
         for pvc_name in pvc_names:
@@ -629,9 +629,13 @@ class TestHeketiZones(baseclass.BaseClass):
                 self.node, pvc_name=pvc_name, dc_name_prefix=prefix)
             self.addCleanup(openshift_ops.oc_delete, self.node, 'dc', app_dc)
 
-            # Get pod names
+            # Get pod names and label them
             pod_name = openshift_ops.get_pod_name_from_dc(self.node, app_dc)
+            openshift_ops.oc_label(self.node, 'pod', pod_name, label)
             app_pods.append(pod_name)
+
+        # Wait for pods to be ready with the help of label selector
+        openshift_ops.wait_for_pods_be_ready(self.node, count, label)
 
         # Validate brick placement in heketi zones
         self._validate_brick_placement_in_correct_zone_or_with_expand_pvc(
