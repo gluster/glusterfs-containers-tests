@@ -1560,3 +1560,262 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
 
         # Power on gluster node and wait for the services to be up
         self.power_on_gluster_node_vm(target_vm_name, target_ip)
+
+    def _arbiter_volume_device_tag_operations(
+            self, device_tag_count, vol_creation):
+        """Verify arbiter volume creation with different arbiter tags on
+        different devices
+        """
+        h_volume_size, bricks_list, h_devices_with_tag = 1, [], []
+        device_list_arbiter, vol_count = [], 5
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+        g_vol_option = 'user.heketi.arbiter true'
+
+        node_ids = heketi_ops.heketi_node_list(h_client, h_url)
+        self.assertTrue(node_ids, "Failed to get heketi node list")
+
+        for i, node_id in enumerate(node_ids):
+            node_info = heketi_ops.heketi_node_info(
+                h_client, h_url, node_id, json=True)
+
+            # Except 3 disable all the remaining nodes
+            if i > 2:
+                heketi_ops.heketi_node_disable(h_client, h_url, node_id)
+                self.addCleanup(
+                    heketi_ops.heketi_node_enable, h_client, h_url, node_id)
+                continue
+
+            # Verify if 3 devices are present
+            if len(node_info['devices']) < 3:
+                # Add device if 3 devices are not found
+                storage_host_info = g.config.get("gluster_servers")
+                if not storage_host_info:
+                    self.skipTest(
+                        "Skip test case as 'gluster_servers' option is "
+                        "not provided in config file")
+
+                # Fetch additional_devices details
+                storage_host_info = list(storage_host_info.values())[0]
+                storage_device = storage_host_info["additional_devices"][0]
+
+                # Add device to the node
+                heketi_ops.heketi_device_add(
+                    h_client, h_url, storage_device, node_id)
+
+                # Fetch device info after device add
+                node_info = heketi_ops.heketi_node_info(
+                    h_client, h_url, node_id, json=True)
+                device_id = None
+                for device in node_info["devices"]:
+                    if device["name"] == storage_device:
+                        device_id = device["id"]
+                        break
+                self.assertTrue(
+                    device_id,
+                    "Failed to add device {} on node"
+                    " {}".format(storage_device, node_id))
+
+                self.addCleanup(
+                    heketi_ops.heketi_device_delete,
+                    h_client, h_url, device_id)
+                self.addCleanup(
+                    heketi_ops.heketi_device_remove,
+                    h_client, h_url, device_id)
+                self.addCleanup(
+                    heketi_ops.heketi_device_disable,
+                    h_client, h_url, device_id)
+
+                # Set arbiter tag on all 3 devices of particular nodes
+                # and disabled on other devices
+                for device in node_info['devices']:
+                    device_info = heketi_ops.heketi_device_info(
+                        h_client, h_url, device['id'], json=True)
+                    device_tag = (
+                        None if not device_tag_count else 'disabled'
+                        if i < device_tag_count else 'required')
+                    revert_to_tag = device_info.get('tags', {}).get('arbiter')
+                    self._set_arbiter_tag_with_further_revert(
+                        h_client, h_url, 'device', device['id'],
+                        device_tag, revert_to_tag)
+                    device_info = heketi_ops.heketi_device_info(
+                        h_client, h_url, device['id'], json=True)
+                    h_node_ip = node_info['hostnames']['storage']
+                    h_device_tag = device_info.get('tags', {}).get('arbiter')
+
+                    # Make sure that the tags are updated
+                    err_msg = "Failed to update {} tags to device id {}"
+                    if not device_tag_count:
+                        self.assertEqual(
+                            device_tag, h_device_tag,
+                            err_msg.format(device_tag, device['id']))
+                    else:
+                        # Fetch the ip and device name were arbiter: requied
+                        if h_device_tag == 'required':
+                            arbiter_tag_node_ip = h_node_ip
+                            device_list_arbiter.append(device)
+
+                        # Make sure that all tags are placed properly
+                        self.assertEqual(
+                            device_tag, h_device_tag,
+                            "Failed to add {} tags for device {} of node "
+                            "{}".format(device_tag, device['id'], node_id))
+        # Create 5 volumes for verificaton
+        for count in range(vol_count):
+            try:
+                h_volume = heketi_ops.heketi_volume_create(
+                    h_client, h_url, h_volume_size,
+                    gluster_volume_options=g_vol_option, json=True)
+                h_vol_id = h_volume["id"]
+                h_vol_name = h_volume["name"]
+                self.addCleanup(
+                    heketi_ops.heketi_volume_delete, h_client, h_url, h_vol_id,
+                    h_vol_name, gluster_volume_options=g_vol_option)
+
+                # Verify if volume creation with the expected result for the
+                # given tags on devices
+                if not vol_creation:
+                    raise exceptions.ExecutionError(
+                        "Expecting volume should not be created as tags on"
+                        " devices {} required tags".format(device_tag_count))
+
+                # Get the device info only if arbiter: requied
+                for device in device_list_arbiter:
+                    device_info = heketi_ops.heketi_device_info(
+                        h_client, h_url, device['id'], json=True)
+
+                    # Fetch vg from device info were arbiter tag is required
+                    if device_info['bricks']:
+                        vg = device_info['bricks'][0]['path']
+                        self.assertTrue(
+                            vg, "Failed to find the details of the bricks")
+                        device_vg = DEVICE_REGEX.findall(vg)[0]
+                        self.assertTrue(
+                            device_vg,
+                            "Failed to fetch the device vg from {}".format(vg))
+                        h_devices_with_tag.append(device_vg)
+
+                # Fetch gluster volume list
+                g_vol_list = volume_ops.get_volume_list(
+                    "auto_get_gluster_endpoint")
+                self.assertIn(
+                    h_vol_name, g_vol_list,
+                    "Failed to find heketi volume name {} in gluster volume"
+                    " list {}".format(h_vol_name, g_vol_list))
+
+                g_vol_info = volume_ops.get_volume_info(
+                    'auto_get_gluster_endpoint', h_vol_name)
+
+                # Fetch the device id on which arbiter volume is present
+                for brick_details in g_vol_info[h_vol_name]["bricks"]["brick"]:
+                    if brick_details['isArbiter'][0] == '1':
+                        brick_ip_name = brick_details["name"]
+                        self.assertTrue(
+                            brick_ip_name,
+                            "Brick details are empty for{}".format(h_vol_name))
+                        bricks_list.append(brick_ip_name)
+
+            except AssertionError:
+                # Verify volume creation with the expected result for the
+                # given tags on nodes
+                if vol_creation:
+                    raise
+                return
+
+            # Verify heketi topology info for tags
+            h_topology_info = heketi_ops.heketi_topology_info(
+                h_client, h_url, raise_on_error=True, json=True)
+            self.assertTrue(
+                h_topology_info, "Failed to fetch heketi topology info")
+            for i, node in enumerate(range(len(
+                    h_topology_info['clusters'][0]['nodes']))):
+                node_details = h_topology_info['clusters'][0]['nodes'][node]
+
+                # Select the 3 nodes as remaining are disable
+                if i < 3:
+                    for device in range(len(node_details['devices'])):
+                        h_device_info = node_details['devices'][device]
+                        self.assertTrue(
+                            h_device_info,
+                            "Failed to find the {} from the heketi topology "
+                            "info {}".format('device info', device))
+                        h_device_tag = h_device_info.get(
+                            'tags', {}).get('arbiter')
+                        device_tag = (
+                            None if not device_tag_count else 'disabled'
+                            if i < device_tag_count else 'required')
+                        err_msg = ("Expecting {} {} from device info and {} "
+                                   "from topology info should be same")
+                        self.assertEqual(
+                            device_tag, h_device_tag,
+                            err_msg.format('tags', device_tag, h_device_tag))
+
+                        if h_device_tag == 'required':
+                            if h_device_info['bricks']:
+                                # verfiy the vg where arbiter tag is required
+                                vg = (h_device_info['bricks'][0]['path'])
+                                h_device_vg = DEVICE_REGEX.findall(vg)
+                                self.assertTrue(
+                                    h_device_vg,
+                                    "Failed to fetch the device vg from device"
+                                    " info {}".format(vg))
+                                self.assertIn(
+                                    h_device_vg[0], h_devices_with_tag,
+                                    err_msg.format(
+                                        'Vg', h_device_vg, h_devices_with_tag))
+
+            # Get the bricks ip on which arbiter volume is created
+            arbiter_brick_ip = {
+                brick.strip().split(":")[0] for brick in bricks_list}
+            self.assertTrue(
+                arbiter_brick_ip,
+                "Brick ip not found in {}".format(bricks_list))
+
+            # Get vg were the arbiter volume is stored
+            g_arbiter_vg = {
+                DEVICE_REGEX.findall(brick)[0] for brick in bricks_list}
+            self.assertTrue(
+                g_arbiter_vg, "Failed to find the device with aribter tag")
+
+            # Verify if the count of no arbiter tag on the node is more
+            # than one out of 3 nodes then ip will be on more than 1 node
+            if not device_tag_count:
+                self.assertGreaterEqual(
+                    len(arbiter_brick_ip), 1,
+                    "Expecting more than one ip but received "
+                    "{}".format(arbiter_brick_ip))
+            else:
+                self.assertEqual(
+                    len(arbiter_brick_ip), 1,
+                    "Expecting one ip but received "
+                    "{}".format(arbiter_brick_ip))
+                self.assertEqual(
+                    len(arbiter_brick_ip), len(arbiter_tag_node_ip),
+                    "Expecting the count of bricks where the volume is"
+                    " created {} and number of nodes having the arbiter"
+                    " tag {} ".format(arbiter_brick_ip, arbiter_tag_node_ip))
+                self.assertEqual(
+                    arbiter_brick_ip.pop(), arbiter_tag_node_ip[0],
+                    "Did not match ip of the bricks where the arbiter volume "
+                    "is created {} and and number of nodes having the arbiter"
+                    " tag {}".format(arbiter_brick_ip, arbiter_tag_node_ip))
+
+                # Verify if vg match from gluster and heketi side
+                for device in list(g_arbiter_vg):
+                    self.assertIn(
+                        device, h_devices_with_tag,
+                        "Failed to match vg {} from gluster side with vg {} "
+                        "from heketi side".format(device, h_devices_with_tag))
+
+    @pytest.mark.tier1
+    @ddt.data(
+        (1, False),
+        (2, True),
+        (0, True))
+    @ddt.unpack
+    @podcmd.GlustoPod()
+    def test_arbiter_volume_with_different_tags_on_devices(
+            self, device_tag_count, vol_creation):
+        """Test remove tags from nodes and check if arbiter volume is
+        created randomly"""
+        self._arbiter_volume_device_tag_operations(
+            device_tag_count, vol_creation)
