@@ -93,7 +93,7 @@ class TestRestartHeketi(BaseClass):
         # Read Heketi secret data
         self.node = self.ocp_master_node[0]
         heketi_secret_data_str_base64 = oc_get_custom_resource(
-            self.node, "secret", ":.data.'heketi\.json'",  # noqa
+            self.node, "secret", r":.data.'heketi\.json'",  # noqa
             name=heketi_secret_name)[0]
         heketi_secret_data_str = self.cmd_run(
             "echo %s | base64 -d" % heketi_secret_data_str_base64)

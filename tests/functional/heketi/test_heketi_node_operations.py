@@ -680,7 +680,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
                 for vol in vol_list:
                     vol_info = h.heketi_volume_expand(
                         h_node, h_url, vol['id'], '1', json=True)
-                    self.assertEquals(2, vol_info['size'])
+                    self.assertEqual(2, vol_info['size'])
 
             else:
                 msg = "Invalid vol_operation %s" % vol_operation
