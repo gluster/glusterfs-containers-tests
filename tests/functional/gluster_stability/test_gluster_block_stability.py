@@ -44,6 +44,7 @@ from openshiftstoragelibs.node_ops import (
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_default_block_hosting_volume_size,
+    get_gluster_pod_name_for_specific_node,
     get_ocp_gluster_pod_details,
     get_pod_name_from_dc,
     get_pv_name_from_pvc,
@@ -1391,28 +1392,76 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             r'oc logs %s --since-time="%s" | grep " Failed to run command '
             r'\[gluster-block delete*"' % (heketi_pod_name, since_time))
 
-        for w in Waiter(30, 5):
-            err_out = cmd_run(err_cmd, self.node)
-            if any(vol_name in err_out for vol_name in vol_names):
-                break
+        for w in Waiter(120, 5):
+            try:
+                err_out = cmd_run(err_cmd, self.node)
+                if any(vol_name in err_out for vol_name in vol_names):
+                    break
+            except AssertionError:
+                continue
         if w.expired:
             err_msg = ("Expected ERROR for volumes '%s' not generated in "
                        "heketi pod logs" % vol_names)
             raise AssertionError(err_msg)
 
-    @pytest.mark.tier2
-    def test_delete_block_pvcs_with_network_failure(self):
-        """Block port 24010 while deleting PVC's"""
-        pvc_amount, pvc_delete_amount, is_bhv_exist = 10, 5, True
-        initial_free_storage, gluster_node = 0, self.gluster_servers[0]
-        chain = 'OS_FIREWALL_ALLOW'
+    def _perform_close_port_steps_network_failure(
+            self, since_time, pvc_names, vol_names, pvc_delete_amount):
+        gluster_node, chain = self.gluster_servers[0], 'OS_FIREWALL_ALLOW'
         rules = '-p tcp -m state --state NEW -m tcp --dport 24010 -j ACCEPT'
+        try:
 
+            # Close the port #24010 on gluster node and then delete other 5 PVC
+            # without wait
+            node_delete_iptables_rules(gluster_node, chain, rules)
+            oc_delete(
+                self.node, 'pvc', ' '.join(pvc_names[pvc_delete_amount:]))
+            self.addCleanup(
+                wait_for_resources_absence,
+                self.node, 'pvc', pvc_names[pvc_delete_amount:])
+
+            # Check  errors in heketi pod logs
+            self.check_errors_in_heketi_pod_network_failure_after_deletion(
+                since_time, vol_names[pvc_delete_amount:])
+        finally:
+
+            # Open port 24010
+            node_add_iptables_rules(gluster_node, chain, rules)
+
+    def _perform_kill_service_steps_network_failure(
+            self, since_time, vol_names):
+        # Get the gluster pod_name
+        g_hostname = list(self.gluster_servers_info.values())[0]['manage']
+        g_pod = get_gluster_pod_name_for_specific_node(self.node, g_hostname)
+        try:
+
+            # Kill targetcli process continuously in a while loop
+            kill_targetcli_services_cmd = (
+                "while true; do oc exec {} -- pkill targetcli || "
+                "echo 'failed to kill targetcli process'; done".format(g_pod))
+            loop_for_killing_targetcli_process = g.run_async(
+                self.node, kill_targetcli_services_cmd, "root")
+
+            # Check  errors in heketi pod logs
+            self.check_errors_in_heketi_pod_network_failure_after_deletion(
+                since_time, vol_names)
+        finally:
+
+            # Restore targetcli workability
+            loop_for_killing_targetcli_process._proc.terminate()
+
+    @pytest.mark.tier2
+    @ddt.data(True, False)
+    def test_delete_block_pvcs_with_network_failure(self, is_close_port=True):
+        """Validate heketi pod logs while producing network faliure and
+        deleting PVC's """
+        initial_free_storage, is_bhv_exist = 0, True
+        h_client, h_server = self.heketi_client_node, self.heketi_server_url
+        pvc_amount, pvc_delete_amount = (10 if is_close_port else 5), 5
         sc_name = self.create_storage_class(hacount=len(self.gluster_servers))
 
         # Get the list of BHV's
         bhv_list = get_block_hosting_volume_list(
-            self.node, self.heketi_server_url, json=True)
+            h_client, h_server, json=True)
         if not bhv_list:
             is_bhv_exist = False
 
@@ -1420,7 +1469,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         if is_bhv_exist:
             for vol_id in bhv_list.keys():
                 initial_free_storage += heketi_volume_info(
-                    self.node, self.heketi_server_url, vol_id,
+                    h_client, h_server, vol_id,
                     json=True)['blockinfo']['freesize']
         else:
             default_storage = get_default_block_hosting_volume_size(
@@ -1440,40 +1489,32 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         since_time = cmd_run(
             'date -u --rfc-3339=ns| cut -d  "+" -f 1', self.node).replace(
                 " ", "T") + "Z"
+        if is_close_port:
 
-        try:
-            # Close the port #24010 on gluster node and then delete other 5 PVC
-            # without wait
-            node_delete_iptables_rules(gluster_node, chain, rules)
-            oc_delete(
-                self.node, 'pvc', ' '.join(pvc_names[pvc_delete_amount:]))
-            self.addCleanup(
-                wait_for_resources_absence,
-                self.node, 'pvc', pvc_names[pvc_delete_amount:])
+            # Perfom steps to validate network failure by closing the port
+            self._perform_close_port_steps_network_failure(
+                since_time, pvc_names, vol_names, pvc_delete_amount)
+        else:
 
-            # Check  errors in heketi pod logs
-            self.check_errors_in_heketi_pod_network_failure_after_deletion(
-                since_time, vol_names[pvc_delete_amount:])
-        finally:
-            # Open port 24010
-            node_add_iptables_rules(gluster_node, chain, rules)
+            #  Perfom steps to validate network failure by killing the service
+            self._perform_kill_service_steps_network_failure(
+                since_time, vol_names)
 
         # Get the list of BHV's
-        bhv_list = get_block_hosting_volume_list(
-            self.node, self.heketi_server_url)
+        bhv_list = get_block_hosting_volume_list(h_client, h_server)
 
         # Validate available free space is same
         for w in Waiter():
             final_free_storage = 0
             for vol_id in bhv_list.keys():
                 final_free_storage += heketi_volume_info(
-                    self.node, self.heketi_server_url, vol_id,
+                    self.node, h_server, vol_id,
                     json=True)['blockinfo']['freesize']
             if initial_free_storage == final_free_storage:
                 break
         if w.expired:
             err_msg = ("Available free space {} is not same as expected {}"
-                       .format(initial_free_storage, final_free_storage))
+                       .format(final_free_storage, initial_free_storage))
             raise AssertionError(err_msg)
 
     @pytest.mark.tier1
