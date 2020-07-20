@@ -4,7 +4,6 @@ import ddt
 from glusto.core import Glusto as g
 from glustolibs.gluster import volume_ops
 import pytest
-from unittest import skip
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
@@ -16,6 +15,7 @@ from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import openshift_version
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import utils
+from openshiftstoragelibs import waiter
 
 BRICK_REGEX = r"^(.*):\/var\/lib\/heketi\/mounts\/(.*)\/brick$"
 HEKETI_VOLS = re.compile(r"Id:(\S+)\s+Cluster:(\S+)\s+Name:(\S+)")
@@ -1492,7 +1492,6 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             "expansion".format(
                 arbiter_brick_size_after, arbiter_brick_size_before))
 
-    @skip("Blocked by BZ-1848895")
     @pytest.mark.tier2
     def test_poweroff_gluster_nodes_after_filling_inodes_arbiter_brick(self):
         """Validate io after filling up the arbiter brick and node poweroff"""
@@ -1500,14 +1499,16 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         # Create sc with gluster arbiter info
         sc_name = self.create_storage_class(is_arbiter_vol=True)
 
-        # Get list of all gluster nodes and mark them unschedulable
-        g_nodes = openshift_ops.oc_get_custom_resource(
-            self.node, 'pod', ':.spec.nodeName', selector='glusterfs-node=pod')
-        g_nodes = [node[0] for node in g_nodes]
-        openshift_ops.oc_adm_manage_node(
-            self.node, '--schedulable=false', nodes=g_nodes)
-        self.addCleanup(openshift_ops.oc_adm_manage_node,
-                        self.node, '--schedulable=true', nodes=g_nodes)
+        if self.is_containerized_gluster():
+            # Get list of all gluster nodes and mark them unschedulable
+            g_nodes = openshift_ops.oc_get_custom_resource(
+                self.node, 'pod', ':.spec.nodeName',
+                selector='glusterfs-node=pod')
+            g_nodes = [node[0] for node in g_nodes]
+            openshift_ops.oc_adm_manage_node(
+                self.node, '--schedulable=false', nodes=g_nodes)
+            self.addCleanup(openshift_ops.oc_adm_manage_node,
+                            self.node, '--schedulable=true', nodes=g_nodes)
 
         # Create PVC and corresponding App pod
         self.create_and_wait_for_pvc(sc_name=sc_name)
@@ -1530,36 +1531,67 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         for node_ip, inodes_info in hosts_with_inodes_info.items():
             for brick, inodes in inodes_info.items():
                 if arbiter_brick == brick:
-                    arb_free_inodes = inodes
+                    arb_free_inodes = int(inodes) - 450
                     break
 
-        # Create masterfile of size equal to free inodes in bytes
-        mount_path, filename = "/mnt/", "masterfile"
-        dd_cmd = (
-            "dd if=/dev/urandom of={}{} bs=1 count={}".format(
-                mount_path, filename, arb_free_inodes))
-        ret, out, err = openshift_ops.oc_rsh(self.node, pod_name, dd_cmd)
-        self.assertFalse(ret, "Failed to execute command {} on pod {}".format(
-                         dd_cmd, pod_name))
+        # Completely  fill free inodes of arbiter brick
+        while(arb_free_inodes > 0):
 
-        # Split masterfile to a number which is equal to free inodes
-        split_cmd = (
-            "oc exec {} -- /bin/sh -c 'cd {}; split -b 1 -a 10 {}'".format(
-                pod_name, mount_path, filename))
-        self.cmd_run(split_cmd)
+            # Create a randome master file at the mount point
+            path = "/mnt/{}/".format(utils.get_random_str())
+            filename = "masterfile"
+            dd_cmd = (
+                "oc exec {} -- /bin/sh -c 'mkdir {};"
+                "dd if=/dev/urandom of={}{} bs=1 count=4000'".format(
+                    pod_name, path, path, filename))
+            self.cmd_run(dd_cmd)
 
-        # Poweroff the node with arbiter brick
+            # Split masterfile into multiple smaller files of 1 byte each
+            split_cmd = (
+                "oc exec {} -- /bin/sh -c 'cd {}; split -b 1 -a 10 {}'".format(
+                    pod_name, path, filename))
+            self.cmd_run(split_cmd)
+            arb_free_inodes -= 4000
+
+            # Check if there pending heals then break the loop,
+            # because inodes of arbiter brick are filled
+            try:
+                gluster_ops.wait_to_heal_complete(
+                    timeout=60, vol_name=vol_name)
+            except AssertionError:
+                break
+
+        # Poweroff the one of the node with data brick
         target_ip = bricks_list['data_list'][0]['name'].split(":")[0]
         target_vm_name = node_ops.find_vm_name_by_ip_or_hostname(target_ip)
-        self.power_off_gluster_node_vm(target_vm_name, target_ip)
+        for ip, info in self.gluster_servers_info.items():
+            if ip == target_ip:
+                target_hostname = info['manage']
+                break
+        self.power_off_gluster_node_vm(target_vm_name, target_hostname)
 
-        # Create a file with text test
-        file_cmd = ("oc exec {} -- /bin/sh -c \"echo 'test' > "
-                    "/mnt/file\"".format(pod_name))
-        self.cmd_run(file_cmd)
+        # Create a file with text test and check if message is "no space left"
+        try:
+            file_cmd = ("oc exec {} -- /bin/sh -c \"echo 'test' > "
+                        "/mnt/".format(pod_name))
+            self.cmd_run(file_cmd + '{}"'.format(utils.get_random_str()))
+        except AssertionError as err:
+            msg = "No space left on device"
+            if msg not in str(err):
+                raise
 
-        # Power on gluster node and wait for the services to be up
-        self.power_on_gluster_node_vm(target_vm_name, target_ip)
+        # Power on gluster node
+        self.power_on_gluster_node_vm(target_vm_name, target_hostname)
+
+        # Try to create a file
+        for w in waiter.Waiter(120, 5):
+            try:
+                self.cmd_run(file_cmd + '{}"'.format(utils.get_random_str()))
+                break
+            except AssertionError:
+                continue
+        if w.expired:
+            raise
 
     def _arbiter_volume_device_tag_operations(
             self, device_tag_count, vol_creation):
