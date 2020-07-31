@@ -226,12 +226,6 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         # Get the list of nodes other than gluster
         o_nodes = list((set(nodes) - set(g_nodes)))
 
-        # Skip the test case if it is crs setup
-        if not g_nodes:
-            self.skipTest("skipping test case because it is not a "
-                          "containerized gluster setup. "
-                          "This test case is for containerized gluster only.")
-
         # Make other nodes unschedulable
         oc_adm_manage_node(
             self.node, '--schedulable=false', nodes=o_nodes)
