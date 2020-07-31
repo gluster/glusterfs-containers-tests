@@ -11,7 +11,7 @@ from glustolibs.gluster.volume_ops import (
 )
 import pytest
 
-from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs.gluster_ops import (
     get_block_hosting_volume_name,
@@ -23,6 +23,7 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
     heketi_blockvolume_list,
+    heketi_blockvolume_list_by_name_prefix,
     heketi_node_info,
     heketi_node_list,
     heketi_volume_create,
@@ -33,6 +34,7 @@ from openshiftstoragelibs.heketi_ops import (
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_default_block_hosting_volume_size,
+    oc_rsh,
     restart_service_on_gluster_pod_or_node,
     wait_for_service_status_on_gluster_pod_or_node,
 )
@@ -41,7 +43,7 @@ from openshiftstoragelibs import utils
 
 
 @ddt.ddt
-class TestBlockVolumeOps(BaseClass):
+class TestBlockVolumeOps(GlusterBlockBaseClass):
     """Class to test heketi block volume deletion with and without block
        volumes existing, heketi block volume list, heketi block volume info
        and heketi block volume creation with name and block volumes creation
@@ -522,3 +524,57 @@ class TestBlockVolumeOps(BaseClass):
             h_block_vol_ha, g_block_vol_ha,
             err_msg.format(
                 "ha", h_block_vol_ha, g_block_vol_ha, err_msg))
+
+    @pytest.mark.tier0
+    def test_dynamic_provisioning_block_vol_with_custom_prefix(self):
+        """Verify creation of block volume with custom prefix
+        """
+        node = self.ocp_master_node[0]
+        prefix = "autotest-{}".format(utils.get_random_str())
+
+        # cmd to get available space
+        cmd_get_free_space = "df -h | grep '/mnt'| awk '{{print $4}}'"
+
+        # cmd to create a 100M file
+        cmd_run_io = 'dd if=/dev/zero of=/mnt/testfile bs=1024 count=102400'
+
+        # Create sc with prefix
+        sc_name = self.create_storage_class(
+            sc_name_prefix=prefix,
+            create_vol_name_prefix=True, vol_name_prefix=prefix)
+
+        # Create pvc and wait for it to be in bound state
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name, pvc_size=1)
+
+        # Verify blockvolume list with prefix
+        h_block_vol = heketi_blockvolume_list_by_name_prefix(
+            self.heketi_client_node, self.heketi_server_url, prefix)
+        self.assertIsNotNone(
+            h_block_vol,
+            "Failed to find blockvolume with prefix {}".format(prefix))
+        self.assertTrue(
+            h_block_vol[0][2].startswith(prefix),
+            "Failed to create blockvolume with the prefix {}".format(prefix))
+
+        # Create app pod
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
+
+        err_msg = ("Failed to get the free space for the mount point of the "
+                   "app pod {} with error {}")
+        # Get free space of app pod before IO run
+        _, free_space_before, err = oc_rsh(node, pod_name, cmd_get_free_space)
+        self.assertTrue(free_space_before, err_msg.format(pod_name, err))
+
+        # Running IO on the app pod
+        ret, _, err = oc_rsh(node, pod_name, cmd_run_io)
+        self.assertFalse(
+            ret, "Failed to run the Io with the error msg {}".format(err))
+
+        # Get free space of app pod after IO run
+        _, free_space_after, err = oc_rsh(node, pod_name, cmd_get_free_space)
+        self.assertTrue(free_space_after, err_msg.format(pod_name, err))
+        self.assertGreaterEqual(
+            free_space_before, free_space_after,
+            "Expecting free space in app pod before {} should be greater than"
+            " {} as 100M file is created".format(
+                free_space_before, free_space_after))
