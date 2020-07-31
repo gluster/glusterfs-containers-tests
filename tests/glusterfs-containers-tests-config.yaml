@@ -100,6 +100,13 @@ openshift:
         metrics_rc_hawkular_metrics: "<hawkular-metrics-rc-name>"
         metrics_rc_heapster: "<heapster-rc-name>"
 
+    # 'logging' section covers the details of resources related to OCP logging
+    logging:
+        logging_project_name: "<logging-project-name>"
+        logging_fluentd_ds: "<fluentd-ds-name>"
+        logging_es_dc: "<elasticsearch-dc-name"
+        logging_kibana_dc: "<kibana-dc-name>"
+
 common:
     allow_heketi_zones_update: False
     check_heketi_db_inconsistencies: True
