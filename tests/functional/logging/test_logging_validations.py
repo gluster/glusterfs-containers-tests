@@ -112,7 +112,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
 
     @pytest.mark.tier3
     def test_validate_logging_pods_and_pvc(self):
-        """Validate metrics pods and PVC"""
+        """Validate logging pods and PVC"""
 
         # Wait for kibana pod to be ready
         kibana_pod = openshift_ops.get_pod_name_from_dc(
@@ -274,3 +274,81 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
         openshift_ops.oc_rsh(self._master, es_pod, cmd_run_io)
         self.addCleanup(
             openshift_ops.oc_rsh, self._master, es_pod, cmd_remove_file)
+
+    def _delete_and_wait_for_new_es_pod_to_come_up(self):
+
+        # Force delete and wait for es pod to come up
+        openshift_ops.switch_oc_project(
+            self._master, self._logging_project_name)
+        pod_name = openshift_ops.get_pod_name_from_dc(
+            self._master, self._logging_es_dc)
+        openshift_ops.oc_delete(self._master, 'pod', pod_name, is_force=True)
+        openshift_ops.wait_for_resource_absence(self._master, 'pod', pod_name)
+        new_pod_name = openshift_ops.get_pod_name_from_dc(
+            self._master, self._logging_es_dc)
+        openshift_ops.wait_for_pod_be_ready(
+            self._master, new_pod_name, timeout=1800)
+
+    @pytest.mark.tier2
+    @ddt.data('delete', 'drain')
+    def test_respin_es_pod(self, motive):
+        """Validate respin of elastic search pod"""
+
+        # Get the pod name and PVC name
+        es_pod = openshift_ops.get_pod_name_from_dc(
+            self._master, self._logging_es_dc)
+        pvc_custom = ":.spec.volumes[*].persistentVolumeClaim.claimName"
+        pvc_name = openshift_ops.oc_get_custom_resource(
+            self._master, "pod", pvc_custom, es_pod)[0]
+
+        # Validate iscsi and multipath
+        _, _, node = self.verify_iscsi_sessions_and_multipath(
+            pvc_name, self._logging_es_dc,
+            heketi_server_url=self._registry_heketi_server_url,
+            is_registry_gluster=True)
+        if motive == 'delete':
+
+            # Delete the es pod
+            self.addCleanup(self._delete_and_wait_for_new_es_pod_to_come_up)
+            openshift_ops.oc_delete(self._master, "pod", es_pod)
+        elif motive == 'drain':
+
+            # Get the number of infra nodes
+            infra_node_count_cmd = (
+                'oc get nodes '
+                '--no-headers -l node-role.kubernetes.io/infra=true|wc -l')
+            infra_node_count = command.cmd_run(
+                infra_node_count_cmd, self._master)
+
+            # Skip test case if number infra nodes are less than #2
+            if int(infra_node_count) < 2:
+                self.skipTest('Available number of infra nodes "{}", it should'
+                              ' be more than 1'.format(infra_node_count))
+
+            # Cleanup to make node schedulable
+            cmd_schedule = (
+                'oc adm manage-node {} --schedulable=true'.format(node))
+            self.addCleanup(
+                command.cmd_run, cmd_schedule, hostname=self._master)
+
+            # Drain the node
+            drain_cmd = ('oc adm drain {} --force=true --ignore-daemonsets '
+                         '--delete-local-data'.format(node))
+            command.cmd_run(drain_cmd, hostname=self._master)
+
+        # Wait for pod to get absent
+        openshift_ops.wait_for_resource_absence(self._master, "pod", es_pod)
+
+        # Wait for new pod to come up
+        try:
+            pod_name = openshift_ops.get_pod_name_from_dc(
+                self._master, self._logging_es_dc)
+            openshift_ops.wait_for_pod_be_ready(self._master, pod_name)
+        except exceptions.ExecutionError:
+            self._delete_and_wait_for_new_es_pod_to_come_up()
+
+        # Validate iscsi and multipath
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, self._logging_es_dc,
+            heketi_server_url=self._registry_heketi_server_url,
+            is_registry_gluster=True)

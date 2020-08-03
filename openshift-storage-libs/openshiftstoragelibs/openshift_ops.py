@@ -465,7 +465,7 @@ def oc_create_tiny_pod_with_volume(hostname, pvc_name, pod_name_prefix='',
 
 def oc_delete(
         ocp_node, rtype, name, raise_on_absence=True, collect_logs=False,
-        skip_res_validation=True):
+        skip_res_validation=True, is_force=False):
     """Delete an OCP resource by name
 
     Args:
@@ -478,6 +478,7 @@ def oc_delete(
                                  default value: True
         collect_logs (bool): Collect logs before deleting resource
         skip_res_validation(bool): To validate before deletion of resource.
+        is_force (bool): True for deleting forcefully, default is False
     """
     if skip_res_validation and not oc_get_yaml(
             ocp_node, rtype, name, raise_on_error=raise_on_absence):
@@ -492,6 +493,10 @@ def oc_delete(
     cmd = ['oc', 'delete', rtype, name]
     if openshift_version.get_openshift_version() >= '3.11':
         cmd.append('--wait=false')
+
+    # Forcefully delete
+    if is_force:
+        cmd.append("--grace-period 0 --force")
 
     command.cmd_run(cmd, hostname=ocp_node)
 
@@ -1068,7 +1073,7 @@ def wait_for_pod_be_ready(hostname, pod_name,
             g.log.info("pod %s is in ready state and is "
                        "Running" % pod_name)
             return True
-        elif output[1] == "Error":
+        elif output[1] in ["Error", "CrashBackOffLoop"]:
             msg = ("pod %s status error" % pod_name)
             g.log.error(msg)
             raise exceptions.ExecutionError(msg)
