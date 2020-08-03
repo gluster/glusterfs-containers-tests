@@ -3,6 +3,7 @@ Note: Do not use this module directly in the Test Cases. This module can be
 used with the help of 'node_ops'
 """
 import re
+import string
 
 from glusto.core import Glusto as g
 from pyVim import connect
@@ -239,3 +240,180 @@ class VmWare(object):
 
         tasks = [vm[0].PowerOff()]
         self._wait_for_tasks(tasks, self.vsphere_client)
+
+    def get_obj(self, name, vimtype):
+        """
+        Retrieves the managed object for the name and type specified
+        Args:
+            name (str): Name of the VM.
+            vimtype (str): Type of managed object
+        Returns:
+            obj (str): Object for specified vimtype and name
+                Example:
+                    'vim.VirtualMachine:vm-1268'
+        Raises:
+            CloudProviderError: In case of any failures.
+        """
+        obj = None
+        content = self.vsphere_client.content.viewManager.CreateContainerView(
+            self.vsphere_client.content.rootFolder, vimtype, True)
+        for c in content.view:
+            if c.name == name:
+                obj = c
+                break
+        if not obj:
+            msg = "Virtual machine with {} name not found.".format(name)
+            g.log.error(msg)
+            raise exceptions.CloudProviderError(msg)
+        return obj
+
+    def get_disk_labels(self, vm_name):
+        """Retrieve disk labels which are attached to vm.
+
+        Args:
+            vm_name (str): Name of the VM.
+        Returns:
+            disk_labels (list): list of disks labels which are attached to vm.
+                Example:
+                    ['Hard disk 1', 'Hard disk 2', 'Hard disk 3']
+        Raises:
+            CloudProviderError: In case of any failures.
+        """
+
+        # Find vm
+        vm = self.get_obj(vm_name, vimtype=[vim.VirtualMachine])
+
+        disk_labels = []
+        for dev in vm.config.hardware.device:
+            disk_labels.append(dev.deviceInfo.label)
+        return disk_labels
+
+    def detach_disk(self, vm_name, disk_path):
+        """Detach disk for given vmname by diskPath.
+
+        Args:
+            vm_name (str): Name of the VM.
+            disk_path (str): Disk path which needs to be unplugged.
+                Example:
+                '/dev/sdd'
+                '/dev/sde'
+        Returns:
+            vdisk_path (str): Path of vmdk file to be detached from vm.
+        Raises:
+            CloudProviderError: In case of any failures.
+        """
+
+        # Translate given disk to a disk label of vmware.
+        letter = disk_path[-1]
+        ucase = string.ascii_uppercase
+        pos = ucase.find(letter.upper()) + 1
+        if pos:
+            disk_label = 'Hard disk {}'.format(str(pos))
+        else:
+            raise exceptions.CloudProviderError(
+                "Hard disk '{}' missing from vm '{}'".format(pos, vm_name))
+
+        # Find vm
+        vm = self.get_obj(vm_name, vimtype=[vim.VirtualMachine])
+
+        # Find if the given hard disk is attached to the system.
+        virtual_hdd_device = None
+        for dev in vm.config.hardware.device:
+            if dev.deviceInfo.label == disk_label:
+                virtual_hdd_device = dev
+                vdisk_path = virtual_hdd_device.backing.fileName
+                break
+
+        if not virtual_hdd_device:
+            raise exceptions.CloudProviderError(
+                'Virtual disk label {} could not be found'.format(disk_label))
+        disk_labels = self.get_disk_labels(vm_name)
+        if disk_label in disk_labels:
+
+            # Remove disk from the vm
+            virtual_hdd_spec = vim.vm.device.VirtualDeviceSpec()
+            virtual_hdd_spec.operation = (
+                vim.vm.device.VirtualDeviceSpec.Operation.remove)
+            virtual_hdd_spec.device = virtual_hdd_device
+
+            # Wait for the task to be completed.
+            spec = vim.vm.ConfigSpec()
+            spec.deviceChange = [virtual_hdd_spec]
+            task = vm.ReconfigVM_Task(spec=spec)
+            self._wait_for_tasks([task], self.vsphere_client)
+        else:
+            msg = ("Could not find provided disk {} in list of disks {}"
+                   " in vm {}".format(disk_label, disk_labels, vm_name))
+            g.log.error(msg)
+            raise exceptions.CloudProviderError(msg)
+        return vdisk_path
+
+    def attach_existing_vmdk(self, vm_name, disk_path, vmdk_name):
+        """
+        Attach already existing disk to vm
+        Args:
+            vm_name (str): Name of the VM.
+            disk_path (str): Disk path which needs to be unplugged.
+                Example:
+                '/dev/sdd'
+                '/dev/sde'
+            vmdk_name (str): Path of vmdk file to attach in vm.
+        Returns:
+           None
+        Raises:
+            CloudProviderError: In case of any failures.
+        """
+
+        # Find vm
+        vm = self.get_obj(vm_name, vimtype=[vim.VirtualMachine])
+
+        # Translate given disk to a disk label of vmware.
+        letter = disk_path[-1]
+        ucase = string.ascii_uppercase
+        pos = ucase.find(letter.upper()) + 1
+        if pos:
+            disk_label = 'Hard disk {}'.format(str(pos))
+        else:
+            raise exceptions.CloudProviderError(
+                "Hard disk '{}' missing from vm '{}'".format(pos, vm_name))
+
+        # Find if the given hard disk is not attached to the vm
+        for dev in vm.config.hardware.device:
+            if dev.deviceInfo.label == disk_label:
+                raise exceptions.CloudProviderError(
+                    'Virtual disk label {} already exists'.format(disk_label))
+
+        # Find unit number for attaching vmdk
+        unit_number = 0
+        for dev in vm.config.hardware.device:
+            if hasattr(dev.backing, 'fileName'):
+                unit_number = int(dev.unitNumber) + 1
+
+                # unit_number 7 reserved for scsi controller, max(16)
+                if unit_number == 7:
+                    unit_number += 1
+                if unit_number >= 16:
+                    raise Exception(
+                        "SCSI controller is full. Cannot attach vmdk file")
+            if isinstance(dev, vim.vm.device.VirtualSCSIController):
+                controller = dev
+
+        # Attach vmdk file to the disk and setting backings
+        spec = vim.vm.ConfigSpec()
+        disk_spec = vim.vm.device.VirtualDeviceSpec()
+        disk_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.add
+        disk_spec.device = vim.vm.device.VirtualDisk()
+        disk_spec.device.backing = (
+            vim.vm.device.VirtualDisk.FlatVer2BackingInfo())
+        disk_spec.device.backing.diskMode = 'persistent'
+        disk_spec.device.backing.fileName = vmdk_name
+        disk_spec.device.backing.thinProvisioned = True
+        disk_spec.device.unitNumber = unit_number
+        disk_spec.device.controllerKey = controller.key
+
+        # creating the list
+        dev_changes = []
+        dev_changes.append(disk_spec)
+        spec.deviceChange = dev_changes
+        task = vm.ReconfigVM_Task(spec=spec)
+        self._wait_for_tasks([task], self.vsphere_client)

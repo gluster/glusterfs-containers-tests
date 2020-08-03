@@ -215,3 +215,72 @@ def node_delete_iptables_rules(node, chain, rules, raise_on_error=True):
         command.cmd_run(
             delete_iptables_rule_cmd % (chain, rule), node,
             raise_on_error=raise_on_error)
+
+
+def attach_disk_to_vm(name, disk_size, disk_type='thin'):
+    """Add the disk specified to virtual machine.
+
+    Args:
+        name (str): name of the VM for which disk needs to be added.
+        disk_size (int) : Specify disk size in KB
+        disk_type (str) : Type of the disk, could be thick or thin.
+            Default value is "thin".
+    Returns:
+        None
+    """
+    cloudProvider = _get_cloud_provider()
+
+    vm_name = find_vm_name_by_ip_or_hostname(name)
+    cloudProvider.attach_disk(vm_name, disk_size, disk_type)
+
+
+def attach_existing_vmdk_from_vmstore(name, disk_path, vmdk_name):
+    """Attach existing disk vmdk specified to virtual machine.
+
+    Args:
+        name (str): name of the VM for which disk needs to be added.
+        vmdk_name (str) : name of the vmdk file which needs to be added.
+
+    Returns:
+        None
+    """
+    cloudProvider = _get_cloud_provider()
+
+    vm_name = find_vm_name_by_ip_or_hostname(name)
+    cloudProvider.attach_existing_vmdk(vm_name, disk_path, vmdk_name)
+
+
+def detach_disk_from_vm(name, disk_name):
+    """Remove the disk specified from virtual machine.
+
+    Args:
+        name (str): name of the VM from where the disk needs to be removed.
+        disk_name (str) : name of the disk which needs to be removed.
+            Example:
+                '/dev/sdd'
+                '/dev/sde'
+    Returns:
+        vdisk (str): vmdk filepath of removed disk
+    """
+    cloudProvider = _get_cloud_provider()
+
+    vm_name = find_vm_name_by_ip_or_hostname(name)
+    vdisk = cloudProvider.detach_disk(vm_name, disk_name)
+    return vdisk
+
+
+def get_disk_labels(name):
+    """Remove the disk specified from virtual machine.
+
+    Args:
+        name (str) : name of the disk which needs to be removed.
+            Example:
+                '/dev/sdd'
+                '/dev/sde'
+    Returns:
+        None
+    """
+    cloudProvider = _get_cloud_provider()
+    vm_name = find_vm_name_by_ip_or_hostname(name)
+    disk_labels = cloudProvider.get_all_disks(vm_name)
+    return disk_labels
