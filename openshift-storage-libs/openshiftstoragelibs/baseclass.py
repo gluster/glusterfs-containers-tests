@@ -4,6 +4,8 @@ import re
 import unittest
 
 from glusto.core import Glusto as g
+from glustolibs.gluster.block_libs import get_block_list
+from glustolibs.gluster.volume_ops import get_volume_list
 import six
 
 from openshiftstoragelibs import command
@@ -17,16 +19,21 @@ from openshiftstoragelibs.gluster_ops import (
     get_gluster_vol_status,
 )
 from openshiftstoragelibs.heketi_ops import (
+    get_block_hosting_volume_list,
     hello_heketi,
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
+    heketi_blockvolume_list,
     heketi_db_check,
+    heketi_topology_info,
     heketi_volume_create,
     heketi_volume_delete,
     heketi_volume_info,
     heketi_volume_list,
 )
 from openshiftstoragelibs.node_ops import (
+    attach_existing_vmdk_from_vmstore,
+    detach_disk_from_vm,
     node_add_iptables_rules,
     node_delete_iptables_rules,
     power_off_vm_by_name,
@@ -684,6 +691,46 @@ class BaseClass(unittest.TestCase):
         self.addCleanup(self.power_on_vm, vm_name)
         self.power_off_vm(vm_name)
 
+    def detach_and_attach_vmdk(self, vm_name, node_hostname, devices_list):
+
+        # Detach devices list and attach existing vmdk present
+        vmdk_list, modified_device_list = [], []
+        devices_list.reverse()
+        self.addCleanup(self.power_on_gluster_node_vm, vm_name, node_hostname)
+        for device in devices_list:
+            # Detach disks from vm
+            vmdk = detach_disk_from_vm(vm_name, device)
+            self.addCleanup(
+                attach_existing_vmdk_from_vmstore, vm_name, device, vmdk)
+            vmdk_list.append(vmdk)
+        vmdk_list.reverse()
+        devices_list.reverse()
+        modified_vmdk_list = vmdk_list[-1:] + vmdk_list[:-1]
+        for device, vmdk in zip(devices_list, modified_vmdk_list):
+            modified_device_list.append((device, vmdk))
+
+        # Power off gluster node
+        power_off_vm_by_name(vm_name)
+        self.addCleanup(power_off_vm_by_name, vm_name)
+        for device, vdisk in modified_device_list:
+            attach_existing_vmdk_from_vmstore(vm_name, device, vdisk)
+            self.addCleanup(detach_disk_from_vm, vm_name, device)
+        self.power_on_gluster_node_vm(vm_name, node_hostname)
+        devices_list.sort()
+
+    def validate_file_volumes_count(self, h_node, h_server, node_ip):
+
+        # check volume count from heketi and gluster are same
+        heketi_topology_info(h_node, h_server, json=True)
+        h_volume_list = heketi_volume_list(h_node, h_server, json=True)
+        vol_list = get_volume_list(node_ip)
+        self.assertIsNotNone(
+            vol_list, "Failed to get volumes list")
+        self.assertEqual(
+            len(h_volume_list['volumes']), len(vol_list),
+            "Failed to verify volume count Expected:'{}', Actual:'{}'".format(
+                len(h_volume_list['volumes']), len(vol_list)))
+
 
 class GlusterBlockBaseClass(BaseClass):
     """Base class for gluster-block test cases."""
@@ -817,6 +864,26 @@ class GlusterBlockBaseClass(BaseClass):
             gluster_node=gluster_node, ocp_client_node=ocp_client_node)
 
         return block_hosting_vol
+
+    def validate_block_volumes_count(self, h_node, h_server, node_ip):
+
+        # get list of block volumes using heketi
+        h_blockvol_list = heketi_blockvolume_list(
+            h_node, h_server, json=True)
+        # Get existing BHV list
+        bhv_list = list(
+            get_block_hosting_volume_list(h_node, h_server).keys())
+        for vol in bhv_list:
+            bhv_info = heketi_volume_info(h_node, h_server, vol, json=True)
+            bhv_name = bhv_info['name']
+        gluster_block_list = get_block_list(node_ip, volname=bhv_name)
+        self.assertIsNotNone(
+            gluster_block_list, "Failed to get gluster block list")
+        self.assertEqual(
+            len(h_blockvol_list['blockvolumes']), len(gluster_block_list),
+            "Failed to verify blockvolume count Expected:'{}', "
+            "Actual:'{}'".format(
+                len(h_blockvol_list['blockvolumes']), len(gluster_block_list)))
 
 
 class ScaleUpBaseClass(GlusterBlockBaseClass):

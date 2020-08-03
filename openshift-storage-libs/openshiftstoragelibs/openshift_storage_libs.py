@@ -11,6 +11,7 @@ from openshiftstoragelibs.exceptions import (
     NotSupportedException,
 )
 from openshiftstoragelibs.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
     oc_get_custom_resource)
 from openshiftstoragelibs.openshift_version import get_openshift_version
 from openshiftstoragelibs import waiter
@@ -236,3 +237,25 @@ def get_active_and_enabled_devices_from_mpath(node, mpath):
         'active': active,
         'enabled': enabled}
     return out_dic
+
+
+def get_pvs_info(node, gluster_node_ip, devices_list, raise_on_error=True):
+    """Get pv_name, pv_uuid and vg_name from given node.
+
+    Args:
+        node (str): ocp client node ip.
+        gluster_node_ip (str): where we want to run the command.
+        devices_list (list): list of device list to get pvs info.
+    Returns:
+        pvs_info (list): pvs info for devices_list
+    Raises:
+        ExecutionError: In case of any failure if raise_on_error=True.
+    """
+
+    pvs_info = []
+    for device in devices_list:
+        cmd = ("pvs -o pv_name,pv_uuid,vg_name | grep {}".format(device))
+        out = cmd_run_on_gluster_pod_or_node(
+            node, cmd, gluster_node_ip, raise_on_error=raise_on_error)
+        pvs_info.append(out.split())
+    return pvs_info
