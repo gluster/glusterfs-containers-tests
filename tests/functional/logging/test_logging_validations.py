@@ -87,3 +87,40 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             pvc_name, self._logging_es_dc,
             heketi_server_url=self._registry_heketi_server_url,
             is_registry_gluster=True)
+
+    @pytest.mark.tier2
+    def test_logging_es_pod_pvc_all_freespace_utilization(self):
+        """Validate logging by utilizing all the free space of block PVC bound
+           to elsaticsearch pod"""
+
+        # Get the elasticsearch pod name nad PVC name
+        es_pod = openshift_ops.get_pod_name_from_dc(
+            self._master, self._logging_es_dc)
+        pvc_custom = ":.spec.volumes[*].persistentVolumeClaim.claimName"
+        pvc_name = openshift_ops.oc_get_custom_resource(
+            self._master, "pod", pvc_custom, es_pod)[0]
+
+        # Validate iscsi and multipath
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, self._logging_es_dc,
+            heketi_server_url=self._registry_heketi_server_url,
+            is_registry_gluster=True)
+
+        # Get the available free space
+        mount_point = '/elasticsearch/persistent'
+        cmd_free_space = (
+            "df -kh {} | awk '{{print $4}}' | tail -1".format(mount_point))
+        old_available_space = openshift_ops.oc_rsh(
+            self._master, es_pod, cmd_free_space)[1]
+
+        # Fill the all the available space
+        file_name = '{}/file'.format(mount_point)
+        cmd_fill_space = (
+            "fallocate -l {} {}".format(old_available_space, file_name))
+        with self.assertRaises(AssertionError):
+            openshift_ops.oc_rsh(self._master, es_pod, cmd_fill_space)
+
+            # Cleanup the filled space
+            cmd_remove_file = 'rm {}'.format(file_name)
+            self.addCleanup(
+                openshift_ops.oc_rsh, self._master, es_pod, cmd_remove_file)
