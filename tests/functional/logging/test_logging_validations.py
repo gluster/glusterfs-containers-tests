@@ -5,7 +5,7 @@ from glusto.core import Glusto as g
 import pytest
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
-from openshiftstoragelibs import command, openshift_ops
+from openshiftstoragelibs import command, exceptions, openshift_ops
 
 
 @ddt.ddt
@@ -55,6 +55,58 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
         self.addCleanup(
             openshift_ops.switch_oc_project, self._master, current_project)
 
+    def _get_es_pod_and_verify_iscsi_sessions(self):
+        """Fetch es pod and verify iscsi sessions"""
+        pvc_custom = ":.spec.volumes[*].persistentVolumeClaim.claimName"
+
+        # Get the elasticsearch pod name nad PVC name
+        es_pod = openshift_ops.get_pod_name_from_dc(
+            self._master, self._logging_es_dc)
+        pvc_name = openshift_ops.oc_get_custom_resource(
+            self._master, "pod", pvc_custom, es_pod)[0]
+
+        # Validate iscsi and multipath
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, self._logging_es_dc,
+            heketi_server_url=self._registry_heketi_server_url,
+            is_registry_gluster=True)
+        return es_pod
+
+    def _get_newly_deployed_gluster_pod(self, g_pod_list_before):
+        # Fetch pod after delete
+        g_pod_list_after = [
+            pod["pod_name"]
+            for pod in openshift_ops.get_ocp_gluster_pod_details(self._master)]
+
+        # Fetch the new gluster pod
+        g_new_pod = list(set(g_pod_list_after) - set(g_pod_list_before))
+        self.assertTrue(g_new_pod, "No new gluster pod deployed after delete")
+        return g_new_pod
+
+    def _guster_pod_delete_cleanup(self, g_pod_list_before):
+        """Cleanup for deletion of gluster pod using force delete"""
+        # Switch to gluster project
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+        try:
+            # Fetch gluster pod after delete
+            pod_name = self._get_newly_deployed_gluster_pod(g_pod_list_before)
+
+            # Check if pod name is empty i.e no new pod come up so use old pod
+            openshift_ops.wait_for_pod_be_ready(
+                self._master,
+                pod_name[0] if pod_name else g_pod_list_before[0], timeout=1)
+        except exceptions.ExecutionError:
+            # Force delete and wait for new pod to come up
+            openshift_ops.oc_delete(
+                self._master, 'pod', g_pod_list_before[0], is_force=True)
+            openshift_ops.wait_for_resource_absence(
+                self._master, 'pod', g_pod_list_before[0])
+
+            # Fetch gluster pod after force delete
+            g_new_pod = self._get_newly_deployed_gluster_pod(g_pod_list_before)
+            openshift_ops.wait_for_pod_be_ready(self._master, g_new_pod[0])
+
     @pytest.mark.tier2
     def test_validate_logging_pods_and_pvc(self):
         """Validate metrics pods and PVC"""
@@ -93,18 +145,8 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
         """Validate logging by utilizing all the free space of block PVC bound
            to elsaticsearch pod"""
 
-        # Get the elasticsearch pod name nad PVC name
-        es_pod = openshift_ops.get_pod_name_from_dc(
-            self._master, self._logging_es_dc)
-        pvc_custom = ":.spec.volumes[*].persistentVolumeClaim.claimName"
-        pvc_name = openshift_ops.oc_get_custom_resource(
-            self._master, "pod", pvc_custom, es_pod)[0]
-
-        # Validate iscsi and multipath
-        self.verify_iscsi_sessions_and_multipath(
-            pvc_name, self._logging_es_dc,
-            heketi_server_url=self._registry_heketi_server_url,
-            is_registry_gluster=True)
+        # Fetch pod and PVC names and validate iscsi and multipath
+        es_pod = self._get_es_pod_and_verify_iscsi_sessions()
 
         # Get the available free space
         mount_point = '/elasticsearch/persistent'
@@ -124,3 +166,50 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             cmd_remove_file = 'rm {}'.format(file_name)
             self.addCleanup(
                 openshift_ops.oc_rsh, self._master, es_pod, cmd_remove_file)
+
+    @pytest.mark.tier2
+    def test_resping_gluster_pod(self):
+        """Validate gluster pod restart with no disruption to elasticsearch pod
+        """
+        restart_custom = ":status.containerStatuses[0].restartCount"
+
+        # Fetch pod and PVC names and validate iscsi and multipath
+        es_pod = self._get_es_pod_and_verify_iscsi_sessions()
+
+        # Fetch the restart count for the es pod
+        restart_count_before = openshift_ops.oc_get_custom_resource(
+            self._master, "pod", restart_custom, es_pod)[0]
+
+        # Switch to gluster project
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+
+        # Fetch the gluster pod list before
+        g_pod_list_before = [
+            pod["pod_name"]
+            for pod in openshift_ops.get_ocp_gluster_pod_details(self._master)]
+
+        # Respin a gluster pod
+        openshift_ops.oc_delete(self._master, "pod", g_pod_list_before[0])
+        self.addCleanup(self._guster_pod_delete_cleanup, g_pod_list_before)
+
+        # Wait for pod to get absent
+        openshift_ops.wait_for_resource_absence(
+            self._master, "pod", g_pod_list_before[0])
+
+        # Fetch gluster pod after delete
+        g_new_pod = self._get_newly_deployed_gluster_pod(g_pod_list_before)
+        openshift_ops.wait_for_pod_be_ready(self._master, g_new_pod[0])
+
+        # Switch to logging project
+        openshift_ops.switch_oc_project(
+            self._master, self._logging_project_name)
+
+        # Fetch the restart count for the es pod
+        restart_count_after = openshift_ops.oc_get_custom_resource(
+            self._master, "pod", restart_custom, es_pod)[0]
+        self.assertEqual(
+            restart_count_before, restart_count_after,
+            "Failed disruption to es pod found expecting restart count before"
+            " {} and after {} for es pod to be equal after gluster pod"
+            " respin".format(restart_count_before, restart_count_after))
