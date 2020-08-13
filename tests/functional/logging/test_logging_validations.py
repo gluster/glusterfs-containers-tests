@@ -5,7 +5,10 @@ from glusto.core import Glusto as g
 import pytest
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
-from openshiftstoragelibs import command, exceptions, openshift_ops
+from openshiftstoragelibs import command
+from openshiftstoragelibs import exceptions
+from openshiftstoragelibs import gluster_ops
+from openshiftstoragelibs import openshift_ops
 
 
 @ddt.ddt
@@ -70,7 +73,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             pvc_name, self._logging_es_dc,
             heketi_server_url=self._registry_heketi_server_url,
             is_registry_gluster=True)
-        return es_pod
+        return es_pod, pvc_name
 
     def _get_newly_deployed_gluster_pod(self, g_pod_list_before):
         # Fetch pod after delete
@@ -145,8 +148,8 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
         """Validate logging by utilizing all the free space of block PVC bound
            to elsaticsearch pod"""
 
-        # Fetch pod and PVC names and validate iscsi and multipath
-        es_pod = self._get_es_pod_and_verify_iscsi_sessions()
+        # Fetch pod and validate iscsi and multipath
+        es_pod, _ = self._get_es_pod_and_verify_iscsi_sessions()
 
         # Get the available free space
         mount_point = '/elasticsearch/persistent'
@@ -173,8 +176,8 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
         """
         restart_custom = ":status.containerStatuses[0].restartCount"
 
-        # Fetch pod and PVC names and validate iscsi and multipath
-        es_pod = self._get_es_pod_and_verify_iscsi_sessions()
+        # Fetch pod and validate iscsi and multipath
+        es_pod, _ = self._get_es_pod_and_verify_iscsi_sessions()
 
         # Fetch the restart count for the es pod
         restart_count_before = openshift_ops.oc_get_custom_resource(
@@ -213,3 +216,60 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             "Failed disruption to es pod found expecting restart count before"
             " {} and after {} for es pod to be equal after gluster pod"
             " respin".format(restart_count_before, restart_count_after))
+
+    def test_kill_bhv_fsd_while_es_pod_running(self):
+        """Validate killing of bhv fsd won't effect es pod io's"""
+
+        # Fetch pod and PVC names and validate iscsi and multipath
+        es_pod, pvc_name = self._get_es_pod_and_verify_iscsi_sessions()
+
+        # Get the bhv name
+        gluster_node = list(self._registry_servers_info.keys())[0]
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+        bhv_name = self.get_block_hosting_volume_by_pvc_name(
+            pvc_name, heketi_server_url=self._registry_heketi_server_url,
+            gluster_node=gluster_node)
+
+        # Get one of the bricks pid of the bhv
+        gluster_volume_status = gluster_ops.get_gluster_vol_status(bhv_name)
+        pid = None
+        for g_node, g_node_data in gluster_volume_status.items():
+            if g_node != gluster_node:
+                continue
+            for process_name, process_data in g_node_data.items():
+                if not process_name.startswith("/var"):
+                    continue
+                pid = process_data["pid"]
+                # When birck is down, pid of the brick is returned as -1.
+                # Which is unexepeted situation. So, add appropriate assertion.
+                self.assertNotEqual(
+                    pid, "-1", "Got unexpected PID (-1) for '{}' gluster vol "
+                    "on '{}' node.".format(bhv_name, gluster_node))
+                break
+            self.assertTrue(
+                pid, "Could not find 'pid' in Gluster vol data for '{}' "
+                "Gluster node. Data: {}".format(
+                    gluster_node, gluster_volume_status))
+            break
+
+        # Kill gluster vol brick process using found pid
+        cmd_kill = "kill -9 {}".format(pid)
+        cmd_start_vol = "gluster v start {} force".format(bhv_name)
+        openshift_ops.cmd_run_on_gluster_pod_or_node(
+            self._master, cmd_kill, gluster_node)
+        self.addCleanup(openshift_ops.cmd_run_on_gluster_pod_or_node,
+                        self._master, cmd_start_vol, gluster_node)
+        self.addCleanup(openshift_ops.switch_oc_project,
+                        self._master, self._registry_project_name)
+
+        # Run I/O on ES pod
+        openshift_ops.switch_oc_project(
+            self._master, self._logging_project_name)
+        file_name = '/elasticsearch/persistent/file1'
+        cmd_run_io = 'dd if=/dev/urandom of={} bs=4k count=10000'.format(
+            file_name)
+        cmd_remove_file = 'rm {}'.format(file_name)
+        openshift_ops.oc_rsh(self._master, es_pod, cmd_run_io)
+        self.addCleanup(
+            openshift_ops.oc_rsh, self._master, es_pod, cmd_remove_file)
