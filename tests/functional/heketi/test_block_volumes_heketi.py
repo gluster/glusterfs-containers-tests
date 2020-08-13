@@ -306,8 +306,12 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
                 heketi_volume_delete, self.heketi_client_node,
                 self.heketi_server_url, block_host_create_info["id"],
                 raise_on_error=False)
-            block_vol_size = int(
-                block_host_create_info["blockinfo"]["freesize"] / num_of_bv)
+
+            free_size = block_host_create_info["blockinfo"]["freesize"]
+            if free_size > num_of_bv:
+                block_vol_size = int(free_size / num_of_bv)
+            else:
+                block_vol_size, num_of_bv = 1, free_size
 
             # Create specified number of BV's in BHV's created
             for i in range(0, num_of_bv):
