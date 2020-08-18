@@ -787,7 +787,8 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         self.addCleanup(oc_delete, self.node, 'pvc', pvc_name)
         events = wait_for_events(
             self.node, obj_name=pvc_name, obj_type='PersistentVolumeClaim',
-            event_type='Warning', event_reason='ProvisioningFailed')
+            event_type='Warning', event_reason='ProvisioningFailed',
+            timeout=180)
         error = 'insufficient block hosts online'
         err_msg = (
             "Haven't found expected error message containing "
