@@ -433,7 +433,7 @@ class BaseClass(unittest.TestCase):
 
     def create_dcs_with_pvc(
             self, pvc_names, timeout=600, wait_step=5,
-            dc_name_prefix='autotests-dc', label=None,
+            dc_name_prefix='autotests-dc', space_to_use=1048576, label=None,
             skip_cleanup=False, is_busybox=False):
         """Create bunch of DCs with app PODs which use unique PVCs.
 
@@ -443,6 +443,7 @@ class BaseClass(unittest.TestCase):
             timeout (int): timeout value, default value is 600 seconds.
             wait_step( int): wait step, default value is 5 seconds.
             dc_name_prefix(str): name prefix for deployement config.
+            space_to_use(int): space to use for io's in KB.
             label (dict): keys and value for adding label into DC.
             is_busybox (bool): True for busybox app pod else default is False
         Returns: dictionary with following structure:
@@ -461,6 +462,7 @@ class BaseClass(unittest.TestCase):
                     oc_create_app_dc_with_io)
         for pvc_name in pvc_names:
             dc_name = function(self.ocp_client[0], pvc_name,
+                               space_to_use=space_to_use,
                                dc_name_prefix=dc_name_prefix, label=label)
             dc_names[pvc_name] = dc_name
             if not skip_cleanup:
