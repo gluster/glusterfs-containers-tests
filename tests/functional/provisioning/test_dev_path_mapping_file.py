@@ -5,6 +5,7 @@ from glustolibs.gluster import volume_ops
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import command
+from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import node_ops
 from openshiftstoragelibs import openshift_ops
@@ -253,3 +254,63 @@ class TestDevPathMapping(baseclass.BaseClass):
         for vol in vol_details:
             self.assertNotIn(
                 vol, vol_list, "Failed to delete volume {}".format(vol))
+
+    def _heketi_pod_delete_cleanup(self):
+        """Cleanup for deletion of heketi pod using force delete"""
+        try:
+            # Fetch heketi pod after delete
+            pod_name = openshift_ops.get_pod_name_from_dc(
+                self.node, self.heketi_dc_name)
+            openshift_ops.wait_for_pod_be_ready(
+                self.node, pod_name, timeout=1)
+        except exceptions.ExecutionError:
+
+            # Force delete and wait for new pod to come up
+            openshift_ops.oc_delete(
+                self.node, 'pod', pod_name, is_force=True)
+            openshift_ops.wait_for_resource_absence(
+                self.node, 'pod', pod_name)
+            new_pod_name = openshift_ops.get_pod_name_from_dc(
+                self.node, self.heketi_dc_name)
+            openshift_ops.wait_for_pod_be_ready(self.node, new_pod_name)
+
+    @pytest.mark.tier2
+    @podcmd.GlustoPod()
+    def test_dev_path_mapping_heketi_pod_reboot(self):
+        """Validate dev path mapping for heketi pod reboot
+        """
+        self.node = self.ocp_master_node[0]
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # Create file volume with app pod and verify IO's
+        # and Compare path, uuid, vg_name
+        pod_name, dc_name, use_percent = self._create_app_pod_and_verify_pvs()
+
+        # Fetch heketi-pod name
+        heketi_pod_name = openshift_ops.get_pod_name_from_dc(
+            self.node, self.heketi_dc_name)
+
+        # Respin heketi-pod (it restarts the pod)
+        openshift_ops.oc_delete(
+            self.node, "pod", heketi_pod_name,
+            collect_logs=self.heketi_logs_before_delete)
+        self.addCleanup(self._heketi_pod_delete_cleanup)
+        openshift_ops.wait_for_resource_absence(
+            self.node, "pod", heketi_pod_name)
+
+        # Fetch new heketi-pod name
+        heketi_pod_name = openshift_ops.get_pod_name_from_dc(
+            self.node, self.heketi_dc_name)
+        openshift_ops.wait_for_pod_be_ready(self.node, heketi_pod_name)
+
+        # Check heketi server is running
+        self.assertTrue(
+            heketi_ops.hello_heketi(h_node, h_url),
+            "Heketi server {} is not alive".format(h_url))
+
+        # Check if IO's are running after respin of heketi pod
+        use_percent_after = self._get_space_use_percent_in_app_pod(pod_name)
+        self.assertNotEqual(
+            use_percent, use_percent_after,
+            "Failed to execute IO's in the app pod {} after respin".format(
+                pod_name))
