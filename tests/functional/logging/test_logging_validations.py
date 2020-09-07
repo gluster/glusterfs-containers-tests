@@ -217,6 +217,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             " {} and after {} for es pod to be equal after gluster pod"
             " respin".format(restart_count_before, restart_count_after))
 
+    @pytest.mark.tier2
     def test_kill_bhv_fsd_while_es_pod_running(self):
         """Validate killing of bhv fsd won't effect es pod io's"""
 
