@@ -107,6 +107,13 @@ openshift:
         logging_es_dc: "<elasticsearch-dc-name"
         logging_kibana_dc: "<kibana-dc-name>"
 
+    # 'prometheus' section covers the details of resources related to
+    # prometheus
+    prometheus:
+        prometheus_project_name: "<prometheus_project_name>"
+        prometheus_resources_selector: "<prometheus_recources_selector>"
+        alertmanager_resources_selector: "<alertmanager_resources_selector>"
+
 common:
     allow_heketi_zones_update: False
     check_heketi_db_inconsistencies: True

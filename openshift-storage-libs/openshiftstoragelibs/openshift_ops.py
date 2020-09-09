@@ -39,21 +39,24 @@ KILL_SERVICE = "kill -9 %s"
 IS_ACTIVE_SERVICE = "systemctl is-active %s"
 
 
-def oc_get_pods(ocp_node, selector=None):
+def oc_get_pods(ocp_node, selector=None, name=None):
     """Gets the pods info with 'wide' option in the current project.
 
     Args:
         ocp_node (str): Node in which ocp command will be executed.
         selector (str): optional option. Selector for OCP pods.
             example: "glusterfs-node=pod" for filtering out only Gluster PODs.
+        name (str): name of the pod to get details.
 
     Returns:
         dict : dict of pods info in the current project.
     """
 
-    cmd = "oc get -o wide --no-headers=true pods"
+    cmd = "oc get -o wide --no-headers=true pods "
     if selector:
         cmd += " --selector %s" % selector
+    if name:
+        cmd += name
     out = command.cmd_run(cmd, hostname=ocp_node)
     return _parse_wide_pods_output(out)
 
@@ -1100,13 +1103,15 @@ def wait_for_pod_be_ready(hostname, pod_name,
 
 
 def wait_for_pods_be_ready(
-        hostname, pod_count, selector, timeout=600, wait_step=10):
+        hostname, pod_count, selector=None, field_selector=None,
+        timeout=600, wait_step=10):
     """Wait to 'pod_count' gluster pods be in Ready state.
 
     Args:
         hostname (str): Node where we want to run our commands.
         pod_count (int): No of pods to be waited for.
         selector (str): Selector to select pods of given label.
+        field_selector (str): Selector to select pods.
         timeout (int): Seconds to wait for Node to be Ready.
         wait_step (int): Interval in seconds to wait before checking
                          status again.
@@ -1115,20 +1120,30 @@ def wait_for_pods_be_ready(
         AssertionError: In case it fails to get pods.
         ExecutionError: In case pods won't get in ready state for given time.
     """
-    if not selector:
+    if not selector and not field_selector:
         raise exceptions.ExecutionError(
-            "selector parameter should be provided")
+            "Either selector or field-selector parameter should be provided")
 
     custom = (
         r':.metadata.name,":.status.conditions[?(@.type==\"Ready\")]".status')
     pod_status = None
     for w in waiter.Waiter(timeout, wait_step):
         pod_status = oc_get_custom_resource(
-            hostname, "pod", custom, selector=selector)
+            hostname, "pod", custom, selector=selector,
+            field_selector=field_selector)
 
-        if not pod_status:
-            raise exceptions.ExecutionError(
-                "Unable to find pod with selector %s" % selector)
+        if not pod_status and pod_count != 0:
+            selection_text = ''
+            if selector and field_selector:
+                selection_text += 'selector {} and field-selector {}'.format(
+                    selector, field_selector)
+            elif selector:
+                selection_text += 'selector {}'.format(selector)
+            else:
+                selection_text += 'field-selector {}'.format(field_selector)
+                raise exceptions.ExecutionError(
+                    "Unable to find pods with mentioned {}".format(
+                        selection_text))
         status = [status for _, status in pod_status]
         if len(status) == pod_count == status.count("True"):
             return
