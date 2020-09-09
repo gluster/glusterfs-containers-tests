@@ -2,6 +2,7 @@ import ddt
 
 import pytest
 
+from openshiftstoragelibs import command
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import heketi_version
 from openshiftstoragelibs import openshift_ops
@@ -61,3 +62,49 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
             self.assertEqual(env_var_value[0], ENV_VALUE, err_msg)
         else:
             self.assertIsNotNone(env_var_value[0], err_msg)
+
+    @pytest.mark.tier0
+    def test_lvm_script_executable_on_host(self):
+        """Validate lvm script is executable on host instead
+           of container"""
+
+        # Skip the TC if independent mode deployment
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test as LVM script is not available in "
+                "independent mode deployment")
+
+        pod_name = self.pod_name[0]['pod_name']
+        gluster_pod_label = "glusterfs=storage-pod"
+
+        # Remove LVM banaries to validate /usr/sbin/exec-on-host script
+        # is execute LVM commands on host instead on pod
+        cmd = "rm /usr/sbin/lvm"
+        ret, _, err = openshift_ops.oc_rsh(self.oc_node, pod_name, cmd)
+        self.addCleanup(
+            openshift_ops.wait_for_pods_be_ready, self.oc_node,
+            len(self.gluster_servers), gluster_pod_label)
+        self.addCleanup(
+            openshift_ops.wait_for_resource_absence, self.oc_node, "pod",
+            pod_name)
+        self.addCleanup(
+            openshift_ops.oc_delete, self.oc_node, "pod", pod_name)
+        err_msg = (
+            "failed to execute command {} on pod {} with error: {}"
+            "".format(cmd, pod_name, err))
+        self.assertFalse(ret, err_msg)
+
+        # Validate LVM command is not executable in pod
+        cmd = "oc rsh {} lvs".format(pod_name)
+        stdout = command.cmd_run(cmd, self.oc_node, raise_on_error=False)
+        self.assertIn(
+            'exec: \\"lvs\\": executable file not found in $PATH', stdout)
+
+        # Run LVM command with /usr/sbin/exec-on-host
+        cmd = "{} lvs".format(ENV_VALUE)
+        ret, out, err = openshift_ops.oc_rsh(self.oc_node, pod_name, cmd)
+        err_msg = (
+            "failed to execute command {} on pod {} with error: {}"
+            "".format(cmd, pod_name, err))
+        self.assertFalse(ret, err_msg)
+        self.assertIn("VG", out)
