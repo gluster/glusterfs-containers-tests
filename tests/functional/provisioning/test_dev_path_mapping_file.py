@@ -314,3 +314,63 @@ class TestDevPathMapping(baseclass.BaseClass):
             use_percent, use_percent_after,
             "Failed to execute IO's in the app pod {} after respin".format(
                 pod_name))
+
+    def _get_gluster_pod(self):
+        """Fetch gluster pods"""
+        # Fetch one gluster pod from its nodes
+        g_hostname = list(self.gluster_servers_info.values())[0].get('manage')
+        self.assertTrue(g_hostname, "Failed to fetch gluster hostname")
+        g_pod = openshift_ops.get_gluster_pod_name_for_specific_node(
+            self.node, g_hostname)
+        return g_pod
+
+    def _guster_pod_delete_cleanup(self):
+        """Cleanup for deletion of gluster pod using force delete"""
+        try:
+            # Fetch gluster pod after delete
+            pod_name = self._get_gluster_pod()
+
+            # Check if gluster pod name is ready state
+            openshift_ops.wait_for_pod_be_ready(self.node, pod_name, timeout=1)
+        except exceptions.ExecutionError:
+            # Force delete and wait for new pod to come up
+            openshift_ops.oc_delete(self.node, 'pod', pod_name, is_force=True)
+            openshift_ops.wait_for_resource_absence(self.node, 'pod', pod_name)
+
+            # Fetch gluster pod after force delete
+            g_new_pod = self._get_gluster_pod()
+            openshift_ops.wait_for_pod_be_ready(self.node, g_new_pod)
+
+    @pytest.mark.tier2
+    @podcmd.GlustoPod()
+    def test_dev_path_mapping_gluster_pod_reboot(self):
+        """Validate dev path mapping for app pods with file volume after reboot
+        """
+        # Skip the tc for independent mode
+        if not self.is_containerized_gluster():
+            self.skipTest("Skip TC as it is not supported in independent mode")
+
+        # Create file volume with app pod and verify IO's
+        # and Compare path, uuid, vg_name
+        pod_name, dc_name, use_percent = self._create_app_pod_and_verify_pvs()
+
+        # Fetch the gluster pod name from node
+        g_pod = self._get_gluster_pod()
+
+        # Respin a gluster pod
+        openshift_ops.oc_delete(self.node, "pod", g_pod)
+        self.addCleanup(self._guster_pod_delete_cleanup)
+
+        # Wait for pod to get absent
+        openshift_ops.wait_for_resource_absence(self.node, "pod", g_pod)
+
+        # Fetch gluster pod after delete
+        g_pod = self._get_gluster_pod()
+        openshift_ops.wait_for_pod_be_ready(self.node, g_pod)
+
+        # Check if IO's are running after respin of gluster pod
+        use_percent_after = self._get_space_use_percent_in_app_pod(pod_name)
+        self.assertNotEqual(
+            use_percent, use_percent_after,
+            "Failed to execute IO's in the app pod {} after respin".format(
+                pod_name))
