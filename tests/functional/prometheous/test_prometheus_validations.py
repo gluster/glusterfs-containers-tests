@@ -6,6 +6,7 @@ except ImportError:
     import json
 from pkg_resources import parse_version
 
+import ddt
 from glusto.core import Glusto as g
 import pytest
 
@@ -15,6 +16,7 @@ from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import openshift_ops
 
 
+@ddt.ddt
 class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
 
     def setUp(self):
@@ -99,6 +101,66 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
         # Wait for PVCs to be bound
         pod_names, pvc_names = self._get_pod_names_and_pvc_names()
         openshift_ops.wait_for_pvcs_be_bound(self._master, pvc_names)
+
+        # Validate that there should be no or zero pods in non-running state
+        field_selector, pod_count = "status.phase!=Running", 0
+        openshift_ops.wait_for_pods_be_ready(
+            self._master, pod_count, field_selector=field_selector)
+
+        # Validate iscsi and multipath
+        for (pvc_name, pod_name) in zip(pvc_names, pod_names):
+            self.verify_iscsi_sessions_and_multipath(
+                pvc_name, pod_name[0], rtype='pod',
+                heketi_server_url=self._registry_heketi_server_url,
+                is_registry_gluster=True)
+
+        # Try to fetch metric from prometheus pod
+        self._fetch_metric_from_promtheus_pod(metric='kube_node_info')
+
+    @ddt.data('delete', 'drain')
+    @pytest.mark.tier2
+    def test_respin_prometheus_pod(self, motive="delete"):
+        """Validate respin of prometheus pod"""
+        if motive == 'drain':
+
+            # Get the number of infra nodes
+            infra_node_count_cmd = (
+                'oc get nodes '
+                '--no-headers -l node-role.kubernetes.io/infra=true|wc -l')
+            infra_node_count = command.cmd_run(
+                infra_node_count_cmd, self._master)
+
+            # Skip test case if number infra nodes are less than #2
+            if int(infra_node_count) < 2:
+                self.skipTest('Available number of infra nodes "{}", it should'
+                              ' be more than 1'.format(infra_node_count))
+
+        # Get PVC names and pod names
+        pod_names, pvc_names = self._get_pod_names_and_pvc_names()
+
+        # Validate iscsi and multipath
+        for (pvc_name, pod_name) in zip(pvc_names, pod_names):
+            _, _, node = self.verify_iscsi_sessions_and_multipath(
+                pvc_name, pod_name[0], rtype='pod',
+                heketi_server_url=self._registry_heketi_server_url,
+                is_registry_gluster=True)
+
+        # Delete the prometheus pods
+        if motive == 'delete':
+            for pod_name in pod_names:
+                openshift_ops.oc_delete(self._master, 'pod', pod_name[0])
+
+        # Drain the node
+        elif motive == 'drain':
+            drain_cmd = ('oc adm drain {} --force=true --ignore-daemonsets '
+                         '--delete-local-data'.format(node))
+            command.cmd_run(drain_cmd, hostname=self._master)
+
+            # Cleanup to make node schedulable
+            cmd_schedule = (
+                'oc adm manage-node {} --schedulable=true'.format(node))
+            self.addCleanup(
+                command.cmd_run, cmd_schedule, hostname=self._master)
 
         # Validate that there should be no or zero pods in non-running state
         field_selector, pod_count = "status.phase!=Running", 0
