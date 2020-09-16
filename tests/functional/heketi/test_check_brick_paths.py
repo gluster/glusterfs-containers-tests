@@ -28,7 +28,7 @@ class TestHeketiVolume(BaseClass):
                 results.append(out)
             assertion_method('present', results)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_validate_brick_paths_on_gluster_pods_or_nodes(self):
         """Validate brick paths after creation and deletion of a volume."""
 

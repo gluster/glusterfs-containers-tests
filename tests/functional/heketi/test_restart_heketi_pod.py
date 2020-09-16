@@ -49,7 +49,7 @@ class TestRestartHeketi(BaseClass):
                 self.ocp_master_node[0], self.heketi_dc_name)
             wait_for_pod_be_ready(self.ocp_master_node[0], pod_name)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_restart_heketi_pod(self):
         """Validate restarting heketi pod"""
 
@@ -102,7 +102,7 @@ class TestRestartHeketi(BaseClass):
         heketi_volume_delete(
             self.heketi_client_node, self.heketi_server_url, vol_info['id'])
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_set_heketi_vol_size_and_brick_amount_limits(self):
         # Get Heketi secret name
         cmd_get_heketi_secret_name = (
@@ -194,7 +194,7 @@ class TestRestartHeketi(BaseClass):
         self.addCleanup(heketi_volume_delete, h_client, h_server, vol_5['id'])
         heketi_volume_expand(h_client, h_server, vol_5['id'], 2)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_heketi_logs_after_heketi_pod_restart(self):
 
         h_node, h_server = self.heketi_client_node, self.heketi_server_url

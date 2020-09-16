@@ -59,7 +59,7 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             "heketi volume list matches with volume list of all nodes",
             out['report'])
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @ddt.data('', 'block')
     def test_compare_real_vol_count_with_db_check_info(self, vol_type):
         """Validate file/block volumes using heketi db check."""
@@ -83,7 +83,7 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             "%svolume count doesn't match expected "
             "result %s, actual result is %s" % (vol_type, count, vol_count))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @ddt.data('device_count', 'node_count', 'bricks_count')
     def test_verify_db_check(self, count_type):
         """Validate the nodes, devices and bricks count in heketi db"""
@@ -188,7 +188,7 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             examine_msg, msg, "Failed to generate error report for node {} in"
             " gluster examine output".format(g_node))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_compare_brick_mount_status(self):
         """Compare the brick mount status from all nodes"""

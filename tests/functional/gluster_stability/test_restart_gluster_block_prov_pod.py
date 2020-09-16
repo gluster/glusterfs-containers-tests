@@ -15,7 +15,7 @@ from openshiftstoragelibs.openshift_ops import (
 
 class TestRestartGlusterBlockPod(BaseClass):
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_restart_gluster_block_provisioner_pod(self):
         """Restart gluster-block provisioner pod."""
 

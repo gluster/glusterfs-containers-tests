@@ -221,7 +221,7 @@ class TestVolumeMultiReq(BaseClass):
         ocp_node = list(g.config['ocp_servers']['master'].keys())[0]
         return len(_heketi_vols(ocp_node, self.heketi_server_url))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_simple_serial_vol_create(self):
         """Test that serially creating PVCs causes heketi to add volumes.
         """
@@ -282,7 +282,7 @@ class TestVolumeMultiReq(BaseClass):
         self.assertIn(c2.heketiVolumeName, now_vols)
         self.assertNotIn(c2.heketiVolumeName, orig_vols)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_multiple_vol_create(self):
         """Test creating two volumes via PVCs with no waiting between
         the PVC requests.
@@ -385,7 +385,7 @@ class TestVolumeMultiReq(BaseClass):
             c.update_pv_info(ocp_node)
             self.assertIn(c.heketiVolumeName, now_vols)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_create_delete_volumes_concurrently(self):
         """Test creating volume when "other processes" are creating
         and deleting other volumes in the background.

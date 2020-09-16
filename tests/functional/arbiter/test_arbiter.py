@@ -126,7 +126,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
 
         return bricks
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_arbiter_pvc_create(self):
         """Validate dynamic provision of an arbiter volume"""
 
@@ -142,7 +142,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
 
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(vol_info)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_arbiter_pvc_mount_on_pod(self):
         """Validate new volume creation using app pod"""
         # Create sc with gluster arbiter info
@@ -211,7 +211,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 mount_path, available_size))
         self.cmd_run(write_data_cmd)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_create_arbiter_vol_with_more_than_one_brick_set(self):
         """Validate volume creation using heketi for more than six brick set"""
 
@@ -568,7 +568,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             openshift_ops.oc_delete(self.node, 'pvc', pvc_name)
             openshift_ops.wait_for_resource_absence(self.node, 'pvc', pvc_name)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_arbiter_volume_expand_using_pvc(self):
         """Validate arbiter volume expansion by PVC creation"""
         # Create sc with gluster arbiter info
@@ -758,7 +758,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             openshift_ops.verify_pvc_size(self.node, self.pvc_name, pvc_size)
             vol_expanded = True
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_arbiter_volume_delete_using_pvc(self):
         """Test Arbiter volume delete using pvc when volume is not mounted
@@ -1003,7 +1003,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 self.assertEqual(
                     out, err_msg, "LV {} still present".format(lv))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_arbiter_volume_create_device_size_greater_than_volume_size(self):
         """Validate creation of arbiter volume through heketi"""

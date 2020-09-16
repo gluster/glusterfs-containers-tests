@@ -50,7 +50,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
        after manually creating a Block Hosting volume.
     """
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_create_block_vol_after_host_vol_creation(self):
         """Validate block-device after manual block hosting volume creation
            using heketi
@@ -68,7 +68,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
             heketi_blockvolume_delete, self.heketi_client_node,
             self.heketi_server_url, block_vol["id"])
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_block_host_volume_delete_without_block_volumes(self):
         """Validate deletion of empty block hosting volume"""
         block_host_create_info = heketi_volume_create(
@@ -84,7 +84,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
             self.heketi_client_node, self.heketi_server_url,
             block_hosting_vol_id, json=True)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_block_volume_delete(self):
         """Validate deletion of gluster-block volume and capacity of used pool
         """
@@ -104,7 +104,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
                          "The block volume has not been successfully deleted,"
                          " ID is %s" % block_vol["id"])
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_block_volume_list(self):
         """Validate heketi blockvolume list command works as expected"""
         created_vol_ids = []
@@ -126,7 +126,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
                           "Block vol with '%s' ID is absent in the "
                           "list of block volumes." % vol_id)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_block_host_volume_delete_block_volume_delete(self):
         """Validate block volume and BHV removal using heketi"""
         free_space, nodenum = get_total_free_space(
@@ -168,7 +168,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
         self.assertIn(
             block_vol_info["id"], bhv_info["blockinfo"]["blockvolume"])
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_validate_gluster_voloptions_blockhostvolume(self):
         """Validate gluster volume options which are set for
@@ -252,7 +252,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
             ("Password is %spresent in %s", (assertion_msg_part,
                                              block_vol["id"])))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_block_volume_create_with_name(self):
         """Validate creation of block volume with name"""
         vol_name = "autotests-heketi-volume-%s" % utils.get_random_str()
@@ -448,7 +448,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
                     bhv_name, h_node, err)
                 raise exceptions.ExecutionError(err)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_heket_block_volume_info_with_gluster_block_volume_info(self):
         """Verify heketi block volume info with the backend gluster
@@ -529,7 +529,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
             err_msg.format(
                 "ha", h_block_vol_ha, g_block_vol_ha, err_msg))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_dynamic_provisioning_block_vol_with_custom_prefix(self):
         """Verify creation of block volume with custom prefix
         """

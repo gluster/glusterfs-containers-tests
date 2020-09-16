@@ -8,7 +8,7 @@ from openshiftstoragelibs import podcmd
 
 class TestOpsCheck(BaseClass):
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_check_bmux_enabled(self):
         """Check if the brickmultiplexing is enalbed"""
@@ -19,7 +19,7 @@ class TestOpsCheck(BaseClass):
         err_msg = ("Brick multiplex is not enabled")
         self.assertTrue(bmux_status, err_msg)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_check_max_brick_per_process(self):
         """Check if the max-brick process is set to 250"""
 

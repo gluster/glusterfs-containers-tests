@@ -108,7 +108,7 @@ class TestDynamicProvisioningP0(BaseClass):
                 ret, 0,
                 "Failed to execute '%s' command on %s" % (cmd, self.node))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_dynamic_provisioning_glusterfile(self):
         """Validate dynamic provisioning for gluster file"""
         g.log.info("test_dynamic_provisioning_glusterfile")
@@ -126,7 +126,7 @@ class TestDynamicProvisioningP0(BaseClass):
         g.log.info("test_dynamic_provisioning_glusterfile volname prefix")
         self.dynamic_provisioning_glusterfile(True)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_dynamic_provisioning_glusterfile_heketipod_failure(self):
         """Validate dynamic provisioning for gluster file when heketi pod down
         """
@@ -286,7 +286,7 @@ class TestDynamicProvisioningP0(BaseClass):
         ret, out, err = async_io.async_communicate()
         self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd, self.node))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_storage_class_mandatory_params_glusterfile(self):
         """Validate storage-class creation with mandatory parameters"""
 
@@ -336,7 +336,7 @@ class TestDynamicProvisioningP0(BaseClass):
         self.assertEqual(
             ret, 0, "Failed to execute command %s on %s" % (cmd, self.node))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_dynamic_provisioning_glusterfile_heketidown_pvc_delete(self):
         """Validate deletion of PVC's when heketi is down"""
 
@@ -374,7 +374,7 @@ class TestDynamicProvisioningP0(BaseClass):
         # create a new PVC
         self.create_and_wait_for_pvc()
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_validate_pvc_in_multiple_app_pods(self):
         """Validate the use of a same claim in multiple app pods"""
         replicas = 5
@@ -404,7 +404,7 @@ class TestDynamicProvisioningP0(BaseClass):
         for pod_name in pod_names:
             self.assertIn("temp_%s" % pod_name, ls_out)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_pvc_deletion_while_pod_is_running(self):
         """Validate PVC deletion while pod is running"""
         if get_openshift_version() <= "3.9":
@@ -432,7 +432,7 @@ class TestDynamicProvisioningP0(BaseClass):
         self.assertEqual(
             ret, 0, "Failed to execute command %s on %s" % (cmd, self.node))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_dynamic_provisioning_glusterfile_reclaim_policy_retain(self):
         """Validate retain policy for glusterfs after deletion of pvc"""
 

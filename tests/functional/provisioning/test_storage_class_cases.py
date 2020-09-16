@@ -207,7 +207,7 @@ class TestStorageClassCases(BaseClass):
         """Validate glusterblock storage with different incorrect parameters"""
         self.create_sc_with_parameter("glusterblock", parameter=parameter)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @ddt.data(1, 2)
     def test_gluster_block_provisioning_with_valid_ha_count(self, hacount):
         """Validate gluster-block provisioning with different valid 'hacount'
@@ -239,7 +239,7 @@ class TestStorageClassCases(BaseClass):
         if hacount > 1:
             self.validate_multipath_info(hacount)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_gluster_block_provisioning_with_ha_count_as_glusterpod(self):
         """Validate gluster-block provisioning with "hacount" value equal
            to gluster pods count
@@ -269,7 +269,7 @@ class TestStorageClassCases(BaseClass):
         )
         self.validate_multipath_info(hacount)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_gluster_block_provisioning_with_invalid_ha_count(self):
         """Validate gluster-block provisioning with any invalid 'hacount'
            value
@@ -301,7 +301,7 @@ class TestStorageClassCases(BaseClass):
         )
         self.validate_multipath_info(gluster_pod_count)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @ddt.data('true', 'false', '')
     def test_gluster_block_chapauthenabled_parameter(self, chapauthenabled):
         """Validate gluster-block provisioning with different

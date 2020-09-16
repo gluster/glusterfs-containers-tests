@@ -195,21 +195,21 @@ class TestHeketiVolume(BaseClass):
                        free_space_after_creating_vol,
                        free_space_after_deleting_vol))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_to_create_and_delete_dist_rep_vol(self):
         """Validate 2x3 vol type creation when the volume cannot be
            carved out of a single device and the delete the volume
         """
         self._create_distributed_replica_vol(validate_cleanup=True)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @ddt.data(True, False)
     def test_create_and_delete_dist_replicated_bhv(self, validate_cleanup):
         """Validate distributed replicated bhv using heketi-cli"""
         self._create_distributed_replica_vol(
             validate_cleanup, block=True)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_to_create_dist_rep_vol(self):
         """Validate 2x3 vol type creation when the volume cannot be
            carved out of a single device

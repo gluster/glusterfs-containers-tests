@@ -63,7 +63,7 @@ class TestHeketiVolume(BaseClass):
         super(TestHeketiVolume, cls).setUpClass()
         cls.volume_size = 1
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @podcmd.GlustoPod()
     def test_volume_create_and_list_volume(self):
         """Validate heketi and gluster volume list"""
@@ -139,7 +139,7 @@ class TestHeketiVolume(BaseClass):
         self.assertTrue(vol_info, "Failed to get volume info %s" % name)
         g.log.info("Successfully got the volume info %s" % name)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_create_vol_and_retrieve_topology_info(self):
         volume_names = []
         volume_ids = []
@@ -245,7 +245,7 @@ class TestHeketiVolume(BaseClass):
         self.assertTrue(out, ("Failed to list heketi cluster"))
         g.log.info("All heketi cluster successfully listed")
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_to_check_deletion_of_node(self):
         """Validate deletion of a node which contains devices"""
 
@@ -747,7 +747,7 @@ class TestHeketiVolume(BaseClass):
         self.assertIn(
             "transport endpoint is not connected", six.text_type(e.exception))
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_heketi_volume_create_with_clusterid(self):
         """Validate creation of heketi volume with clusters argument"""
         h_node, h_url = self.heketi_client_node, self.heketi_server_url

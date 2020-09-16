@@ -61,7 +61,7 @@ class TestVolumeDeleteTestCases(baseclass.BaseClass):
                 ocp_node, self.heketi_dc_name)
             openshift_ops.wait_for_pod_be_ready(ocp_node, pod_name)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_delete_heketi_volume(self):
         """
         Method to test heketi volume deletion and whether it
@@ -89,7 +89,7 @@ class TestVolumeDeleteTestCases(baseclass.BaseClass):
             "Free space is not reclaimed after deletion "
             "of %s" % volume_info["id"])
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_delete_heketidb_volume(self):
         """Method to test heketidb volume deletion via heketi-cli."""
         for i in range(0, 2):
@@ -121,7 +121,7 @@ class TestVolumeDeleteTestCases(baseclass.BaseClass):
         raise exceptions.ExecutionError(
             "Warning: heketidbstorage doesn't exist in list of volumes")
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_server_stale_operations_during_heketi_pod_reboot(self):
         """
         Validate failed/stale entries in db and performs a cleanup

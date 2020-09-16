@@ -253,7 +253,7 @@ class TestPvResizeClass(BaseClass):
 
         self._pv_resize(exceed_free_space=True)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_pv_resize_by_exact_free_space(self):
         """Validate PVC resize when resized by exact available free space"""
         self._pv_resize(exceed_free_space=False)
@@ -363,7 +363,7 @@ class TestPvResizeClass(BaseClass):
         # Verify pod is running
         wait_for_pod_be_ready(self.node, pod_name, 10, 5)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_pvc_resize_while_ios_are_running(self):
         """Re-size PVC  while IO's are running"""
 

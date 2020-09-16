@@ -97,7 +97,7 @@ class TestHeketiDeviceOperations(BaseClass):
 
         return online_hosts
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_heketi_device_enable_disable(self):
         """Validate device enable and disable functionality"""
 
@@ -580,7 +580,7 @@ class TestHeketiDeviceOperations(BaseClass):
             self.addCleanup(
                 heketi_device_add, h_node, h_url, device_name, node_id)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_dev_path_mapping_basic_validation(self):
         """Validate dev_path of all the devices"""
         node_with_devices = dict()

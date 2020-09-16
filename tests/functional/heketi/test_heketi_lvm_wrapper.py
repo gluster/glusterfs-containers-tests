@@ -50,7 +50,7 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
         openshift_ops.wait_for_pod_be_ready(
             self.oc_node, new_heketi_pod, wait_step=20)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_lvm_script_and_wrapper_environments(self):
         """Validate lvm script present on glusterfs pods
            lvm wrapper environment is present on heketi pod"""
@@ -79,7 +79,7 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
         else:
             self.assertIsNotNone(env_var_value[0], err_msg)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     def test_lvm_script_executable_on_host(self):
         """Validate lvm script is executable on host instead
            of container"""
@@ -125,7 +125,7 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
         self.assertFalse(ret, err_msg)
         self.assertIn("VG", out)
 
-    @pytest.mark.tier0
+    @pytest.mark.tier1
     @ddt.data(ENV_FALSE_VALUE, ENV_VALUE, "")
     def test_lvm_script_with_wrapper_environment_value(self, env_var_value):
         """Validate the creation, deletion, etc operations when
