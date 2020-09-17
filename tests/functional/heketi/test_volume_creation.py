@@ -419,7 +419,7 @@ class TestVolumeCreationTestCases(BaseClass):
                'unexpectedly.' % (vol_info, vol_info_new))
         self.assertFalse(vol_info_new, msg)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4
     def test_heketi_volume_provision_after_node_reboot(self):
         """Provision volume before and after node reboot"""
         # Skip test if not able to connect to Cloud Provider

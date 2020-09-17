@@ -572,7 +572,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             for node_id in h_nodes_list[2:]:
                 self.addCleanup(h.heketi_node_enable, h_node, h_url, node_id)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4
     @ddt.data(
         ("volume", "create"),
         ("volume", "delete"),

@@ -166,7 +166,7 @@ class TestHeketiServerStateExamineGluster(BaseClass):
             "gluster examine {} are not same".format(
                 vol_type, heketi_volumes, examine_volumes))
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4
     def test_validate_report_after_node_poweroff(self):
         """Validate node report in heketi gluster examine after poweroff"""
         # Skip test if not able to connect to Cloud Provider

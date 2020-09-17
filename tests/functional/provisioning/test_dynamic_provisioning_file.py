@@ -209,7 +209,7 @@ class TestDynamicProvisioningP0(BaseClass):
             ret, 0,
             "Failed to execute command %s on %s" % (write_data_cmd, self.node))
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4
     def test_dynamic_provisioning_glusterfile_gluster_pod_or_node_failure(
             self):
         """Create glusterblock PVC when gluster pod or node is down."""

@@ -114,7 +114,7 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
             is_registry_gluster=True)
         return hawkular_cassandra, pvc_name, iqn, hacount, node
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4
     def test_verify_metrics_data_during_gluster_pod_respin(self):
         # Add check for CRS version
         switch_oc_project(self.master, self.registry_project_name)
@@ -180,7 +180,7 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
             if raise_on_error:
                 raise err
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4
     @ddt.data('delete', 'drain')
     def test_metrics_during_cassandra_pod_respin(self, motive='delete'):
         """Validate cassandra pod respin"""
@@ -257,7 +257,7 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
         self.addCleanup(
             oc_rsh, self.master, hawkular_cassandra, cmd_remove_file)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4
     def test_metrics_cassandra_pod_with_bhv_brick_process_down(self):
         """Validate metrics during restart of brick process of  bhv"""
 

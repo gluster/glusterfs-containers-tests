@@ -628,7 +628,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                     pvc_size=(expand_size - 1), pvc_amount=1)
 
     @skip("Blocked by BZ-1769426")
-    @pytest.mark.tier1
+    @pytest.mark.tier4
     def test_targetcli_failure_during_block_pvc_creation(self):
         h_node, h_server = self.heketi_client_node, self.heketi_server_url
 
