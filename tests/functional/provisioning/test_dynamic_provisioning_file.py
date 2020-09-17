@@ -114,7 +114,7 @@ class TestDynamicProvisioningP0(BaseClass):
         g.log.info("test_dynamic_provisioning_glusterfile")
         self.dynamic_provisioning_glusterfile(False)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_dynamic_provisioning_glusterfile_volname_prefix(self):
         """Validate dynamic provisioning for gluster file with vol name prefix
         """
@@ -481,7 +481,7 @@ class TestDynamicProvisioningP0(BaseClass):
         oc_delete(self.node, 'pv', pv_name)
         wait_for_resource_absence(self.node, 'pv', pv_name)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_usage_of_default_storage_class(self):
         """Validate PVs creation for SC with default custom volname prefix"""
 

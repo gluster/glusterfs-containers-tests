@@ -118,7 +118,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         """
         self.dynamic_provisioning_glusterblock(set_hacount=True)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_dynamic_provisioning_glusterblock_hacount_false(self):
         """Validate storage-class mandatory parameters for block
         """
@@ -255,7 +255,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         ret, out, err = async_io.async_communicate()
         self.assertEqual(ret, 0, "IO %s failed on %s" % (io_cmd, self.node))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_glusterblock_logs_presence_verification(self):
         """Validate presence of glusterblock provisioner POD and it's status"""
 
@@ -549,7 +549,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # create a block pvc greater than default BHV size
         self.create_and_wait_for_pvc(pvc_size=(default_bhv_size + 1))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_expansion_of_block_hosting_volume_using_heketi(self):
         """Verify that after expanding block hosting volume we are able to
         consume the expanded space"""
@@ -839,7 +839,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             " No. of BHV after the test : {}".format(len(bhv_list), bhv_post))
         self.assertEqual(bhv_post, (len(bhv_list) + 2), err_msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_100gb_block_pvc_create_and_delete_twice(self):
         """Validate creation and deletion of blockvoume of size 100GB"""
         # Define required space, bhv size required for on 100GB block PVC

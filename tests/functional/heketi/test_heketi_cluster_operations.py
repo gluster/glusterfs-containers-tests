@@ -12,7 +12,7 @@ from openshiftstoragelibs.waiter import Waiter
 class TestClusterOperationsTestCases(baseclass.BaseClass):
     """Class for heketi cluster creation related test cases"""
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data("", "block", "file")
     def test_heketi_cluster_create(self, disable_volume_type):
         """Test heketi cluster creation"""
@@ -38,7 +38,7 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
                 cluster_info["block"], err_msg % ("block", "False"))
             self.assertTrue(cluster_info["file"], err_msg % ("file", "False"))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_cluster_list(self):
         """Test and validateheketi cluster list operation"""
         # Create heketi cluster
@@ -57,7 +57,7 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
             % (cluster_info["id"], cluster_list["clusters"]))
         self.assertIn(cluster_info["id"], cluster_list["clusters"], err_msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_cluster_info(self):
         """Test and validateheketi cluster info operation"""
         # Create heketi cluster
@@ -83,7 +83,7 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
         for param, value in params:
             self.assertEqual(get_cluster_info[param], value)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_cluster_delete(self):
         """Test and validateheketi cluster delete operation"""
         # Create heketi cluster
@@ -103,7 +103,7 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
             % (cluster_info["id"], cluster_list["clusters"]))
         self.assertNotIn(cluster_info["id"], cluster_list["clusters"], err_msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_create_heketi_cluster_and_add_node(self):
         """Test heketi node add to a newly created cluster"""
         storage_host_info = g.config.get("additional_gluster_servers")
@@ -212,7 +212,7 @@ class TestClusterOperationsTestCases(baseclass.BaseClass):
         self.assertEqual(
             zone, storage_zone, err_msg % ("zone", zone, storage_zone))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_server_operations_cleanup_on_idle_setup(self):
         """Run heketi db clean up on an idle setup"""
         h_node, h_url = self.heketi_client_node, self.heketi_server_url

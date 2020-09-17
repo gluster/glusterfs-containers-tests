@@ -336,7 +336,7 @@ class TestVolumeMultiReq(BaseClass):
         # verify this volume in heketi
         self.assertIn(c2.heketiVolumeName, now_vols)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     # NOTE(jjm): I've noticed that on the system I'm using (RHEL7).
     # with count=8 things start to back up a bit.
     # I needed to increase some timeouts to get this to pass.

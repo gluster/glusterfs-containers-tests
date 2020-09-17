@@ -713,7 +713,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
         self._perform_initiator_node_reboot_and_block_validations(
             ini_node, is_ini_taget_same=True)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_validate_gluster_ip_utilized_by_blockvolumes(self):
         """ Validate if all gluster nodes IP are
             utilized by blockvolume when using HA=2
@@ -1865,7 +1865,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.node, delete_log_level.format(TCMU_CONF), gluster_node=g_node)
 
     @skip("Blocked by BZ-1755903")
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_tcmu_log_levels(self):
         """Check tcmu log levels and verify log levels"""
         g_node, get_system_time = self.gluster_servers[0], "date '+%F %T'"

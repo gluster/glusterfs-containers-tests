@@ -23,7 +23,7 @@ class TestBrickMux(BaseClass):
         super(TestBrickMux, self).setUp()
         self.node = self.ocp_master_node[0]
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_brick_multiplex_pids_with_diff_vol_option_values(self):
         """Test Brick Pid's should be same when values of vol options are diff
         """

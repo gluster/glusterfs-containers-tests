@@ -50,7 +50,7 @@ class TestPvResizeClass(BaseClass):
             g.log.error(msg)
             raise self.skipTest(msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data(
         (True, True),
         (False, True),
@@ -258,7 +258,7 @@ class TestPvResizeClass(BaseClass):
         """Validate PVC resize when resized by exact available free space"""
         self._pv_resize(exceed_free_space=False)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_pv_resize_try_shrink_pv_size(self):
         """Validate whether reducing the PV size is allowed"""
         dir_path = "/mnt/"
@@ -295,7 +295,7 @@ class TestPvResizeClass(BaseClass):
         self.assertEqual(
             ret, 0, "Failed to execute command %s on %s" % (cmd, node))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_pv_resize_when_heketi_down(self):
         """Create a PVC and try to expand it when heketi is down, It should
         fail. After heketi is up, expand PVC should work.
@@ -418,7 +418,7 @@ class TestPvResizeClass(BaseClass):
         resize_pvc(self.ocp_master_node[0], pvc_name, available_size_gb)
         verify_pvc_size(self.ocp_master_node[0], pvc_name, available_size_gb)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_pv_resize_device_disabled(self):
         """Validate resize after disabling all devices except one"""
         h_node, h_url = self.heketi_client_node, self.heketi_server_url

@@ -224,7 +224,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
             self.assertEqual(v, vol_info[bhv_name]
                              ["options"][k])
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data(True, False)
     def test_create_blockvolume_with_different_auth_values(self, auth_value):
         """To validate block volume creation with different auth values"""
@@ -272,7 +272,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
             ("Block volume Names are not same %s as %s",
              (block_vol_info["name"], vol_name)))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @podcmd.GlustoPod()
     def test_create_max_num_blockhostingvolumes(self):
         num_of_bv = 10

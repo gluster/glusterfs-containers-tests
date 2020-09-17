@@ -54,7 +54,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             "Heketi volume list %s is not equal to gluster volume list %s"
             % (node_ips, hostnames))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_node_info(self):
         """Test heketi node info operation
         """
@@ -254,7 +254,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
         # Add node to valid cluster id
         self.heketi_node_add_with_valid_cluster()
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_validate_heketi_node_add_with_db_check(self):
         """Test heketi db check after node add operation"""
         if not self.is_containerized_gluster():
@@ -285,7 +285,7 @@ class TestHeketiNodeOperations(baseclass.BaseClass):
             " not as expected".format(initial_node_count, final_node_count))
         self.assertEqual(initial_node_count + 1, final_node_count, msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_node_add_with_invalid_cluster(self):
         """Test heketi node add operation with invalid cluster id"""
         storage_hostname, cluster_id = None, utils.get_random_str(size=33)

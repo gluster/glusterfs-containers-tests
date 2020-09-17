@@ -325,7 +325,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info, arbiter_bricks=2, data_bricks=4)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     # NOTE(vponomar): do not create big volumes setting value less than 64
     # for 'avg_file_size'. It will cause creation of very huge amount of files
     # making one test run very loooooooong.
@@ -594,7 +594,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         self.verify_amount_and_proportion_of_arbiter_and_data_bricks(
             vol_info, arbiter_bricks=2, data_bricks=4)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data(True, False)
     def test_expand_arbiter_volume_setting_tags_on_nodes_or_devices(
             self, node_tags):
@@ -682,7 +682,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         for brick in bricks['data_list']:
             self.assertIn(brick['name'].split(':')[0], data_hosts)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data(
         (4, '250M', True),
         (8, '122M', True),
@@ -845,7 +845,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         gluster_ops.match_heketi_and_gluster_volumes_by_prefix(
             heketi_volume_names, "{}_".format(prefix))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @podcmd.GlustoPod()
     def test_arbiter_volume_node_tag_removal(self):
         """Test remove tags from nodes and check if arbiter volume is
@@ -1219,7 +1219,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 "is created {} and and number of nodes having the arbiter"
                 " tag {}".format(arbiter_brick_ip, arbiter_tag_node_ip))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data(
         ((None, None, None, True),
          ('required', 'disabled', 'disabled', True)),
@@ -1241,7 +1241,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         else:
             self._arbiter_volume_node_tag_operations(node_tags)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @podcmd.GlustoPod()
     def test_create_arbiter_volume_with_avg_file_size_and_expand(self):
         """
@@ -1838,7 +1838,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                         "Failed to match vg {} from gluster side with vg {} "
                         "from heketi side".format(device, h_devices_with_tag))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data(
         (1, False),
         (2, True),

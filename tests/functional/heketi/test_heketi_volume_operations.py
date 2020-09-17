@@ -32,7 +32,7 @@ class TestHeketiVolumeOperations(BaseClass):
         super(TestHeketiVolumeOperations, cls).setUpClass()
         cls.volume_size = 1
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_with_default_options(self):
         """
         Test to create volume with default options.
@@ -52,7 +52,7 @@ class TestHeketiVolumeOperations(BaseClass):
                           "Expected Size: %s, Actual Size: %s"
                           % (self.volume_size, vol_info['size'])))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_with_expand_volume(self):
         """
         Test volume expand and size if updated correctly in heketi-cli info
@@ -86,7 +86,7 @@ class TestHeketiVolumeOperations(BaseClass):
                           "Size: %s" % (str(expected_size),
                                         str(volume_info['size']))))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_volume_mount(self):
         self.node = self.ocp_master_node[0]
         try:
@@ -179,7 +179,7 @@ class TestHeketiVolumeOperations(BaseClass):
                     pids.append([g_node, pid])
         return pids
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @podcmd.GlustoPod()
     def test_heketi_volume_snapshot_create_with_one_brick_down(self):
         """
@@ -242,7 +242,7 @@ class TestHeketiVolumeOperations(BaseClass):
             "Expecting Snapshot count before {} and after creation {} to be "
             "same".format(snap_list_before, snap_list_after))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_volume_create_mutiple_sizes(self):
         """Validate creation of heketi volume with differnt sizes"""
         sizes, required_space = [15, 50, 100], 495
@@ -259,7 +259,7 @@ class TestHeketiVolumeOperations(BaseClass):
             vol_id = heketi_volume_create(h_node, h_url, size, json=True)['id']
             self.addCleanup(heketi_volume_delete, h_node, h_url, vol_id)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @podcmd.GlustoPod()
     def test_heketi_volume_snapshot_delete(self):
         """Test heketi volume snapshot delete operation"""

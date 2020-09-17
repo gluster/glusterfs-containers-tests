@@ -298,7 +298,7 @@ class TestHeketiDeviceOperations(BaseClass):
             "Some of the '%s' volume bricks is present of the removed "
             "'%s' device." % (vol_info['id'], lowest_device_id))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data((True, False), (False, False), (True, True))
     @ddt.unpack
     def test_heketi_device_remove_delete(
@@ -428,7 +428,7 @@ class TestHeketiDeviceOperations(BaseClass):
                 heketi_device_disable, heketi_node, heketi_url, device_id)
             raise
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_device_delete(self):
         """Test Heketi device delete operation"""
 
@@ -488,7 +488,7 @@ class TestHeketiDeviceOperations(BaseClass):
                "after the device deletion" % (device_id, node_id))
         self.assertNotIn(device_id, node_info_after_deletion, msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_device_info(self):
         """Validate whether device related information is displayed"""
 
@@ -554,7 +554,7 @@ class TestHeketiDeviceOperations(BaseClass):
                         self.assertEqual(brick[key], brick_from_t[key])
             self.assertEqual(brick_match_count, len(device_info['bricks']))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_device_delete_with_bricks(self):
         """Validate device deletion with existing bricks on the device"""
         h_node, h_url = self.heketi_client_node, self.heketi_server_url

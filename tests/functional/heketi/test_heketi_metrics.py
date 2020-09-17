@@ -172,7 +172,7 @@ class TestHeketiMetrics(BaseClass):
                 vol_count['cluster'], json=True)
             self.assertEqual(vol_count['value'], len(cluster_info['volumes']))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_metrics_with_topology_info(self):
         """Validate heketi metrics generation"""
         self.verify_heketi_metrics_with_topology_info()
@@ -222,7 +222,7 @@ class TestHeketiMetrics(BaseClass):
 
         self.verify_heketi_metrics_with_topology_info()
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_metrics_validating_vol_count_on_vol_creation(self):
         """Validate heketi metrics VolumeCount after volume creation"""
 
@@ -247,7 +247,7 @@ class TestHeketiMetrics(BaseClass):
 
         self.verify_volume_count()
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_metrics_validating_vol_count_on_vol_deletion(self):
         """Validate heketi metrics VolumeCount after volume deletion"""
 
@@ -287,7 +287,7 @@ class TestHeketiMetrics(BaseClass):
             self.assertNotIn(vol['id'], volume_list)
             self.verify_volume_count()
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_metrics_validating_cluster_count(self):
         """Validate 'cluster count' in heketi metrics"""
         cluster_list = heketi_cluster_list(
@@ -305,7 +305,7 @@ class TestHeketiMetrics(BaseClass):
         self.assertEqual(
             len(cluster_list['clusters']), metrics['heketi_cluster_count'])
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_heketi_metrics_validating_existing_node_count(self):
         """Validate existing 'node count' in heketi metrics"""
         metrics = get_heketi_metrics(

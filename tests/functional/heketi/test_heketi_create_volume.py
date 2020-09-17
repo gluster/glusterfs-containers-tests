@@ -110,7 +110,7 @@ class TestHeketiVolume(BaseClass):
             "of Heketi volumes before and after volume creation: %s\n%s" % (
                 existing_h_vol_list, h_vol_list))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @podcmd.GlustoPod()
     def test_create_vol_and_retrieve_vol_info(self):
         """Validate heketi and gluster volume info"""
@@ -194,7 +194,7 @@ class TestHeketiVolume(BaseClass):
             "\n%s" % (volume_ids[2], existing_volumes))
         g.log.info("Sucessfully verified the topology info")
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     def test_to_check_deletion_of_cluster(self):
         """Validate deletion of cluster with volumes"""
         # List heketi volumes
@@ -435,7 +435,7 @@ class TestHeketiVolume(BaseClass):
                     heketi_blockvolume_delete(h_node, h_url, block_vol)
             heketi_volume_delete(h_node, h_url, volume, raise_on_error=False)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data("", "block")
     def test_verify_delete_heketi_volumes_pending_entries_in_db(
             self, vol_type):
@@ -592,7 +592,7 @@ class TestHeketiVolume(BaseClass):
             act_brick_count, exp_brick_count,
             err_msg.format(act_brick_count, exp_brick_count, "brick"))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier2
     @ddt.data('', 'block')
     def test_verify_create_heketi_volumes_pending_entries_in_db(
             self, vol_type):
