@@ -207,3 +207,61 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
                          "Hostnames are not same")
         self.assertEqual(total_value_metrics, total_value_promtheus,
                          "Total device counts are not same")
+
+    def _get_and_manipulate_metric_data(self, metrics):
+        """Create a dict of metric names and total values"""
+        metric_data = dict()
+        for metric in metrics:
+            out = self._fetch_metric_from_promtheus_pod(metric)
+            total_value = 0
+            for matric_result in out:
+                total_value += int(matric_result["value"][1])
+            metric_data[out[0]["metric"]["__name__"]] = total_value
+        return metric_data
+
+    @pytest.mark.tier2
+    @ddt.data('creation', 'expansion')
+    def test_promethoues_validation_while_creation_or_expansion(self, motive):
+        """Validate mertics data after volume creation or expansion"""
+
+        # Define the variables to perform validations
+        metrics = ['heketi_device_size_bytes', 'heketi_device_free_bytes',
+                   'heketi_device_used_bytes', 'heketi_device_brick_count']
+        h_client, h_server = self.heketi_client_node, self.heketi_server_url
+        vol_size = 1
+
+        # Collect the metrics data from prometheus pod
+        if motive == 'creation':
+            initial_result = self._get_and_manipulate_metric_data(metrics)
+
+        # Create a volume
+        volume_id = heketi_ops.heketi_volume_create(
+            h_client, h_server, vol_size, json=True)["bricks"][0]["volume"]
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete, h_client, h_server, volume_id)
+
+        # Expand the volume
+        if motive == 'expansion':
+            initial_result = self._get_and_manipulate_metric_data(metrics)
+            heketi_ops.heketi_volume_expand(
+                h_client, h_server, volume_id, vol_size)
+
+        # Fetch the latest metrics data form prometheus pod
+        final_result = self._get_and_manipulate_metric_data(metrics)
+
+        # Validate the data variation
+        for metric in metrics:
+            msg = (
+                "intial {} and final value {} of metric '{} should be".format(
+                    initial_result[metric], final_result[metric], metric))
+            if metric == 'heketi_device_size_bytes':
+                self.assertEqual(initial_result[metric], final_result[metric],
+                                 msg + " same")
+            if metric == 'heketi_device_free_bytes':
+                self.assertGreater(initial_result[metric],
+                                   final_result[metric], msg + " differnt")
+            if metric == ('heketi_device_used_bytes'
+                          or 'heketi_device_brick_count'):
+                self.assertLess(
+                    initial_result[metric], final_result[metric],
+                    msg + " differnt")
