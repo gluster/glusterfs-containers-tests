@@ -298,7 +298,7 @@ class TestHeketiVolume(BaseClass):
             self.heketi_client_node, heketi_url, node_id, json=True)
         self.assertEqual(node_info['state'].lower(), 'online')
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     def test_blockvolume_create_no_free_space(self):
         """Validate error is returned when free capacity is exhausted"""
 

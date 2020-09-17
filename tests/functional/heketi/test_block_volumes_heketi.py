@@ -373,7 +373,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
         # Check if all blockhosting volumes are deleted from heketi
         self.assertFalse(new_bhv_list)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     @podcmd.GlustoPod()
     def test_targetcli_when_block_hosting_volume_down(self):
         """Validate no inconsistencies occur in targetcli when block volumes

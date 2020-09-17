@@ -110,7 +110,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             g_new_pod = self._get_newly_deployed_gluster_pod(g_pod_list_before)
             openshift_ops.wait_for_pod_be_ready(self._master, g_new_pod[0])
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_validate_logging_pods_and_pvc(self):
         """Validate metrics pods and PVC"""
 
@@ -143,7 +143,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             heketi_server_url=self._registry_heketi_server_url,
             is_registry_gluster=True)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_logging_es_pod_pvc_all_freespace_utilization(self):
         """Validate logging by utilizing all the free space of block PVC bound
            to elsaticsearch pod"""

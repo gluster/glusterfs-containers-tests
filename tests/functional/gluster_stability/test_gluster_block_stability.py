@@ -946,7 +946,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.heketi_client_node, self.heketi_server_url)
         self.assertNotIn(vol_name_prefix, h_vol_list)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     def test_path_failures_on_initiator_node_migration_and_pod_restart(self):
         """Verify path failures on initiator node migration
            and app pod restart. Also, make sure that existing
@@ -1511,7 +1511,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
                        .format(final_free_storage, initial_free_storage))
             raise AssertionError(err_msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @podcmd.GlustoPod()
     def test_delete_block_device_pvc_while_io_in_progress(self):
         """Delete block device or pvc while io is in progress"""
@@ -1694,7 +1694,7 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.assertNotIn(
                 vol_id, blockvolume_list, msg % (vol_id, blockvolume_list))
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     @podcmd.GlustoPod()
     def test_pvc_state_when_node_is_power_on_and_off(self):
         """Verify PVC gets bound after gluster node is powered off and on

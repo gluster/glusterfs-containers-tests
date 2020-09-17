@@ -8,7 +8,7 @@ from openshiftstoragelibs import podcmd
 
 
 class TestDisableHeketiDevice(baseclass.BaseClass):
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     @podcmd.GlustoPod()
     def test_create_volumes_enabling_and_disabling_heketi_devices(self):
         """Validate enable/disable of heketi device"""

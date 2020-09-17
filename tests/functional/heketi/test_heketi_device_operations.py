@@ -339,7 +339,7 @@ class TestHeketiDeviceOperations(BaseClass):
                 is_delete_device, deleted_device, node_id, add_back_again,
                 skip_cleanup_addition=True)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_heketi_device_removal_with_insuff_space(self):
         """Validate heketi with device removal insufficient space"""
 

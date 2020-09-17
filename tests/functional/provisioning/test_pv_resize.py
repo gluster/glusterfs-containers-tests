@@ -238,7 +238,7 @@ class TestPvResizeClass(BaseClass):
             self.assertEqual(
                 ret, 0, "Failed to write data on the expanded PVC")
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_pv_resize_no_free_space(self):
         """Validate PVC resize fails if there is no free space available"""
         if not self.is_containerized_gluster():
@@ -392,7 +392,7 @@ class TestPvResizeClass(BaseClass):
             raise ExecutionError("Failed to run io, error {}".format(str(err)))
 
     @skip("Blocked by BZ-1547069")
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_pvc_resize_size_greater_than_available_space(self):
         """Re-size PVC to greater value than available volume size and then
         expand volume to support maximum size.

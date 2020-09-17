@@ -227,7 +227,7 @@ class TestHeketiZones(baseclass.BaseClass):
         new_env_list = command.cmd_run(cmd_list_env, hostname=self.node)
         self.assertIn(env, new_env_list, "Failed to set env {}".format(env))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(
         (1, "none"),
         (2, "none"),
@@ -282,7 +282,7 @@ class TestHeketiZones(baseclass.BaseClass):
             # Create app DC with the above PVC
             self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(
         (1, "none"),
         (2, "none"),
@@ -341,7 +341,7 @@ class TestHeketiZones(baseclass.BaseClass):
             # Create app DC with the above PVC
             self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(
         (3, "strict"),
         (1, "none"),
@@ -379,7 +379,7 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(
         (3, "strict"),
         (1, "none"),
@@ -419,7 +419,7 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(3, 4)
     def test_pvc_placement_with_zone_check_set_in_dc(self, zone_count):
         heketi_zone_checking = "strict"
@@ -447,7 +447,7 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(3, 4)
     def test_check_arbiter_pvc_placement_zone_check_in_dc(self, zone_count):
         heketi_zone_checking = "strict"
@@ -483,7 +483,7 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(
         (1, False),
         (1, True),
@@ -526,7 +526,7 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create app DC with the above PVC
         self.create_dc_with_pvc(pvc_name, timeout=120, wait_step=3)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(
         ("strict", "strict"),
         ("none", "strict"),
@@ -643,7 +643,7 @@ class TestHeketiZones(baseclass.BaseClass):
 
         return app_pods
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(
         (3, False),
         (3, True),
@@ -733,7 +733,7 @@ class TestHeketiZones(baseclass.BaseClass):
             openshift_ops.wait_for_pod_be_ready(
                 self.node, pod_name, timeout=5, wait_step=2)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(
         (3, False),
         (3, True),

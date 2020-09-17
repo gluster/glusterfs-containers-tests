@@ -395,7 +395,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 "Arbiter brick '%s' was not verified. Looks like it was "
                 "not found on any of gluster PODs/nodes." % brick["name"])
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @ddt.data(
         (False, False, True, True),
         (True, True, False, False),
@@ -483,7 +483,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                 self.assertIn(
                     data_brick.split(':')[0], data_nodes_ip_addresses)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_create_delete_pvcs_to_make_gluster_reuse_released_space(self):
         """Validate reuse of volume space after deletion of PVCs"""
         min_storage_gb = 10
@@ -909,7 +909,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                    "{}".format(arbiter_brick_ip))
         self.assertGreaterEqual(len(arbiter_brick_ip), 1, err_msg)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     @podcmd.GlustoPod()
     def test_arbiter_volume_delete_using_pvc_mounted_on_app_pod(self):
         """Test Arbiter volume delete using a pvc when volume is mounted

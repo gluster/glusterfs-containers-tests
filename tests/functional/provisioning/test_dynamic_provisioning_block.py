@@ -467,7 +467,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                           "only %s free space is available"
                           % (free_space, free_size))
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_neg(
             self):
         """Verify that block volume creation fails when we create block
@@ -523,7 +523,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
 
         verify_pvc_status_is_bound(self.node, pvc_name)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     def test_creation_of_block_vol_greater_than_the_default_size_of_BHV_pos(
             self):
         """Verify that block volume creation succeed when we create BHV
@@ -750,7 +750,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # Wait for all the PVCs to be in bound state
         wait_for_pvcs_be_bound(self.node, pvc_names, timeout=300, wait_step=5)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_creation_of_pvc_when_one_node_is_down(self):
         """Test PVC creation when one node is down than hacount"""
         node_count = len(self.gluster_servers)
@@ -800,7 +800,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         sc_name = self.create_storage_class(hacount=(node_count - 1))
         self.create_and_wait_for_pvc(sc_name=sc_name)
 
-    @pytest.mark.tier1
+    @pytest.mark.tier3
     def test_heketi_block_volume_create_with_size_more_than_bhv_free_space(
             self):
         """ Test to create heketi block volume of size greater than
