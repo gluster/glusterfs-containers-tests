@@ -1,17 +1,21 @@
-import ddt
+import re
 
+import ddt
 import pytest
 
 from openshiftstoragelibs import command
 from openshiftstoragelibs import baseclass
+from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import heketi_version
 from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import openshift_version
+from openshiftstoragelibs import waiter
 
 # The script exec-on-host prevents from executing LVM commands on pod.
 # It has been introduced as LVM wrapper in heketi v9.0.0-9
 ENV_NAME = "HEKETI_LVM_WRAPPER"
 ENV_VALUE = "/usr/sbin/exec-on-host"
+ENV_FALSE_VALUE = "/usr/bin/false"
 
 
 @ddt.ddt
@@ -25,6 +29,7 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
         self.pod_name = openshift_ops.get_ocp_gluster_pod_details(self.oc_node)
         self.h_pod_name = openshift_ops.get_pod_name_from_dc(
             self.oc_node, self.heketi_dc_name)
+        self.volume_size = 2
 
         ocp_version = openshift_version.get_openshift_version()
         if ocp_version < "3.11.170":
@@ -34,6 +39,16 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
         if h_version < '9.0.0-9':
             self.skipTest("heketi-client package {} does not support Heketi "
                           "LVM Wrapper functionality".format(h_version.v_str))
+
+    def _check_heketi_pod_to_come_up_after_changing_env(self):
+        heketi_pod = openshift_ops.get_pod_names_from_dc(
+            self.oc_node, self.heketi_dc_name)[0]
+        openshift_ops.wait_for_resource_absence(
+            self.oc_node, "pod", heketi_pod)
+        new_heketi_pod = openshift_ops.get_pod_names_from_dc(
+            self.oc_node, self.heketi_dc_name)[0]
+        openshift_ops.wait_for_pod_be_ready(
+            self.oc_node, new_heketi_pod, wait_step=20)
 
     @pytest.mark.tier0
     def test_lvm_script_and_wrapper_environments(self):
@@ -109,3 +124,85 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
             "".format(cmd, pod_name, err))
         self.assertFalse(ret, err_msg)
         self.assertIn("VG", out)
+
+    @pytest.mark.tier0
+    @ddt.data(ENV_FALSE_VALUE, ENV_VALUE, "")
+    def test_lvm_script_with_wrapper_environment_value(self, env_var_value):
+        """Validate the creation, deletion, etc operations when
+        HEKETI_LVM_WRAPPER has different values assigned"""
+
+        # Skip the TC if independent mode deployment
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test as LVM script is not available in "
+                "independent mode deployment")
+
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # Set different values to HEKETI_LVM_WRAPPER
+        if env_var_value != ENV_VALUE:
+            cmd = 'oc set env dc/{} {}={}'
+            command.cmd_run(
+                cmd.format(self.heketi_dc_name, ENV_NAME, env_var_value),
+                self.oc_node)
+            self.addCleanup(
+                self._check_heketi_pod_to_come_up_after_changing_env)
+            self.addCleanup(
+                command.cmd_run,
+                cmd.format(self.heketi_dc_name, ENV_NAME, ENV_VALUE),
+                self.oc_node)
+            self._check_heketi_pod_to_come_up_after_changing_env()
+
+        # Get new value associated with HEKETI_LVM_WRAPPER
+        heketi_pod = openshift_ops.get_pod_names_from_dc(
+            self.oc_node, self.heketi_dc_name)[0]
+        custom = (
+            "{{.spec.containers[*].env[?(@.name==\"{}\")].value}}".format(
+                ENV_NAME))
+        cmd = ("oc get pod {} -o=jsonpath='{}'".format(heketi_pod, custom))
+        get_env_value = command.cmd_run(cmd, self.oc_node)
+
+        # Validate new value assigned to heketi pod
+        err_msg = "Failed to assign new value {} to {}".format(
+            env_var_value, heketi_pod)
+        self.assertEqual(get_env_value, env_var_value, err_msg)
+
+        # Get the date before creating heketi volume
+        cmd_date = "date -u '+%Y-%m-%d %T'"
+        _date, _time = command.cmd_run(cmd_date, self.oc_node).split(" ")
+
+        if env_var_value == ENV_FALSE_VALUE:
+            # Heketi volume creation should fail when HEKETI_LVM_WRAPPER
+            # assigned to /usr/bin/false
+            err_msg = "Unexpectedly: volume has been created"
+            with self.assertRaises(AssertionError, msg=err_msg):
+                vol_info = heketi_ops.heketi_volume_create(
+                    h_client, h_url, self.volume_size, json=True)
+                self.addCleanup(
+                    heketi_ops.heketi_volume_delete, h_client,
+                    h_url, vol_info["bricks"][0]["volume"])
+        else:
+            # Heketi volume creation should succeed when HEKETI_LVM_WRAPPER
+            # assigned value other than /usr/bin/false
+            vol_info = heketi_ops.heketi_volume_create(
+                h_client, h_url, self.volume_size, json=True)
+            self.addCleanup(
+                heketi_ops.heketi_volume_delete,
+                h_client, h_url, vol_info["bricks"][0]["volume"])
+            self.assertTrue(vol_info, ("Failed to create heketi "
+                            "volume of size {}".format(self.volume_size)))
+
+        # Get heketi logs with specific time
+        cmd_logs = "oc logs {} --since-time {}T{}Z | grep {}".format(
+            heketi_pod, _date, _time, "/usr/sbin/lvm")
+
+        # Validate assigned value of HEKETI_LVM_WRAPPER is present in
+        # heketi log
+        for w in waiter.Waiter(60, 10):
+            logs = command.cmd_run(cmd_logs, self.oc_node)
+            status_match = re.search(env_var_value, logs)
+            if status_match:
+                break
+        err_msg = "Heketi unable to execute LVM commands with {}".format(
+            env_var_value)
+        self.assertTrue(status_match, err_msg)
