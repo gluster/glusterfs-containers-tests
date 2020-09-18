@@ -43,11 +43,12 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
         # Check script /usr/sbin/exec-on-host is present in pod
         if self.is_containerized_gluster():
             cmd = "ls -lrt {}".format(ENV_VALUE)
-            ret, _, err = openshift_ops.oc_rsh(
+            ret, out, err = openshift_ops.oc_rsh(
                 self.oc_node, self.pod_name[0]['pod_name'], cmd)
             self.assertFalse(
                 ret, "failed to execute command {} on pod {} with error:"
                 " {}".format(cmd, self.pod_name[0]['pod_name'], err))
+            self.assertIn(ENV_VALUE, out)
 
         # Get a value associated with HEKETI_LVM_WRAPPER
         custom = (r'":spec.containers[*].env[?(@.name==\"{}\")]'
