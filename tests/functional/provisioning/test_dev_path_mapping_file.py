@@ -564,3 +564,231 @@ class TestDevPathMapping(baseclass.BaseClass):
             use_percent, use_percent_after,
             "Failed to execute IO's in the app pod {} after respin".format(
                 pod_name))
+
+    def _get_bricks_counts_and_device_name(self):
+        """Fetch bricks count and device name from all the nodes"""
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # Fetch bricks on the devices
+        h_nodes = heketi_ops.heketi_node_list(h_client, h_url)
+
+        node_details = {}
+        for h_node in h_nodes:
+            h_node_info = heketi_ops.heketi_node_info(
+                h_client, h_url, h_node, json=True)
+            node_details[h_node] = [[], []]
+            for device in h_node_info['devices']:
+                node_details[h_node][0].append(len(device['bricks']))
+                node_details[h_node][1].append(device['id'])
+        return node_details
+
+    @pytest.mark.tier4
+    @podcmd.GlustoPod()
+    def test_dev_path_mapping_heketi_node_delete(self):
+        """Validate dev path mapping for heketi node deletion lifecycle"""
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+
+        node_ids = heketi_ops.heketi_node_list(h_client, h_url)
+        self.assertTrue(node_ids, "Failed to get heketi node list")
+
+        # Fetch #4th node for the operations
+        h_disable_node = node_ids[3]
+
+        # Fetch bricks on the devices before volume create
+        h_node_details_before, h_node = self._get_bricks_and_device_details()
+
+        # Bricks count on the node before pvc creation
+        brick_count_before = [count[1] for count in h_node_details_before]
+
+        # Create file volume with app pod and verify IO's
+        # and compare path, UUID, vg_name
+        pod_name, dc_name, use_percent = self._create_app_pod_and_verify_pvs()
+
+        # Check if IO's are running
+        use_percent_after = self._get_space_use_percent_in_app_pod(pod_name)
+        self.assertNotEqual(
+            use_percent, use_percent_after,
+            "Failed to execute IO's in the app pod {} after respin".format(
+                pod_name))
+
+        # Fetch bricks on the devices after volume create
+        h_node_details_after, h_node = self._get_bricks_and_device_details()
+
+        # Bricks count on the node after pvc creation
+        brick_count_after = [count[1] for count in h_node_details_after]
+
+        self.assertGreater(
+            sum(brick_count_after), sum(brick_count_before),
+            "Failed to add bricks on the node {}".format(h_node))
+        self.addCleanup(
+            heketi_ops.heketi_node_disable, h_client, h_url, h_disable_node)
+
+        # Enable the #4th node
+        heketi_ops.heketi_node_enable(h_client, h_url, h_disable_node)
+        node_info = heketi_ops.heketi_node_info(
+            h_client, h_url, h_disable_node, json=True)
+        h_node_id = node_info['id']
+        self.assertEqual(
+            node_info['state'], "online",
+            "Failed to enable node {}".format(h_disable_node))
+
+        # Disable the node and check for brick migrations
+        self.addCleanup(
+            heketi_ops.heketi_node_enable, h_client, h_url, h_node,
+            raise_on_error=False)
+        heketi_ops.heketi_node_disable(h_client, h_url, h_node)
+        node_info = heketi_ops.heketi_node_info(
+            h_client, h_url, h_node, json=True)
+        self.assertEqual(
+            node_info['state'], "offline",
+            "Failed to disable node {}".format(h_node))
+
+        # Before bricks migration
+        h_node_info = heketi_ops.heketi_node_info(
+            h_client, h_url, h_node, json=True)
+
+        # Bricks before migration on the node i.e to be deleted
+        bricks_counts_before = 0
+        for device in h_node_info['devices']:
+            bricks_counts_before += (len(device['bricks']))
+
+        # Remove the node
+        heketi_ops.heketi_node_remove(h_client, h_url, h_node)
+
+        # After bricks migration
+        h_node_info_after = heketi_ops.heketi_node_info(
+            h_client, h_url, h_node, json=True)
+
+        # Bricks after migration on the node i.e to be delete
+        bricks_counts = 0
+        for device in h_node_info_after['devices']:
+            bricks_counts += (len(device['bricks']))
+
+        self.assertFalse(
+            bricks_counts,
+            "Failed to remove all the bricks from node {}".format(h_node))
+
+        # Old node which is to deleted, new node were bricks resides
+        old_node, new_node = h_node, h_node_id
+
+        # Node info for the new node were brick reside after migration
+        h_node_info_new = heketi_ops.heketi_node_info(
+            h_client, h_url, new_node, json=True)
+
+        bricks_counts_after = 0
+        for device in h_node_info_new['devices']:
+            bricks_counts_after += (len(device['bricks']))
+
+        self.assertEqual(
+            bricks_counts_before, bricks_counts_after,
+            "Failed to migrated bricks from {} node to  {}".format(
+                old_node, new_node))
+
+        # Fetch device list i.e to be deleted
+        h_node_info = heketi_ops.heketi_node_info(
+            h_client, h_url, h_node, json=True)
+        devices_list = [
+            [device['id'], device['name']]
+            for device in h_node_info['devices']]
+
+        for device in devices_list:
+            device_id = device[0]
+            device_name = device[1]
+            self.addCleanup(
+                heketi_ops.heketi_device_add, h_client, h_url,
+                device_name, h_node, raise_on_error=False)
+
+            # Device deletion from heketi node
+            device_delete = heketi_ops.heketi_device_delete(
+                h_client, h_url, device_id)
+            self.assertTrue(
+                device_delete,
+                "Failed to delete the device {}".format(device_id))
+
+        node_info = heketi_ops.heketi_node_info(
+            h_client, h_url, h_node, json=True)
+        cluster_id = node_info['cluster']
+        zone = node_info['zone']
+        storage_hostname = node_info['hostnames']['manage'][0]
+        storage_ip = node_info['hostnames']['storage'][0]
+
+        # Delete the node
+        self.addCleanup(
+            heketi_ops.heketi_node_add, h_client, h_url,
+            zone, cluster_id, storage_hostname, storage_ip,
+            raise_on_error=False)
+        heketi_ops.heketi_node_delete(h_client, h_url, h_node)
+
+        # Verify if the node is deleted
+        node_ids = heketi_ops.heketi_node_list(h_client, h_url)
+        self.assertNotIn(
+            old_node, node_ids,
+            "Failed to delete the node {}".format(old_node))
+
+        # Check if IO's are running
+        use_percent_after = self._get_space_use_percent_in_app_pod(pod_name)
+        self.assertNotEqual(
+            use_percent, use_percent_after,
+            "Failed to execute IO's in the app pod {} after respin".format(
+                pod_name))
+
+        # Adding node back
+        h_node_info = heketi_ops.heketi_node_add(
+            h_client, h_url, zone, cluster_id,
+            storage_hostname, storage_ip, json=True)
+        self.assertTrue(
+            h_node_info,
+            "Failed to add the node in the cluster {}".format(cluster_id))
+        h_node_id = h_node_info["id"]
+
+        # Adding devices to the new node
+        for device in devices_list:
+            storage_device = device[1]
+
+            # Add device to the new heketi node
+            heketi_ops.heketi_device_add(
+                h_client, h_url, storage_device, h_node_id)
+            heketi_node_info = heketi_ops.heketi_node_info(
+                h_client, h_url, h_node_id, json=True)
+            device_id = None
+            for device in heketi_node_info["devices"]:
+                if device["name"] == storage_device:
+                    device_id = device["id"]
+                    break
+
+            self.assertTrue(
+                device_id, "Failed to add device {} on node {}".format(
+                    storage_device, h_node_id))
+
+        # Create n pvc in order to verfiy if the bricks reside on the new node
+        pvc_amount, pvc_size = 5, 1
+
+        # Fetch bricks on the devices before volume create
+        h_node_details_before, h_node = self._get_bricks_and_device_details()
+
+        # Bricks count on the node before pvc creation
+        brick_count_before = [count[1] for count in h_node_details_before]
+
+        # Create file volumes
+        pvc_name = self.create_and_wait_for_pvcs(
+            pvc_size=pvc_size, pvc_amount=pvc_amount)
+        self.assertEqual(
+            len(pvc_name), pvc_amount,
+            "Failed to create {} pvc".format(pvc_amount))
+
+        # Fetch bricks on the devices before volume create
+        h_node_details_after, h_node = self._get_bricks_and_device_details()
+
+        # Bricks count on the node after pvc creation
+        brick_count_after = [count[1] for count in h_node_details_after]
+
+        self.assertGreater(
+            sum(brick_count_after), sum(brick_count_before),
+            "Failed to add bricks on the new node {}".format(new_node))
+
+        # Check if IO's are running after new node is added
+        use_percent_after = self._get_space_use_percent_in_app_pod(pod_name)
+        self.assertNotEqual(
+            use_percent, use_percent_after,
+            "Failed to execute IO's in the app pod {} after respin".format(
+                pod_name))
