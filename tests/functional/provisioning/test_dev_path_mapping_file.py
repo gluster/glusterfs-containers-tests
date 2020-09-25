@@ -374,3 +374,193 @@ class TestDevPathMapping(baseclass.BaseClass):
             use_percent, use_percent_after,
             "Failed to execute IO's in the app pod {} after respin".format(
                 pod_name))
+
+    def _get_bricks_and_device_details(self):
+        """Fetch bricks count and device id list from the node where dev path
+        operation is performed
+        """
+
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+        h_node_details = []
+
+        # Fetch bricks on the devices
+        h_nodes = heketi_ops.heketi_node_list(h_client, h_url)
+        for h_node in h_nodes:
+            h_node_info = heketi_ops.heketi_node_info(
+                h_client, h_url, h_node, json=True)
+            h_node_hostname = h_node_info.get("hostnames").get("manage")[0]
+
+            # Fetch bricks count and device list
+            if h_node_hostname == self.node_hostname:
+                h_node_details = [
+                    [node_info['id'], len(node_info['bricks']),
+                        node_info['name']]
+                    for node_info in h_node_info['devices']]
+                return h_node_details, h_node
+
+    @pytest.mark.tier4
+    @podcmd.GlustoPod()
+    def test_dev_path_mapping_heketi_device_delete(self):
+        """Validate dev path mapping for heketi device delete lifecycle"""
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+
+        node_ids = heketi_ops.heketi_node_list(h_client, h_url)
+        self.assertTrue(node_ids, "Failed to get heketi node list")
+
+        # Fetch #4th node for the operations
+        h_disable_node = node_ids[3]
+
+        # Fetch bricks on the devices before volume create
+        h_node_details_before, h_node = self._get_bricks_and_device_details()
+
+        # Bricks count on the node before pvc creation
+        brick_count_before = [count[1] for count in h_node_details_before]
+
+        # Create file volume with app pod and verify IO's
+        # and compare path, UUID, vg_name
+        pod_name, dc_name, use_percent = self._create_app_pod_and_verify_pvs()
+
+        # Check if IO's are running
+        use_percent_after = self._get_space_use_percent_in_app_pod(pod_name)
+        self.assertNotEqual(
+            use_percent, use_percent_after,
+            "Failed to execute IO's in the app pod {} after respin".format(
+                pod_name))
+
+        # Fetch bricks on the devices after volume create
+        h_node_details_after, h_node = self._get_bricks_and_device_details()
+
+        # Bricks count on the node after pvc creation
+        brick_count_after = [count[1] for count in h_node_details_after]
+
+        self.assertGreater(
+            sum(brick_count_after), sum(brick_count_before),
+            "Failed to add bricks on the node {}".format(h_node))
+
+        # Enable the #4th node
+        heketi_ops.heketi_node_enable(h_client, h_url, h_disable_node)
+        node_info = heketi_ops.heketi_node_info(
+            h_client, h_url, h_disable_node, json=True)
+        h_node_id = node_info['id']
+        self.assertEqual(
+            node_info['state'], "online",
+            "Failed to enable node {}".format(h_disable_node))
+
+        # Fetch device list i.e to be deleted
+        h_node_info = heketi_ops.heketi_node_info(
+            h_client, h_url, h_node, json=True)
+        devices_list = [
+            [device['id'], device['name']]
+            for device in h_node_info['devices']]
+
+        # Device deletion operation
+        for device in devices_list:
+            device_id, device_name = device[0], device[1]
+            self.addCleanup(
+                heketi_ops.heketi_device_enable, h_client, h_url,
+                device_id, raise_on_error=False)
+
+            # Disable device from heketi
+            device_disable = heketi_ops.heketi_device_disable(
+                h_client, h_url, device_id)
+            self.assertTrue(
+                device_disable,
+                "Device {} could not be disabled".format(device_id))
+
+            device_info = heketi_ops.heketi_device_info(
+                h_client, h_url, device_id, json=True)
+            self.assertEqual(
+                device_info['state'], "offline",
+                "Failed to disable device {}".format(device_id))
+
+            # Remove device from heketi
+            device_remove = heketi_ops.heketi_device_remove(
+                h_client, h_url, device_id)
+            self.assertTrue(
+                device_remove,
+                "Device {} could not be removed".format(device_id))
+
+            # Bricks after device removal
+            device_info = heketi_ops.heketi_device_info(
+                h_client, h_url, device_id, json=True)
+            bricks_count_after = len(device_info['bricks'])
+            self.assertFalse(
+                bricks_count_after,
+                "Failed to remove the bricks from the device {}".format(
+                    device_id))
+
+            # Delete device from heketi
+            self.addCleanup(
+                heketi_ops. heketi_device_add, h_client, h_url,
+                device_name, h_node, raise_on_error=False)
+            device_delete = heketi_ops.heketi_device_delete(
+                h_client, h_url, device_id)
+            self.assertTrue(
+                device_delete,
+                "Device {} could not be deleted".format(device_id))
+
+        # Check if IO's are running after device is deleted
+        use_percent_after = self._get_space_use_percent_in_app_pod(pod_name)
+        self.assertNotEqual(
+            use_percent, use_percent_after,
+            "Failed to execute IO's in the app pod {} after respin".format(
+                pod_name))
+
+        # Add device operations
+        for device in devices_list:
+            device_name = device[1]
+
+            # Add device back to the node
+            heketi_ops.heketi_device_add(h_client, h_url, device_name, h_node)
+
+            # Fetch device info after device add
+            node_info = heketi_ops.heketi_node_info(
+                h_client, h_url, h_node, json=True)
+            device_id = None
+            for device in node_info["devices"]:
+                if device["name"] == device_name:
+                    device_id = device["id"]
+                    break
+            self.assertTrue(
+                device_id,
+                "Failed to add device {} on node"
+                " {}".format(device_name, h_node))
+
+        # Disable the #4th node
+        heketi_ops.heketi_node_disable(h_client, h_url, h_node_id)
+        node_info = heketi_ops.heketi_node_info(
+            h_client, h_url, h_node_id, json=True)
+        self.assertEqual(
+            node_info['state'], "offline",
+            "Failed to disable node {}".format(h_node_id))
+        pvc_amount, pvc_size = 5, 1
+
+        # Fetch bricks on the devices before volume create
+        h_node_details_before, h_node = self._get_bricks_and_device_details()
+
+        # Bricks count on the node before pvc creation
+        brick_count_before = [count[1] for count in h_node_details_before]
+
+        # Create file volumes
+        pvc_name = self.create_and_wait_for_pvcs(
+            pvc_size=pvc_size, pvc_amount=pvc_amount)
+        self.assertEqual(
+            len(pvc_name), pvc_amount,
+            "Failed to create {} pvc".format(pvc_amount))
+
+        # Fetch bricks on the devices after volume create
+        h_node_details_after, h_node = self._get_bricks_and_device_details()
+
+        # Bricks count on the node after pvc creation
+        brick_count_after = [count[1] for count in h_node_details_after]
+
+        self.assertGreater(
+            sum(brick_count_after), sum(brick_count_before),
+            "Failed to add bricks on the node {}".format(h_node))
+
+        # Check if IO's are running after new device is added
+        use_percent_after = self._get_space_use_percent_in_app_pod(pod_name)
+        self.assertNotEqual(
+            use_percent, use_percent_after,
+            "Failed to execute IO's in the app pod {} after respin".format(
+                pod_name))
