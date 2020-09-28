@@ -388,7 +388,7 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
         self.disable_devices(additional_devices_attached)
 
         # Create volume and save info about it
-        vol_size = int(smallest_size / (1024**2)) - 1
+        vol_size = int(smallest_size / (1024**2) * 0.98)
         creation_info = heketi_ops.heketi_volume_create(
             h_node, h_server_url, vol_size, json=True)
         volume_name, volume_id = creation_info["name"], creation_info["id"]
