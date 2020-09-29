@@ -16,6 +16,8 @@ from openshiftstoragelibs import waiter
 ENV_NAME = "HEKETI_LVM_WRAPPER"
 ENV_VALUE = "/usr/sbin/exec-on-host"
 ENV_FALSE_VALUE = "/usr/bin/false"
+DOCKER_SERVICE = "systemctl {} docker"
+SERVICE_STATUS_REGEX = r"Active: (.*) \((.*)\)"
 
 
 @ddt.ddt
@@ -49,6 +51,24 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
             self.oc_node, self.heketi_dc_name)[0]
         openshift_ops.wait_for_pod_be_ready(
             self.oc_node, new_heketi_pod, wait_step=20)
+
+    def _wait_for_docker_service_status(self, pod_host_ip, status, state):
+        for w in waiter.Waiter(30, 3):
+            out = command.cmd_run(DOCKER_SERVICE.format("status"), pod_host_ip)
+            for line in out.splitlines():
+                status_match = re.search(SERVICE_STATUS_REGEX, line)
+                if (status_match and status_match.group(1) == status
+                        and status_match.group(2) == state):
+                    return True
+
+    def _check_docker_status_is_active(self, pod_host_ip):
+        try:
+            command.cmd_run(DOCKER_SERVICE.format("is-active"), pod_host_ip)
+        except Exception as err:
+            if "inactive" in err:
+                command.cmd_run(DOCKER_SERVICE.format("start"), pod_host_ip)
+                self._wait_for_docker_service_status(
+                    pod_host_ip, "active", "running")
 
     @pytest.mark.tier1
     def test_lvm_script_and_wrapper_environments(self):
@@ -206,3 +226,52 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
         err_msg = "Heketi unable to execute LVM commands with {}".format(
             env_var_value)
         self.assertTrue(status_match, err_msg)
+
+    @pytest.mark.tier2
+    def test_docker_service_restart(self):
+        """Validate docker service should not fail after restart"""
+
+        # Skip the TC if independent mode deployment
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as LVM script is not available in "
+                "independent mode deployment")
+
+        # Skip the TC if docker storage driver other than devicemapper
+        pod_host_ip = self.pod_name[0]["pod_host_ip"]
+        cmd = "docker info -f '{{json .Driver}}'"
+        device_driver = command.cmd_run(cmd, pod_host_ip)
+        if device_driver != '"devicemapper"':
+            self.skipTest(
+                "Skipping this test case as docker storage driver is not "
+                "set to devicemapper")
+
+        # Validate LVM environment is present
+        custom = (r'":spec.containers[*].env[?(@.name==\"{}\")]'
+                  r'.value"'.format(ENV_NAME))
+        env_var_value = openshift_ops.oc_get_custom_resource(
+            self.oc_node, "pod", custom, self.h_pod_name)[0]
+        err_msg = "Heketi {} environment should has {}".format(
+            ENV_NAME, ENV_VALUE)
+        self.assertEqual(env_var_value, ENV_VALUE, err_msg)
+
+        # Check docker status is active
+        command.cmd_run(DOCKER_SERVICE.format("is-active"), pod_host_ip)
+
+        # Restart the docker service
+        self.addCleanup(self._check_docker_status_is_active, pod_host_ip)
+        command.cmd_run(DOCKER_SERVICE.format("restart"), pod_host_ip)
+
+        # Wait for docker service to become active
+        self._wait_for_docker_service_status(pod_host_ip, "active", "running")
+
+        # Wait for glusterfs pods to be ready
+        openshift_ops.wait_for_pods_be_ready(
+            self.oc_node, len(self.gluster_servers), "glusterfs=storage-pod")
+
+        # Check the docker pool is available after docker restart
+        cmd = "ls -lrt /dev/docker-vg/docker-pool"
+        command.cmd_run(cmd, pod_host_ip)
+
+        # Create PVC after docker restart
+        self.create_and_wait_for_pvcs()
