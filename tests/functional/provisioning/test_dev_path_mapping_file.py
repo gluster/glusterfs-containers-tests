@@ -792,3 +792,93 @@ class TestDevPathMapping(baseclass.BaseClass):
             use_percent, use_percent_after,
             "Failed to execute IO's in the app pod {} after respin".format(
                 pod_name))
+
+    @pytest.mark.tier4
+    @podcmd.GlustoPod()
+    def test_dev_path_volume_expansion(self):
+        """Validate dev path mapping for file volumes expansion"""
+
+        pvc_size, pvc_amount, expand_pvc_size = 1, 2, 2
+        vol_names, pvc_names = [], []
+
+        # Create PVC's
+        sc_name = self.create_storage_class(allow_volume_expansion=True)
+
+        pvc_names = self.create_and_wait_for_pvcs(
+            pvc_size=pvc_size, pvc_amount=pvc_amount, sc_name=sc_name)
+        dc_name = self.create_dcs_with_pvc(pvc_names)
+        self.validate_file_volumes_count(
+            self.h_node, self.h_server, self.node_ip)
+
+        for pvc_name in pvc_names:
+            pv_name = openshift_ops.get_pv_name_from_pvc(self.node, pvc_name)
+            volume_name = openshift_ops.get_vol_names_from_pv(
+                self.node, pv_name)
+            vol_names.append(volume_name)
+
+        # Get pvs info
+        pvs_info_before = openshift_storage_libs.get_pvs_info(
+            self.node, self.node_ip, self.devices_list, raise_on_error=False)
+        self.detach_and_attach_vmdk(
+            self.vm_name, self.node_hostname, self.devices_list)
+        pvs_info_after = openshift_storage_libs.get_pvs_info(
+            self.node, self.node_ip, self.devices_list, raise_on_error=False)
+
+        # Compare pvs info before and after
+        for (path, uuid, vg_name), (_path, _uuid, _vg_name) in zip(
+                pvs_info_before[:-1], pvs_info_after[1:]):
+            self.assertEqual(
+                uuid, _uuid, "pv_uuid check failed. Expected:{},"
+                "Actual: {}".format(uuid, _uuid))
+            self.assertEqual(
+                vg_name, _vg_name, "vg_name check failed. Expected:"
+                "{}, Actual:{}".format(vg_name, _vg_name))
+
+        for pvc in pvc_names:
+            openshift_ops.resize_pvc(self.node, pvc, expand_pvc_size)
+            openshift_ops.verify_pvc_size(self.node, pvc, expand_pvc_size)
+
+        for vol_name in vol_names:
+            vol_info = heketi_ops.heketi_volume_info(
+                self.h_node, self.h_server, vol_name['heketi_vol'], json=True)
+            self.assertEqual(
+                vol_info["size"], expand_pvc_size, "Failed to validate volume"
+                " size. Expected {}, Actual{}".format(
+                    expand_pvc_size, vol_info["size"]))
+
+            volume = vol_name['gluster_vol']
+            volume_info = volume_ops.get_volume_info(
+                self.gluster_servers[0], volume)
+            self.assertIsNotNone(
+                volume_info, "Failed to get volume info for volume {}".format(
+                    volume))
+            self.assertEqual(
+                volume_info[volume]['brickCount'], "6", "Failed to validate "
+                "brick count. Expected {}, Actual {}".format(
+                    "6", volume_info[volume]['brickCount']))
+
+        # Pod names list
+        pod_names = [pod_name for _, (_, pod_name) in dc_name.items()]
+        self.assertIsNotNone(
+            pod_names, "Failed to get the pod name from {}".format(dc_name))
+
+        # Creating IO basesize and count
+        base_size, count = 2096, 140000
+        async_obj, mounts = [], '/mnt'
+        cmd_run_io = 'oc rsh {} dd if=/dev/urandom of={} bs={} count={}'
+        err_msg = "Failed to wait for IO to complete"
+        for pod in pod_names:
+            for file_count in range(4):
+                _file = '{}/file{}'.format(mounts, file_count)
+                async_op = g.run_async(
+                    host=self.node, command=cmd_run_io.format(
+                        pod, _file, base_size, count))
+                async_obj.append(async_op)
+
+            for i, proc in enumerate(async_obj):
+                ret, _, _ = proc.async_communicate()
+                self.assertFalse(ret, err_msg)
+
+        space_usage = self._get_space_use_percent_in_app_pod(pod_names[0])
+        self.assertGreater(
+            space_usage[0], '50', "Failed to validate space usage")
