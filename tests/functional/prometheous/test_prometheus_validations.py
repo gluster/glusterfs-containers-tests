@@ -13,6 +13,7 @@ import pytest
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs import command
 from openshiftstoragelibs import exceptions
+from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import openshift_ops
 
 
@@ -176,3 +177,33 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
 
         # Try to fetch metric from prometheus pod
         self._fetch_metric_from_promtheus_pod(metric='kube_node_info')
+
+    @pytest.mark.tier2
+    def test_heketi_and_prometheus_device_count(self):
+        """Check if device count is same in heketi and promtheus"""
+
+        cluster_ids_metrics, cluster_ids_promtheus = [], []
+        hostnames_metrics, hostnames_promtheus = [], []
+        total_value_metrics, total_value_promtheus = 0, 0
+
+        metrics = heketi_ops.get_heketi_metrics(
+            self.heketi_client_node, self.heketi_server_url)
+        heketi_device_count_metric = metrics.get('heketi_device_count')
+        for result in heketi_device_count_metric:
+            cluster_ids_metrics.append(result.get('cluster'))
+            hostnames_metrics.append(result.get('hostname'))
+            total_value_metrics += int(result.get('value'))
+
+        metric_result = self._fetch_metric_from_promtheus_pod(
+            metric='heketi_device_count')
+        for result in metric_result:
+            total_value_promtheus += int(result.get('value')[1])
+            cluster_ids_promtheus.append(result.get('metric')['cluster'])
+            hostnames_promtheus.append(result.get('metric')['hostname'])
+
+        self.assertEqual(cluster_ids_metrics, cluster_ids_promtheus,
+                         "Cluster ID's are not same")
+        self.assertEqual(hostnames_metrics, hostnames_promtheus,
+                         "Hostnames are not same")
+        self.assertEqual(total_value_metrics, total_value_promtheus,
+                         "Total device counts are not same")
