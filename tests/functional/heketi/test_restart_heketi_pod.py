@@ -7,8 +7,11 @@ except ImportError:
     import json
 
 import pytest
+import re
 
 from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs.command import cmd_run
+from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs.heketi_ops import (
     heketi_topology_info,
     heketi_volume_create,
@@ -27,6 +30,24 @@ from openshiftstoragelibs.openshift_ops import (
 
 
 class TestRestartHeketi(BaseClass):
+
+    def _heketi_pod_delete_cleanup(self):
+        """Cleanup for deletion of heketi pod using force delete"""
+        try:
+            pod_name = get_pod_name_from_dc(
+                self.ocp_master_node[0], self.heketi_dc_name)
+
+            # Check if heketi pod name is ready state
+            wait_for_pod_be_ready(self.ocp_master_node[0], pod_name, timeout=1)
+        except ExecutionError:
+            # Force delete and wait for new pod to come up
+            oc_delete(self.ocp_master_node[0], 'pod', pod_name, is_force=True)
+            wait_for_resource_absence(self.ocp_master_node[0], 'pod', pod_name)
+
+            # Fetch heketi pod after force delete
+            pod_name = get_pod_name_from_dc(
+                self.ocp_master_node[0], self.heketi_dc_name)
+            wait_for_pod_be_ready(self.ocp_master_node[0], pod_name)
 
     @pytest.mark.tier0
     def test_restart_heketi_pod(self):
@@ -172,3 +193,39 @@ class TestRestartHeketi(BaseClass):
             h_client, h_server, size=(brick_max_size_gb + 1), json=True)
         self.addCleanup(heketi_volume_delete, h_client, h_server, vol_5['id'])
         heketi_volume_expand(h_client, h_server, vol_5['id'], 2)
+
+    @pytest.mark.tier0
+    def test_heketi_logs_after_heketi_pod_restart(self):
+
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+        find_string_in_log = r"Started background pending operations cleaner"
+        ocp_node = self.ocp_master_node[0]
+
+        # Restart heketi pod
+        heketi_pod_name = get_pod_name_from_dc(ocp_node, self.heketi_dc_name)
+        oc_delete(
+            ocp_node, 'pod', heketi_pod_name,
+            collect_logs=self.heketi_logs_before_delete)
+        self.addCleanup(self._heketi_pod_delete_cleanup)
+        wait_for_resource_absence(ocp_node, 'pod', heketi_pod_name)
+        heketi_pod_name = get_pod_name_from_dc(ocp_node, self.heketi_dc_name)
+        wait_for_pod_be_ready(ocp_node, heketi_pod_name)
+        self.assertTrue(
+            hello_heketi(h_node, h_server),
+            "Heketi server {} is not alive".format(h_server))
+
+        # Collect logs after heketi pod restart
+        cmd = "oc logs {}".format(heketi_pod_name)
+        out = cmd_run(cmd, hostname=ocp_node)
+
+        # Validate string is present in heketi logs
+        pending_check = re.compile(find_string_in_log)
+        entry_list = pending_check.findall(out)
+        self.assertIsNotNone(
+            entry_list, "Failed to find entries in heketi logs")
+
+        for entry in entry_list:
+            self.assertEqual(
+                entry, find_string_in_log,
+                "Failed to validate, Expected {}; Actual {}". format(
+                    find_string_in_log, entry))
