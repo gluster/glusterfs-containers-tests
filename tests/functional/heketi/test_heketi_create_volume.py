@@ -20,6 +20,7 @@ import six
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs import command
 from openshiftstoragelibs.heketi_ops import (
+    get_block_hosting_volume_list,
     get_heketi_volume_and_brick_count_list,
     get_total_free_space,
     heketi_blockvolume_create,
@@ -29,8 +30,11 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_cluster_list,
     heketi_db_check,
     heketi_node_delete,
+    heketi_node_enable,
     heketi_node_info,
     heketi_node_list,
+    heketi_node_disable,
+    heketi_server_operation_cleanup,
     heketi_volume_create,
     heketi_volume_delete,
     heketi_volume_expand,
@@ -42,7 +46,9 @@ from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_default_block_hosting_volume_size,
     get_pod_name_from_dc,
+    kill_service_on_gluster_pod_or_node,
     oc_delete,
+    restart_service_on_gluster_pod_or_node,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
     wait_for_service_status_on_gluster_pod_or_node,
@@ -773,3 +779,129 @@ class TestHeketiVolume(BaseClass):
             info_cluster_id, creation_cluster_id,
             "Volume creation cluster id {} not matching the info cluster id "
             "{}".format(creation_cluster_id, info_cluster_id))
+
+    def _check_for_pending_operations(self, h_node, h_url):
+        # Check for pending operations
+        for w in waiter.Waiter(timeout=120, interval=10):
+            h_db_check = heketi_db_check(h_node, h_url)
+            h_db_check_vol = h_db_check.get("blockvolumes")
+            if h_db_check_vol.get("pending"):
+                break
+        if w.expired:
+            raise exceptions.ExecutionError(
+                "No pending operations found during blockvolumes creation "
+                "{}".format(h_db_check_vol.get("pending")))
+
+    @pytest.mark.tier2
+    def test_heketi_manual_cleanup_operation_in_bhv(self):
+        """Validate heketi db cleanup will resolve the mismatch
+           in the free size of the block hosting volume with failed
+           block device create operations.
+        """
+        bhv_size_before, bhv_size_after, vol_count = [], [], 5
+        ocp_node, g_node = self.ocp_master_node[0], self.gluster_servers[0]
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        # Get existing heketi volume list
+        existing_volumes = heketi_volume_list(h_node, h_url, json=True)
+
+        # Add function to clean stale volumes created during test
+        self.addCleanup(
+            self._cleanup_heketi_volumes, existing_volumes.get("volumes"))
+
+        # Get nodes id list
+        node_id_list = heketi_node_list(h_node, h_url)
+
+        # Disable 4th and other nodes
+        for node_id in node_id_list[3:]:
+            heketi_node_disable(h_node, h_url, node_id)
+            self.addCleanup(heketi_node_enable, h_node, h_url, node_id)
+
+        # Calculate heketi volume size
+        free_space, nodenum = get_total_free_space(h_node, h_url)
+        free_space_available = int(free_space / nodenum)
+        if free_space_available > vol_count:
+            h_volume_size = int(free_space_available / vol_count)
+            if h_volume_size > 50:
+                h_volume_size = 50
+        else:
+            h_volume_size, vol_count = 1, free_space_available
+
+        # Create BHV in case blockvolume size is greater than default BHV size
+        default_bhv_size = get_default_block_hosting_volume_size(
+            h_node, self.heketi_dc_name)
+        if default_bhv_size < h_volume_size:
+            h_volume_name = "autotest-{}".format(utils.get_random_str())
+            bhv_info = self.create_heketi_volume_with_name_and_wait(
+                h_volume_name, free_space_available,
+                raise_on_cleanup_error=False, block=True, json=True)
+            free_space_available -= (
+                int(bhv_info.get("blockinfo").get("reservedsize")) + 1)
+            h_volume_size = int(free_space_available / vol_count)
+
+        # Get BHV list
+        h_bhv_list = get_block_hosting_volume_list(h_node, h_url).keys()
+        self.assertTrue(h_bhv_list, "Failed to get the BHV list")
+
+        # Get BHV size
+        for bhv in h_bhv_list:
+            vol_info = heketi_volume_info(h_node, h_url, bhv, json=True)
+            bhv_vol_size_before = vol_info.get("freesize")
+            bhv_size_before.append(bhv_vol_size_before)
+
+        # Kill Tcmu-runner service
+        services = ("tcmu-runner", "gluster-block-target", "gluster-blockd")
+        kill_service_on_gluster_pod_or_node(ocp_node, "tcmu-runner", g_node)
+
+        # Restart the services
+        for service in services:
+            state = (
+                'exited' if service == 'gluster-block-target' else 'running')
+            self.addCleanup(
+                wait_for_service_status_on_gluster_pod_or_node,
+                ocp_node, service, 'active', state, g_node)
+            self.addCleanup(
+                restart_service_on_gluster_pod_or_node,
+                ocp_node, service, g_node)
+
+        def run_async(cmd, hostname, raise_on_error=True):
+            return g.run_async(host=hostname, command=cmd)
+
+        # Create stale block volumes in async
+        for count in range(vol_count):
+            with mock.patch.object(json, 'loads', side_effect=(lambda j: j)):
+                with mock.patch.object(
+                        command, 'cmd_run', side_effect=run_async):
+                    heketi_blockvolume_create(
+                        h_node, h_url, h_volume_size, json=True)
+
+        # Wait for pending operation to get generated
+        self._check_for_pending_operations(h_node, h_url)
+
+        # Restart the services
+        for service in services:
+            state = (
+                'exited' if service == 'gluster-block-target' else 'running')
+            restart_service_on_gluster_pod_or_node(
+                ocp_node, service, g_node)
+            wait_for_service_status_on_gluster_pod_or_node(
+                ocp_node, service, 'active', state, g_node)
+
+        # Cleanup pending operation
+        heketi_server_operation_cleanup(h_node, h_url)
+
+        # wait for pending operation to get cleaned up
+        for w in waiter.Waiter(timeout=120, interval=10):
+            # Get BHV size
+            for bhv in h_bhv_list:
+                vol_info = heketi_volume_info(h_node, h_url, bhv, json=True)
+                bhv_vol_size_after = vol_info.get("freesize")
+                bhv_size_after.append(bhv_vol_size_after)
+
+            if(set(bhv_size_before) == set(bhv_size_after)):
+                break
+        if w.expired:
+            raise exceptions.ExecutionError(
+                "Failed to Validate volume size Actual:{},"
+                " Expected:{}".format(
+                    set(bhv_size_before), set(bhv_size_after)))
