@@ -15,6 +15,7 @@ from openshiftstoragelibs import command
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import openshift_ops
+from openshiftstoragelibs import waiter
 
 
 @ddt.ddt
@@ -265,3 +266,91 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
                 self.assertLess(
                     initial_result[metric], final_result[metric],
                     msg + " differnt")
+
+    @ddt.data('add', 'delete')
+    @pytest.mark.tier3
+    def test_heketi_prometheus_device_count_after_operation(self, operation):
+        """Do operation and validate device count in heketi and prometheus"""
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+
+        # Get list of additional devices for one of the Gluster nodes
+        gluster_server_0 = list(self.gluster_servers_info.values())[0]
+        manage_hostname = gluster_server_0.get("manage")
+        self.assertTrue(
+            manage_hostname, "IP Address is not specified for "
+            "node {}".format(gluster_server_0))
+        device_name = gluster_server_0.get("additional_devices")[0]
+        self.assertTrue(
+            device_name, "Additional devices are not specified for "
+            "node {}".format(gluster_server_0))
+
+        # Get node ID of the Gluster hostname
+        node_list = heketi_ops.heketi_topology_info(
+            h_node, h_server, json=True).get("clusters")[0].get("nodes")
+        self.assertTrue(
+            node_list, "Cluster info command returned empty list of nodes")
+        node_id = None
+        for node in node_list:
+            if manage_hostname == node.get("hostnames").get("manage")[0]:
+                node_id = node.get("id")
+                break
+        self.assertTrue(
+            node_id, "Failed to get node_id for {}".format(manage_hostname))
+
+        # Adding heketi device
+        heketi_ops.heketi_device_add(h_node, h_server, device_name, node_id)
+        node_info_after_addition = heketi_ops.heketi_node_info(
+            h_node, h_server, node_id, json=True)
+        device_id, bricks = None, None
+        for device in node_info_after_addition.get("devices"):
+            if device.get("name") == device_name:
+                device_id, bricks = (
+                    device.get("id"), len(device.get("bricks")))
+                break
+        self.addCleanup(
+            heketi_ops.heketi_device_delete, h_node, h_server, device_id,
+            raise_on_error=False)
+        self.addCleanup(
+            heketi_ops.heketi_device_remove, h_node, h_server, device_id,
+            raise_on_error=False)
+        self.addCleanup(
+            heketi_ops.heketi_device_disable, h_node, h_server, device_id,
+            raise_on_error=False)
+
+        if operation == "delete":
+            # Disable,Remove and Delete heketi device
+            heketi_ops.heketi_device_disable(h_node, h_server, device_id)
+            heketi_ops.heketi_device_remove(h_node, h_server, device_id)
+            heketi_ops.heketi_device_delete(h_node, h_server, device_id)
+            # Verify zero bricks on the deleted device and device deletion
+            msg = (
+                "Number of bricks on the device {} of the nodes should be"
+                "zero".format(device_name))
+            self.assertFalse(bricks, msg)
+            node_info_after_deletion = (
+                heketi_ops.heketi_node_info(h_node, h_server, node_id))
+            msg = ("Device {} should not be shown in node info of the node {}"
+                   "after the device deletion".format(device_id, node_id))
+            self.assertNotIn(device_id, node_info_after_deletion, msg)
+
+        # Validate heketi and prometheus device count
+        for w in waiter.Waiter(timeout=60, interval=10):
+            total_value_prometheus, total_value_metrics = 0, 0
+            openshift_ops.switch_oc_project(
+                self.ocp_master_node[0], 'openshift-monitoring')
+            metric_result = self._fetch_metric_from_promtheus_pod(
+                metric='heketi_device_count')
+            for result in metric_result:
+                total_value_prometheus += int(result.get('value')[1])
+            openshift_ops.switch_oc_project(
+                self.ocp_master_node[0], 'glusterfs')
+            metrics = heketi_ops.get_heketi_metrics(h_node, h_server)
+            heketi_device_count_metric = metrics.get('heketi_device_count')
+            for result in heketi_device_count_metric:
+                total_value_metrics += int(result.get('value'))
+
+            if total_value_prometheus == total_value_metrics:
+                break
+        if w.expired:
+            raise exceptions.ExecutionError(
+                "Failed to update device details in prometheus")
