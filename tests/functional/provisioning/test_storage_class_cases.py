@@ -16,6 +16,7 @@ from openshiftstoragelibs.openshift_storage_libs import (
     validate_multipath_pod,
 )
 from openshiftstoragelibs.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
     get_amount_of_gluster_nodes,
     get_gluster_blockvol_info_by_pvc_name,
     get_pod_name_from_dc,
@@ -27,11 +28,13 @@ from openshiftstoragelibs.openshift_ops import (
     oc_delete,
     oc_get_custom_resource,
     oc_get_pods,
+    restart_service_on_gluster_pod_or_node,
     scale_dc_pod_amount_and_wait,
     verify_pvc_status_is_bound,
     wait_for_events,
     wait_for_pod_be_ready,
     wait_for_resource_absence,
+    wait_for_service_status_on_gluster_pod_or_node,
 )
 from openshiftstoragelibs.openshift_storage_version import (
     get_openshift_storage_version
@@ -421,3 +424,63 @@ class TestStorageClassCases(BaseClass):
                          "Cluster ID %s has NOT been used to"
                          "create the PVC %s. Found %s" %
                          (cluster_id, pvc_name, volume_info["cluster"]))
+
+    def _validate_permission(
+            self, ocp_node, gluster_node, dir_perm, file_perm):
+        """Validate /etc/target and /etc/target/backup permissions"""
+
+        target_dir_perm = "ls -ld /etc/target | awk '{print $1}'"
+        target_file_perm = (
+            "ls -l /etc/target/backup | awk '{print $1}' | sed 1D")
+
+        dir_perm_result = cmd_run_on_gluster_pod_or_node(
+            ocp_node, target_dir_perm, gluster_node)
+        self.assertEqual(
+            dir_perm_result, dir_perm,
+            "Failed to validate permission of '/etc/target'")
+        results = cmd_run_on_gluster_pod_or_node(
+            ocp_node, target_file_perm, gluster_node)
+        file_perm_results = list(results.split("\n"))
+        for perm in file_perm_results:
+            self.assertEqual(
+                perm, file_perm, "Failed to validate permission"
+                " in '/etc/target/backup'")
+
+    @pytest.mark.tier1
+    def test_targetcli_weak_permissions_config_files(self):
+        """Validate permissions on config files"""
+
+        ocp_node = self.ocp_master_node[0]
+        gluster_node = self.gluster_servers[0]
+        dir_perm_before, dir_perm_after = "drwxrwxrwx.", "drw-------."
+        file_perm_before, file_perm_after = "-rwxrwxrwx.", "-rw-------."
+        services = ("tcmu-runner", "gluster-block-target", "gluster-blockd")
+        cmd = "chmod -R 777 /etc/target/"
+
+        # Check the permissions on '/etc/target' and '/etc/target/backup'
+        cmd_run_on_gluster_pod_or_node(ocp_node, cmd, gluster_node)
+        for service in services:
+            state = (
+                'exited' if service == 'gluster-block-target' else 'running')
+            self.addCleanup(
+                wait_for_service_status_on_gluster_pod_or_node,
+                ocp_node, service, 'active', state, gluster_node)
+            self.addCleanup(
+                restart_service_on_gluster_pod_or_node,
+                ocp_node, service, gluster_node)
+
+        self._validate_permission(
+            ocp_node, gluster_node, dir_perm_before, file_perm_before)
+
+        # Restart the services
+        for service in services:
+            state = (
+                'exited' if service == 'gluster-block-target' else 'running')
+            restart_service_on_gluster_pod_or_node(
+                ocp_node, service, gluster_node)
+            wait_for_service_status_on_gluster_pod_or_node(
+                ocp_node, service, 'active', state, gluster_node)
+
+        # Permission on '/etc/target' should be changed to default
+        self._validate_permission(
+            ocp_node, gluster_node, dir_perm_after, file_perm_after)
