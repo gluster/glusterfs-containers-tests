@@ -20,6 +20,7 @@ from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import gluster_ops
 from openshiftstoragelibs import node_ops
 from openshiftstoragelibs import openshift_ops
+from openshiftstoragelibs import openshift_storage_libs
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import waiter
 
@@ -132,6 +133,52 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
                 "auto_get_gluster_endpoint", vol_name, force=True)
             self.assertFalse(
                 start_vol, "Failed to start volume using force")
+
+    def _get_newly_deployed_gluster_pod(self, g_pod_list_before):
+
+        # Fetch pod after delete
+        g_pod_list_after = [
+            pod["pod_name"]
+            for pod in openshift_ops.get_ocp_gluster_pod_details(self._master)]
+
+        # Fetch the new gluster pod
+        g_new_pod = list(set(g_pod_list_after) - set(g_pod_list_before))
+        self.assertTrue(g_new_pod, "No new gluster pod deployed after delete")
+        return g_new_pod
+
+    def _guster_pod_delete(self, g_pod_list_before):
+        """Delete the gluster pod using force delete"""
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+
+        # Fetch newly deployed gluster pod after delete
+        try:
+            pod_name = self._get_newly_deployed_gluster_pod(g_pod_list_before)
+            openshift_ops.wait_for_pod_be_ready(
+                self._master,
+                pod_name[0] if pod_name else g_pod_list_before[0],
+                timeout=120, wait_step=6)
+        except exceptions.ExecutionError:
+            openshift_ops.oc_delete(
+                self._master, 'pod', g_pod_list_before[0], is_force=True)
+            openshift_ops.wait_for_resource_absence(
+                self._master, 'pod', g_pod_list_before[0])
+            g_new_pod = self._get_newly_deployed_gluster_pod(g_pod_list_before)
+            openshift_ops.wait_for_pod_be_ready(self._master, g_new_pod[0])
+
+    def _wait_for_gluster_pod_be_ready(self, g_pod_list_before):
+        """Wait for the gluster pods to be in ready state"""
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+
+        # Check if the gluster pods are in ready state
+        try:
+            pod_count = len(self._registry_servers_info.keys())
+            openshift_ops.wait_for_pods_be_ready(
+                self._master, pod_count, "glusterfs-node=pod",
+                timeout=120, wait_step=6)
+        except exceptions.ExecutionError:
+            self._guster_pod_delete(g_pod_list_before)
 
     @pytest.mark.tier2
     def test_promethoues_pods_and_pvcs(self):
@@ -822,3 +869,108 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
         if w.expired:
             raise exceptions.ExecutionError(
                 "Failed to update node details in prometheus")
+
+    @pytest.mark.tier2
+    def test_restart_prometheus_glusterfs_pod(self):
+        """Validate restarting glusterfs pod"""
+
+        # Add check for CRS version
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+        if not self.is_containerized_gluster():
+            self.skipTest(
+                "Skipping this test case as CRS version check "
+                "can not be implemented")
+
+        # Get one of the prometheus pod name and respective pvc name
+        openshift_ops.switch_oc_project(
+            self._master, self._prometheus_project_name)
+        prometheus_pods = openshift_ops.oc_get_pods(
+            self._master, selector=self._prometheus_resources_selector)
+        if not prometheus_pods:
+            self.skipTest(
+                prometheus_pods, "Skipping test as prometheus"
+                " pod is not present")
+        prometheus_pod = list(prometheus_pods.keys())[0]
+        pvc_name = openshift_ops.oc_get_custom_resource(
+            self._master, "pod",
+            ":.spec.volumes[*].persistentVolumeClaim.claimName",
+            prometheus_pod)[0]
+        self.assertTrue(
+            pvc_name,
+            "Failed to get pvc name from {} pod".format(prometheus_pod))
+        iqn, _, node = self.verify_iscsi_sessions_and_multipath(
+            pvc_name, prometheus_pod, rtype='pod',
+            heketi_server_url=self._registry_heketi_server_url,
+            is_registry_gluster=True)
+
+        # Get the ip of active path
+        devices = openshift_storage_libs.get_iscsi_block_devices_by_path(
+            node, iqn)
+        mpath = openshift_storage_libs.get_mpath_name_from_device_name(
+            node, list(devices.keys())[0])
+        mpath_dev = (
+            openshift_storage_libs.get_active_and_enabled_devices_from_mpath(
+                node, mpath))
+        node_ip = devices[mpath_dev['active'][0]]
+
+        # Get the name of gluster pod from the ip
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+        gluster_pods = openshift_ops.get_ocp_gluster_pod_details(
+            self._master)
+        active_pod_name = list(
+            filter(lambda pod: (pod["pod_host_ip"] == node_ip), gluster_pods)
+        )[0]["pod_name"]
+        err_msg = "Failed to get the gluster pod name {} with active path"
+        self.assertTrue(active_pod_name, err_msg.format(active_pod_name))
+        g_pods = [pod['pod_name'] for pod in gluster_pods]
+        g_pods.remove(active_pod_name)
+        pod_list = [active_pod_name, g_pods[0]]
+        for pod_name in pod_list:
+
+            # Delete the glusterfs pods
+            openshift_ops.switch_oc_project(
+                self._master, self._prometheus_project_name)
+            self._fetch_metric_from_promtheus_pod(
+                metric='heketi_device_brick_count')
+
+            openshift_ops.switch_oc_project(
+                self._master, self._registry_project_name)
+            g_pod_list_before = [
+                pod["pod_name"]
+                for pod in openshift_ops.get_ocp_gluster_pod_details(
+                    self._master)]
+
+            openshift_ops.oc_delete(self._master, 'pod', pod_name)
+            self.addCleanup(
+                self._guster_pod_delete, g_pod_list_before)
+
+            # Wait for gluster pod to be absent
+            openshift_ops.wait_for_resource_absence(
+                self._master, 'pod', pod_name)
+
+            # Try to fetch metric from prometheus pod
+            openshift_ops.switch_oc_project(
+                self._master, self._prometheus_project_name)
+            self._fetch_metric_from_promtheus_pod(
+                metric='heketi_device_brick_count')
+
+            # Wait for new pod to come up
+            openshift_ops.switch_oc_project(
+                self._master, self._registry_project_name)
+            self.assertTrue(self._get_newly_deployed_gluster_pod(
+                g_pod_list_before), "Failed to get new pod")
+            self._wait_for_gluster_pod_be_ready(g_pod_list_before)
+
+            # Validate iscsi and multipath
+            openshift_ops.switch_oc_project(
+                self._master, self._prometheus_project_name)
+            self.verify_iscsi_sessions_and_multipath(
+                pvc_name, prometheus_pod, rtype='pod',
+                heketi_server_url=self._registry_heketi_server_url,
+                is_registry_gluster=True)
+
+            # Try to fetch metric from prometheus pod
+            self._fetch_metric_from_promtheus_pod(
+                metric='heketi_device_brick_count')
