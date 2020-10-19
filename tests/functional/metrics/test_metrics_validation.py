@@ -27,6 +27,7 @@ from openshiftstoragelibs.openshift_storage_libs import (
     get_iscsi_block_devices_by_path,
     get_mpath_name_from_device_name,
 )
+from openshiftstoragelibs import waiter
 
 
 @ddt.ddt
@@ -274,3 +275,41 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
         restart_gluster_vol_brick_processes(
             self.master, bhv_name, list(self.registry_servers_info.keys()))
         self.addCleanup(self.cassandra_pod_delete_cleanup, raise_on_error=True)
+
+    @pytest.mark.tier3
+    def test_run_workload_with_metrics(self):
+        """Validate if logs are being generated after running workload"""
+
+        # Get the size of used space of logs
+        cassandra_pod = get_pod_name_from_rc(
+            self.master, self.metrics_rc_hawkular_cassandra)
+        mount_point = "/cassandra_data"
+        cmd_space_check = ('df -k --output=used {} | sed "/Used/d" |'
+                           'sed "s/G//"'.format(mount_point))
+        ret, initial_used_percent, err = oc_rsh(
+            self.master, cassandra_pod, cmd_space_check)
+        err_msg = "Failed to fetch the size of used space, error {}"
+        self.assertFalse(ret, err_msg.format(err))
+
+        # Create 20 PVCs and app pods with IO
+        switch_oc_project(self.master, self.storage_project_name)
+        pvc_count, batch_count = 5, 4
+        for _ in range(batch_count):
+            pvcs = self.create_and_wait_for_pvcs(pvc_amount=pvc_count)
+            self.create_dcs_with_pvc(pvcs)
+        self.addCleanup(
+            switch_oc_project, self.master, self.storage_project_name)
+
+        # Get and verify the final size of used space of logs
+        switch_oc_project(self.master, self.metrics_project_name)
+        for w in waiter.Waiter(600, 30):
+            ret, final_used_percent, err = oc_rsh(
+                self.master, cassandra_pod, cmd_space_check)
+            self.assertFalse(ret, err_msg.format(err))
+            if int(initial_used_percent) < int(final_used_percent):
+                break
+        if w.expired:
+            raise AssertionError(
+                "Initial used space {} for logs is not less than final "
+                "used space {}".format(
+                    initial_used_percent, final_used_percent))
