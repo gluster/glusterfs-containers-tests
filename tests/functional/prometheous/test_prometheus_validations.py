@@ -8,13 +8,17 @@ from pkg_resources import parse_version
 
 import ddt
 from glusto.core import Glusto as g
+from glustolibs.gluster import brick_libs
+from glustolibs.gluster import volume_ops
 import pytest
 
 from openshiftstoragelibs.baseclass import GlusterBlockBaseClass
 from openshiftstoragelibs import command
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs import gluster_ops
 from openshiftstoragelibs import openshift_ops
+from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import waiter
 
 
@@ -38,6 +42,8 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
                     'heketi_server_url'])
             self._registry_project_name = (
                 g.config['openshift']['registry_project_name'])
+            self._registry_servers_info = (
+                g.config['gluster_registry_servers'])
         except KeyError as err:
             self.skipTest("Config file doesn't have key {}".format(err))
 
@@ -96,6 +102,22 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
                 pvc_names.append(pvc_name)
 
         return pod_names, pvc_names
+
+    @podcmd.GlustoPod()
+    def _guster_volume_cleanup(self, vol_name):
+        # Check brick status. Restart vol if bricks are offline
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+        brick_list = brick_libs.get_all_bricks(
+            "auto_get_gluster_endpoint", vol_name)
+        self.assertIsNotNone(brick_list, "Failed to get brick list")
+        check_bricks = brick_libs.are_bricks_online(
+            "auto_get_gluster_endpoint", vol_name, brick_list)
+        if not check_bricks:
+            start_vol, _, _ = volume_ops.volume_start(
+                "auto_get_gluster_endpoint", vol_name, force=True)
+            self.assertFalse(
+                start_vol, "Failed to start volume using force")
 
     @pytest.mark.tier2
     def test_promethoues_pods_and_pvcs(self):
@@ -475,3 +497,103 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
             if w.expired:
                 raise exceptions.ExecutionError(
                     "Failed to update device details in prometheus")
+
+    @pytest.mark.tier2
+    @podcmd.GlustoPod()
+    def test_prometheous_kill_bhv_brick_process(self):
+        """Validate kill brick process of block hosting
+        volume with prometheus workload running"""
+
+        # Add check for CRS version
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+        if not self.is_containerized_gluster():
+            self.skipTest("Skipping this test case as CRS"
+                          " version check can not be implemented")
+
+        # Get one of the prometheus pod name and respective pvc name
+        openshift_ops.switch_oc_project(
+            self._master, self._prometheus_project_name)
+        prometheus_pods = openshift_ops.oc_get_pods(
+            self._master, selector=self._prometheus_resources_selector)
+        if not prometheus_pods:
+            self.skipTest(
+                prometheus_pods, "Skipping test as prometheus"
+                " pod is not present")
+
+        # Validate iscsi and multipath
+        prometheus_pod = list(prometheus_pods.keys())[0]
+        pvc_name = openshift_ops.oc_get_custom_resource(
+            self._master, "pod",
+            ":.spec.volumes[*].persistentVolumeClaim.claimName",
+            prometheus_pod)
+        self.assertTrue(pvc_name, "Failed to get PVC name")
+        pvc_name = pvc_name[0]
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, prometheus_pod, rtype='pod',
+            heketi_server_url=self._registry_heketi_server_url,
+            is_registry_gluster=True)
+
+        # Try to fetch metric from prometheus pod
+        self._fetch_metric_from_promtheus_pod(
+            metric='heketi_device_brick_count')
+
+        # Kill the brick process of a BHV
+        gluster_node = list(self._registry_servers_info.keys())[0]
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+        bhv_name = self.get_block_hosting_volume_by_pvc_name(
+            pvc_name, heketi_server_url=self._registry_heketi_server_url,
+            gluster_node=gluster_node, ocp_client_node=self._master)
+        vol_status = gluster_ops.get_gluster_vol_status(bhv_name)
+        gluster_node_ip, brick_pid = None, None
+        for g_node, g_node_data in vol_status.items():
+            for process_name, process_data in g_node_data.items():
+                if process_name.startswith("/var"):
+                    gluster_node_ip = g_node
+                    brick_pid = process_data["pid"]
+                    break
+            if gluster_node_ip and brick_pid:
+                break
+        self.assertIsNotNone(brick_pid, "Could not find pid for brick")
+        cmd = "kill -9 {}".format(brick_pid)
+        openshift_ops.cmd_run_on_gluster_pod_or_node(
+            self._master, cmd, gluster_node_ip)
+        self.addCleanup(self._guster_volume_cleanup, bhv_name)
+
+        # Check if the brick-process has been killed
+        killed_pid_cmd = (
+            "ps -p {} -o pid --no-headers".format(brick_pid))
+        try:
+            openshift_ops.cmd_run_on_gluster_pod_or_node(
+                self._master, killed_pid_cmd, gluster_node_ip)
+        except exceptions.ExecutionError:
+            g.log.info("Brick process {} was killed"
+                       "successfully".format(brick_pid))
+
+        # Try to fetch metric from prometheus pod
+        openshift_ops.switch_oc_project(
+            self._master, self._prometheus_project_name)
+        self._fetch_metric_from_promtheus_pod(
+            metric='heketi_device_brick_count')
+
+        # Start the bhv using force
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project_name)
+        start_vol, _, _ = volume_ops.volume_start(
+            gluster_node_ip, bhv_name, force=True)
+        self.assertFalse(
+            start_vol, "Failed to start volume {}"
+            " using force".format(bhv_name))
+
+        # Validate iscsi and multipath
+        openshift_ops.switch_oc_project(
+            self._master, self._prometheus_project_name)
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, prometheus_pod, rtype='pod',
+            heketi_server_url=self._registry_heketi_server_url,
+            is_registry_gluster=True)
+
+        # Try to fetch metric from prometheus pod
+        self._fetch_metric_from_promtheus_pod(
+            metric='heketi_device_brick_count')
