@@ -46,6 +46,7 @@ from openshiftstoragelibs.openshift_ops import (
     oc_get_custom_resource,
     oc_rsh,
     scale_dc_pod_amount_and_wait,
+    switch_oc_project,
     verify_pvc_status_is_bound,
     wait_for_events,
     wait_for_pod_be_ready,
@@ -868,3 +869,52 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
             # Delete the PVC
             oc_delete(self.node, 'pvc', pvc_name)
             wait_for_resource_absence(self.node, 'pvc', pvc_name)
+
+    @pytest.mark.tier2
+    def test_block_provisioner_on_multiple_clusters(self):
+        """Check block provisioner and verify on multiple clusters
+        """
+        # Skip test if registry project is not present
+        self.registry_sc = self.storage_classes.get(
+            'registry_block_storage_class')
+        if not self.registry_sc:
+            self.skipTest(
+                "Config file doesn't have key "
+                "openshift.dynamic_provisioning.storage_classes")
+
+        self._registry_heketi_server_url = self.registry_sc.get('resturl')
+        self._registry_project_name = self.registry_sc.get(
+            'restsecretnamespace')
+        if not (self._registry_heketi_server_url
+                and self._registry_project_name):
+            self.skipTest(
+                "Config file doesn't have key"
+                "'storage_classes.registry_block_storage_class.resturl' or "
+                "'storage_classes.registry_block_storage_class"
+                ".restsecretnamespace'")
+
+        size = 1
+        prefix = 'autotest-pvc-{}'.format(utils.get_random_str(size=5))
+
+        # Create PVC in default namespace and verify multipath
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_size=size, pvc_name_prefix=prefix)
+        _, pod_name = self.create_dc_with_pvc(pvc_name)
+        match_pvc_and_pv(self.node, prefix)
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, pod_name, rtype='pod')
+
+        # Change project namespace
+        self.addCleanup(
+            switch_oc_project, self.node, self.storage_project_name)
+        switch_oc_project(self.node, self._registry_project_name)
+
+        # Create PVC in registry namespace and verify multipath
+        self.sc_name = self.create_storage_class(glusterfs_registry=True)
+        pvc_name = self.create_and_wait_for_pvc(
+            sc_name=self.sc_name, pvc_size=size, pvc_name_prefix=prefix)
+        _, pod_name = self.create_dc_with_pvc(pvc_name)
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, pod_name, rtype='pod',
+            heketi_server_url=self._registry_heketi_server_url,
+            is_registry_gluster=True)
