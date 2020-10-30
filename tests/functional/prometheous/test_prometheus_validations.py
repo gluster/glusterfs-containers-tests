@@ -354,3 +354,124 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
         if w.expired:
             raise exceptions.ExecutionError(
                 "Failed to update device details in prometheus")
+
+    @ddt.data('usedbytes', 'brickcount')
+    @pytest.mark.tier3
+    def test_heketi_prometheus_usedbytes_brickcount_on_device_delete(
+            self, operation):
+        """Validate used bytes,device count on heketi and prometheus"""
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+
+        # Get list of additional devices for one of the Gluster nodes
+        gluster_server_0 = list(self.gluster_servers_info.values())[0]
+        manage_hostname = gluster_server_0.get("manage")
+        self.assertTrue(
+            manage_hostname, "IP Address is not specified for "
+                             "node {}".format(gluster_server_0))
+        device_name = gluster_server_0.get("additional_devices")[0]
+        self.assertTrue(
+            device_name, "Additional devices are not specified for "
+                         "node {}".format(gluster_server_0))
+
+        # Get node ID of the Gluster hostname
+        node_list = heketi_ops.heketi_topology_info(
+            h_node, h_server, json=True).get("clusters")[0].get("nodes")
+        self.assertTrue(
+            node_list, "Cluster info command returned empty list of nodes")
+        node_id = [
+            node.get("id")
+            for node in node_list
+            if manage_hostname == node.get("hostnames").get("manage")[0]]
+        self.assertTrue(
+            node_id, "Failed to get node_id for {}".format(manage_hostname))
+        node_id = node_id[0]
+
+        # Adding heketi device
+        heketi_ops.heketi_device_add(h_node, h_server, device_name, node_id)
+        node_info_after_addition = heketi_ops.heketi_node_info(
+            h_node, h_server, node_id, json=True)
+        device_id, bricks = None, None
+        for device in node_info_after_addition.get("devices"):
+            if device.get("name") == device_name:
+                device_id, bricks = (
+                    device.get("id"), len(device.get("bricks")))
+                break
+
+        # Verify zero bricks on the device
+        msg = (
+            "Number of bricks on the device {} of the nodes should be"
+            "zero".format(device_name))
+        self.assertFalse(bricks, msg)
+        self.addCleanup(
+            heketi_ops.heketi_device_delete, h_node, h_server, device_id,
+            raise_on_error=False)
+        self.addCleanup(
+            heketi_ops.heketi_device_remove, h_node, h_server, device_id,
+            raise_on_error=False)
+        self.addCleanup(
+            heketi_ops.heketi_device_disable, h_node, h_server, device_id,
+            raise_on_error=False)
+
+        # Disable,Remove and Delete heketi device
+        heketi_ops.heketi_device_disable(h_node, h_server, device_id)
+        heketi_ops.heketi_device_remove(h_node, h_server, device_id)
+        heketi_ops.heketi_device_delete(h_node, h_server, device_id)
+
+        # Verify device deletion
+        node_info_after_deletion = (
+            heketi_ops.heketi_node_info(h_node, h_server, node_id))
+        msg = ("Device {} should not be shown in node info of the node {}"
+               "after the device deletion".format(device_id, node_id))
+        self.assertNotIn(device_id, node_info_after_deletion, msg)
+
+        if operation == "usedbytes":
+            # Validate heketi and prometheus device used bytes
+            for w in waiter.Waiter(timeout=60, interval=10):
+                device_used_bytes_prometheus = 0
+                device_used_bytes_metrics = 0
+                openshift_ops.switch_oc_project(
+                    self.ocp_master_node[0], 'openshift-monitoring')
+                metric_result = self._fetch_metric_from_promtheus_pod(
+                    metric='heketi_device_used_bytes')
+                for result in metric_result:
+                    if (node_id == result.get('cluster')
+                            and device_name == result.get('device')):
+                        device_used_bytes_prometheus += (
+                            int(result.get('value')[1]))
+                openshift_ops.switch_oc_project(
+                    self.ocp_master_node[0], 'glusterfs')
+                metrics = heketi_ops.get_heketi_metrics(h_node, h_server)
+                heketi_device_count_metric = (
+                    metrics.get('heketi_device_used_bytes'))
+                for result in heketi_device_count_metric:
+                    if (node_id == result.get('cluster')
+                            and device_name == result.get('device')):
+                        device_used_bytes_metrics = int(result.get('value'))
+                if device_used_bytes_prometheus == device_used_bytes_metrics:
+                    break
+            if w.expired:
+                raise exceptions.ExecutionError(
+                    "Failed to update device details in prometheus")
+
+        elif operation == "brickcount":
+            # Validate heketi and prometheus device brick count
+            for w in waiter.Waiter(timeout=60, interval=10):
+                device_brick_count_prometheus = 0
+                device_brick_count_metrics = 0
+                metrics = heketi_ops.get_heketi_metrics(h_node, h_server)
+                heketi_device_count_metric = metrics.get(
+                    'heketi_device_brick_count')
+                for result in heketi_device_count_metric:
+                    device_brick_count_metrics += int(result.get('value'))
+                openshift_ops.switch_oc_project(
+                    self.ocp_master_node[0], 'openshift-monitoring')
+                metric_result = self._fetch_metric_from_promtheus_pod(
+                    metric='heketi_device_brick_count')
+                for result in metric_result:
+                    device_brick_count_prometheus += (
+                        int(result.get('value')[1]))
+                if device_brick_count_prometheus == device_brick_count_metrics:
+                    break
+            if w.expired:
+                raise exceptions.ExecutionError(
+                    "Failed to update device details in prometheus")
