@@ -2039,3 +2039,88 @@ def match_pv_and_heketi_volumes(hostname, heketi_volumes, pvc_prefix):
                "PV: {}, Heketi volumes {}, "
                "Difference: {}".format(pv_volumes, heketi_volumes, vol_diff))
     assert not vol_diff, err_msg
+
+
+def oc_create_offline_block_volume_expand_job(
+        hostname, pvc_name, job_name_prefix='block-expand-job',
+        mount_path='/mnt'):
+    """Create Block Volume Expand Job with block PVC mounted at /mnt
+
+    Args:
+        hostname (str): Hostname on which we want to run oc commands
+        pvc_name (str): Name of a block PVC to attach to block expand job
+        job_name_prefix (str): Job name prefix given by user at the time
+                          of job creation
+        mount_path (str): Where PVC should be mounted
+
+    Returns:
+        string: Name of the created job
+    """
+
+    # Find MOUNTPOINT on host node wrt to the mount_path on pod and run
+    # xfs_growfs on host MOUNTPOINT
+    command = [
+        'sh', '-c', 'echo -e "# df -Th {0}" && df -Th {0} && '
+        'DEVICE=$(df --output=source {0} | sed -e /^Filesystem/d) && '
+        'MOUNTPOINT=$($EXEC_ON_HOST lsblk $DEVICE -n -o MOUNTPOINT) && '
+        '$EXEC_ON_HOST xfs_growfs $MOUNTPOINT > /dev/null && '
+        'echo -e "\n# df -Th {0}" && df -Th {0}'.format(mount_path)
+    ]
+
+    # This will be a privileged container be careful while playing with it
+    job_name = "%s-%s" % (job_name_prefix, utils.get_random_str())
+    job_data = json.dumps({
+        "apiVersion": "batch/v1",
+        "kind": "Job",
+        "metadata": {"name": job_name},
+        "spec": {
+            "completions": 1,
+            "template": {
+                "spec": {
+                    "containers": [{
+                        "image": "rhel7",
+                        "env": [
+                            {
+                                "name": "HOST_ROOTFS",
+                                "value": "/rootfs"
+                            },
+                            {
+                                "name": "EXEC_ON_HOST",
+                                "value": "nsenter --root=$(HOST_ROOTFS) "
+                                        "nsenter -t 1 -m"
+                            }
+                        ],
+                        "command": command,
+                        "name": "rhel7",
+                        "volumeMounts": [
+                            {"mountPath": mount_path, "name": "block-pvc"},
+                            {"mountPath": "/dev", "name": "host-dev"},
+                            {"mountPath": "/rootfs", "name": "host-rootfs"}
+                        ],
+                        "securityContext": {"privileged": True}
+                    }],
+                    "volumes": [
+                        {
+                            "name": "block-pvc", "persistentVolumeClaim": {
+                                "claimName": pvc_name
+                            }
+                        },
+                        {
+                            "name": "host-dev", "hostPath": {
+                                "path": "/dev"
+                            }
+                        },
+                        {
+                            "name": "host-rootfs", "hostPath": {
+                                "path": "/"
+                            }
+                        }
+                    ],
+                    "restartPolicy": "Never"
+                }
+            }
+        }
+    })
+
+    oc_create(hostname, job_data, 'stdin')
+    return job_name
