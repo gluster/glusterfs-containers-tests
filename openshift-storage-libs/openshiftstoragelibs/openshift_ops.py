@@ -483,7 +483,8 @@ def oc_create_tiny_pod_with_volume(hostname, pvc_name, pod_name_prefix='',
 
 
 def oc_delete(
-        ocp_node, rtype, name, raise_on_absence=True, collect_logs=False):
+        ocp_node, rtype, name, raise_on_absence=True, collect_logs=False,
+        skip_res_validation=True):
     """Delete an OCP resource by name
 
     Args:
@@ -495,8 +496,10 @@ def oc_delete(
                                  else return
                                  default value: True
         collect_logs (bool): Collect logs before deleting resource
+        skip_res_validation(bool): To validate before deletion of resource.
     """
-    if not oc_get_yaml(ocp_node, rtype, name, raise_on_error=raise_on_absence):
+    if skip_res_validation and not oc_get_yaml(
+            ocp_node, rtype, name, raise_on_error=raise_on_absence):
         return
 
     if rtype == "pod" and collect_logs:
