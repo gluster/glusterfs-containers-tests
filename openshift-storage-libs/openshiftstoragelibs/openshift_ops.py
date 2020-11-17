@@ -2124,3 +2124,23 @@ def oc_create_offline_block_volume_expand_job(
 
     oc_create(hostname, job_data, 'stdin')
     return job_name
+
+
+def is_job_complete(hostname, job_name, namespace=""):
+    """Check job completion status
+
+    Args:
+        hostname (str): Hostname on which we want to run command
+        job_name (str): k8s job name
+        namespace (str): k8s namespace name
+    Return:
+        bool
+    """
+
+    cmd = ['oc', 'get', 'jobs', '-o=custom-columns=:.status.succeeded',
+           '--no-headers', job_name]
+
+    cmd += ['-n', namespace] if namespace else []
+
+    out = command.cmd_run(cmd, hostname=hostname)
+    return out == "1"
