@@ -21,6 +21,7 @@ from openshiftstoragelibs.heketi_ops import (
     get_total_free_space,
     heketi_blockvolume_create,
     heketi_blockvolume_delete,
+    heketi_blockvolume_expand,
     heketi_blockvolume_info,
     heketi_blockvolume_list,
     heketi_blockvolume_list_by_name_prefix,
@@ -31,14 +32,23 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_info,
     hello_heketi,
 )
+from openshiftstoragelibs import heketi_version
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_default_block_hosting_volume_size,
+    get_pod_name_from_dc,
+    get_pv_name_from_pvc,
+    is_job_complete,
+    oc_create_offline_block_volume_expand_job,
+    oc_delete,
+    oc_get_custom_resource,
     oc_rsh,
     restart_service_on_gluster_pod_or_node,
+    scale_dc_pod_amount_and_wait,
     wait_for_service_status_on_gluster_pod_or_node,
 )
 from openshiftstoragelibs import podcmd
+from openshiftstoragelibs import waiter
 from openshiftstoragelibs import utils
 
 
@@ -582,3 +592,76 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
             "Expecting free space in app pod before {} should be greater than"
             " {} as 100M file is created".format(
                 free_space_before, free_space_after))
+
+    def _block_vol_expand_common_offline_vs_online(self, is_online_expand):
+        node = self.ocp_master_node[0]
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+
+        version = heketi_version.get_heketi_version(h_node)
+        if version < '9.0.0-13':
+            self.skipTest("heketi-client package {} does not support "
+                          "blockvolume expand".format(version.v_str))
+
+        pvc_name = self.create_and_wait_for_pvc()
+        dc_name = self.create_dc_with_pvc(pvc_name)
+        pv_name = get_pv_name_from_pvc(node, pvc_name)
+
+        # get block volume id
+        custom = r":.metadata.annotations.'gluster\.org\/volume-id'"
+        bvol_id = oc_get_custom_resource(node, 'pv', custom, pv_name)
+        self.assertNotEqual(
+            bvol_id[0], "<none>",
+            "volume name not found from pv {}".format(pv_name))
+        bvol_info = heketi_blockvolume_info(
+            h_node, h_server, bvol_id[0], json=True)
+
+        # verify required blockhostingvolume free size
+        bhv_id = bvol_info["blockhostingvolume"]
+        bhv_info = heketi_volume_info(h_node, h_server, bhv_id, json=True)
+        if bhv_info["blockinfo"]["freesize"] < 1:
+            self.skipTest("blockhostingvolume doesn't have required freespace")
+
+        if not is_online_expand:
+            scale_dc_pod_amount_and_wait(node, dc_name[0], pod_amount=0)
+
+        # expand block volume and verify usable size
+        bvol_info = heketi_blockvolume_expand(
+            h_node, h_server, bvol_id[0], 2, json=True)
+        self.assertEqual(
+            bvol_info["size"], 2, "Block volume expand does not works")
+        self.assertEqual(
+            bvol_info["size"], bvol_info["usablesize"],
+            "block volume size is not equal to the usablesize: {}".format(
+                bvol_info))
+
+        return pvc_name, dc_name, bvol_info
+
+    @pytest.mark.tier1
+    def test_block_vol_offline_expand(self):
+        """Test blockvol expansion while PVC is not in use"""
+        node = self.ocp_master_node[0]
+
+        pvc_name, dc_name, bvol_info = (
+            self._block_vol_expand_common_offline_vs_online(False))
+
+        # create and wait for job to be completed
+        jobname = oc_create_offline_block_volume_expand_job(node, pvc_name)
+        self.addCleanup(oc_delete, node, 'job', jobname)
+        for w in waiter.Waiter(300, 5):
+            if is_job_complete(node, jobname):
+                break
+        if w.expired:
+            raise AssertionError(
+                "block expand job {} is not completed".format(jobname))
+
+        # verify expand size
+        scale_dc_pod_amount_and_wait(node, dc_name[0], pod_amount=1)
+        pod_name = get_pod_name_from_dc(node, dc_name[0])
+        ret, size, _ = oc_rsh(
+            node, pod_name,
+            'df -kh /mnt | sed "/Filesystem/d" | awk \'{print $2}\' '
+            '| sed "s/G//"')
+        self.assertFalse(ret, "Failed to get size from client side")
+        self.assertEqual(
+            int(float(size)), bvol_info["size"], "new size is not "
+            "reflected at mount point after block volume expand")
