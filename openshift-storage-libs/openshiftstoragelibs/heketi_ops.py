@@ -293,6 +293,55 @@ def heketi_volume_expand(heketi_client_node, heketi_server_url, volume_id,
     return out
 
 
+def heketi_blockvolume_expand(heketi_client_node, heketi_server_url,
+                              blockvolume_id, new_size, raise_on_error=True,
+                              **kwargs):
+    """Executes heketi blockvolume expand command.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+        blockvolume_id (str): blockvolume ID
+        new_size (str): blockvolume net new size
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - json : (bool)
+            - secret : (str)|None
+            - user : (str)|None
+
+    Returns:
+        dict: if json if True, then it returns raw string output.
+        string: returns raw string output if json is False
+
+    Raises:
+        exceptions.ExecutionError: if command fails.
+    """
+
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '9.0.0-13':
+        msg = ("heketi-client package {} does not support blockvolume "
+               "expand".format(version.v_str))
+        g.log.error(msg)
+        raise NotImplementedError(msg)
+
+    heketi_server_url, json_arg, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+
+    cmd = ("heketi-cli -s {} blockvolume expand {} "
+           "--new-size={} {} {} {}".format(
+               heketi_server_url, blockvolume_id, new_size, json_arg,
+               admin_key, user))
+    cmd = TIMEOUT_PREFIX + cmd
+    out = heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
+    if json_arg and out:
+        return json.loads(out)
+    return out
+
+
 def heketi_volume_delete(heketi_client_node, heketi_server_url, volume_id,
                          raise_on_error=True, **kwargs):
     """Executes heketi volume delete command.
