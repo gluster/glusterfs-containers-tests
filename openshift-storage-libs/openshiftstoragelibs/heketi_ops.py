@@ -2116,3 +2116,40 @@ def validate_dev_path_vg_and_uuid(
 
     # Compare the uuid from node and heketi
     return n_uuid == h_uuid
+
+
+def heketi_brick_evict(heketi_client_node, heketi_server_url, brick_id,
+                       raise_on_error=True, **kwargs):
+    """Executes heketi brick evict command.
+
+    Args:
+        heketi_client_node (str): Node on which cmd has to be executed.
+        heketi_server_url (str): Heketi server url
+        brick_id (str): Brick ID
+        raise_on_error (bool): whether or not to raise exception
+            in case of an error.
+
+    Kwargs:
+        The keys, values in kwargs are:
+            - secret : (str)|None
+            - user : (str)|None
+
+    Raises:
+        exceptions.ExecutionError: if command fails.
+    """
+
+    version = heketi_version.get_heketi_version(heketi_client_node)
+    if version < '9.0.0-13':
+        msg = (
+            "heketi-client package {} does not support brick evict".format(
+                version.v_str))
+        raise NotImplementedError(msg)
+
+    heketi_server_url, _, admin_key, user = _set_heketi_global_flags(
+        heketi_server_url, **kwargs)
+
+    cmd = "heketi-cli -s {} brick evict {} {} {}".format(
+        heketi_server_url, brick_id, admin_key, user)
+    cmd = TIMEOUT_PREFIX + cmd
+    heketi_cmd_run(
+        heketi_client_node, cmd, raise_on_error=raise_on_error)
