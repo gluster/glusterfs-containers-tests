@@ -17,6 +17,7 @@ from openshiftstoragelibs import command
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import gluster_ops
+from openshiftstoragelibs import node_ops
 from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import waiter
@@ -24,6 +25,18 @@ from openshiftstoragelibs import waiter
 
 @ddt.ddt
 class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
+
+    @classmethod
+    def setUpClass(cls):
+        super(TestPrometheusAndGlusterRegistryValidation, cls).setUpClass()
+
+        cls.metrics = ('heketi_volumes_count',
+                       'heketi_block_volumes_count',
+                       'heketi_device_brick_count',
+                       'heketi_device_free_bytes',
+                       'heketi_nodes_count',
+                       'heketi_device_used_bytes',
+                       'heketi_device_size_bytes')
 
     def setUp(self):
         """Initialize all the variables which are necessary for test cases"""
@@ -597,3 +610,104 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
         # Try to fetch metric from prometheus pod
         self._fetch_metric_from_promtheus_pod(
             metric='heketi_device_brick_count')
+
+    def _check_heketi_and_gluster_pod_after_node_reboot(self, heketi_node):
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
+        heketi_pod = openshift_ops.get_pod_names_from_dc(
+            self._master, self.heketi_dc_name)[0]
+
+        # Wait for heketi pod to become ready and running
+        openshift_ops.wait_for_pod_be_ready(self._master, heketi_pod)
+        heketi_ops.hello_heketi(self._master, self.heketi_server_url)
+
+        # Wait for glusterfs pods to become ready if hosted on same node
+        heketi_node_ip = openshift_ops.oc_get_custom_resource(
+            self._master, 'pod', '.:status.hostIP', heketi_pod)[0]
+        if heketi_node_ip in self.gluster_servers:
+            gluster_pod = openshift_ops.get_gluster_pod_name_for_specific_node(
+                self._master, heketi_node)
+
+            # Wait for glusterfs pod to become ready
+            openshift_ops.wait_for_pod_be_ready(self._master, gluster_pod)
+            services = (
+                ("glusterd", "running"), ("gluster-blockd", "running"),
+                ("tcmu-runner", "running"), ("gluster-block-target", "exited"))
+            for service, state in services:
+                openshift_ops.check_service_status_on_pod(
+                    self._master, gluster_pod, service, "active", state)
+
+    @pytest.mark.tier4
+    def test_heketi_metrics_validation_with_node_reboot(self):
+        """Validate heketi metrics after node reboot using prometheus"""
+
+        initial_metrics, final_metrics = {}, {}
+
+        # Use storage project
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
+
+        # Get initial metrics result
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+        initial_metrics = tuple(
+            heketi_ops.get_heketi_metrics(h_node, h_server).get(metric)[0]
+            for metric in self.metrics)
+
+        # Use prometheus project
+        openshift_ops.switch_oc_project(
+            self._master, self._prometheus_project_name)
+
+        # Get initial prometheus result
+        initial_prometheus = self._get_and_manipulate_metric_data(
+            self.metrics)
+
+        # Get hosted node IP of heketi pod
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
+        heketi_pod = openshift_ops.get_pod_name_from_dc(
+            self._master, self.heketi_dc_name)
+        heketi_node = openshift_ops.oc_get_custom_resource(
+            self._master, 'pod', '.:spec.nodeName', heketi_pod)[0]
+
+        # Reboot the node on which heketi pod is scheduled
+        self.addCleanup(
+            self._check_heketi_and_gluster_pod_after_node_reboot, heketi_node)
+        node_ops.node_reboot_by_command(heketi_node)
+
+        # Wait node to become NotReady
+        custom = r'":.status.conditions[?(@.type==\"Ready\")]".status'
+        for w in waiter.Waiter(300, 10):
+            status = openshift_ops.oc_get_custom_resource(
+                self._master, 'node', custom, heketi_node)
+            if status[0] == 'False':
+                break
+        if w.expired:
+            raise exceptions.ExecutionError(
+                "Failed to bring down node {}".format(heketi_node))
+
+        # Wait for node to become ready
+        openshift_ops.wait_for_ocp_node_be_ready(self._master, heketi_node)
+
+        # Wait for heketi and glusterfs pod to become ready
+        self._check_heketi_and_gluster_pod_after_node_reboot(heketi_node)
+
+        # Use prometheus project
+        openshift_ops.switch_oc_project(
+            self._master, self._prometheus_project_name)
+
+        # Get final metrics result
+        final_metrics = tuple(
+            heketi_ops.get_heketi_metrics(h_node, h_server).get(metric)[0]
+            for metric in self.metrics)
+
+        # Get final prometheus result
+        final_prometheus = self._get_and_manipulate_metric_data(
+            self.metrics)
+
+        err_msg = "Initial value {} is not same as final value {}"
+        self.assertEqual(
+            initial_metrics, final_metrics, err_msg.format(
+                initial_metrics, final_metrics))
+        self.assertEqual(
+            initial_prometheus, final_prometheus, err_msg.format(
+                initial_prometheus, final_prometheus))
