@@ -32,10 +32,10 @@ class TestDevPathMapping(baseclass.GlusterBlockBaseClass):
 
         # Disable 4th and other nodes
         for node_id in h_nodes_list[3:]:
-            heketi_ops.heketi_node_disable(
-                self.h_node, self.h_server, node_id)
             self.addCleanup(
                 heketi_ops.heketi_node_enable,
+                self.h_node, self.h_server, node_id)
+            heketi_ops.heketi_node_disable(
                 self.h_node, self.h_server, node_id)
 
         h_info = heketi_ops.heketi_node_info(
