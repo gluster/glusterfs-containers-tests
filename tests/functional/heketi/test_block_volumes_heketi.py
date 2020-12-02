@@ -47,6 +47,10 @@ from openshiftstoragelibs.openshift_ops import (
     scale_dc_pod_amount_and_wait,
     wait_for_service_status_on_gluster_pod_or_node,
 )
+from openshiftstoragelibs.openshift_storage_libs import (
+    get_iscsi_block_devices_by_path,
+    get_mpath_name_from_device_name,
+)
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import waiter
 from openshiftstoragelibs import utils
@@ -661,6 +665,55 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
             node, pod_name,
             'df -kh /mnt | sed "/Filesystem/d" | awk \'{print $2}\' '
             '| sed "s/G//"')
+        self.assertFalse(ret, "Failed to get size from client side")
+        self.assertEqual(
+            int(float(size)), bvol_info["size"], "new size is not "
+            "reflected at mount point after block volume expand")
+
+    @pytest.mark.tier1
+    def test_block_vol_online_expand(self):
+        """Test blockvol expansion while PVC is in use"""
+        node = self.ocp_master_node[0]
+
+        pvc_name, dc_name, bvol_info = (
+            self._block_vol_expand_common_offline_vs_online(True))
+
+        # get pod hostname
+        iqn, _, pod_hostname = self.verify_iscsi_sessions_and_multipath(
+            pvc_name, dc_name[0])
+
+        # Get the paths info from the node
+        device = list(
+            get_iscsi_block_devices_by_path(pod_hostname, iqn).keys())[0]
+
+        # Get mpath name
+        mpath = get_mpath_name_from_device_name(pod_hostname, device)
+
+        # rescan the devices on pod_hostname
+        cmd = "iscsiadm -m node -R -T {}".format(iqn)
+        self.cmd_run(cmd, pod_hostname)
+
+        # refresh multipath device size
+        cmd = "multipathd -k'resize map {}'".format(mpath)
+        self.cmd_run(cmd, pod_hostname)
+
+        # get mount point
+        cmd = "lsblk /dev/{} --output MOUNTPOINT --noheadings".format(device)
+        mount_point = self.cmd_run(cmd, pod_hostname)
+
+        cmd = "xfs_growfs {}".format(mount_point)
+        self.cmd_run(cmd, pod_hostname)
+
+        cmd = ("df -h {} | sed '/Filesystem/d' | awk '{{print $2}}' |"
+               " sed 's/G//'")
+        size = self.cmd_run(cmd.format(mount_point), pod_hostname)
+        self.assertEqual(
+            int(float(size)), bvol_info["size"], "new size is not "
+            "reflected at host mount point after block volume expand")
+
+        # verify expand size
+        pod_name = get_pod_name_from_dc(node, dc_name[0])
+        ret, size, _ = oc_rsh(node, pod_name, cmd.format("/mnt"))
         self.assertFalse(ret, "Failed to get size from client side")
         self.assertEqual(
             int(float(size)), bvol_info["size"], "new size is not "
