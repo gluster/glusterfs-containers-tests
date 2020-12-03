@@ -114,6 +114,12 @@ openshift:
         prometheus_resources_selector: "<prometheus_recources_selector>"
         alertmanager_resources_selector: "<alertmanager_resources_selector>"
 
+    # 'io_container_images' section covers the details of container images
+    # used for I/O
+    io_container_images:
+        cirros: quay.io/libpod/cirros
+        busybox: quay.io/prometheus/busybox
+
 common:
     allow_heketi_zones_update: False
     check_heketi_db_inconsistencies: True

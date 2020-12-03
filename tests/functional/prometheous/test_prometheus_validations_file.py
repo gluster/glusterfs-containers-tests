@@ -100,7 +100,8 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
         # Create PVC and wait for it to be in 'Bound' state
         pvc_name = self.create_and_wait_for_pvc()
         pod_name = openshift_ops.oc_create_tiny_pod_with_volume(
-            self._master, pvc_name, "autotest-volume")
+            self._master, pvc_name, "autotest-volume",
+            image=self.io_container_image_cirros)
         self.addCleanup(openshift_ops.oc_delete, self._master, 'pod', pod_name,
                         raise_on_absence=False)
 

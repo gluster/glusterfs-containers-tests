@@ -411,7 +411,7 @@ def _oc_create_app_dc_with_io_image(hostname, pvc_name, dc_name_prefix,
 
 def oc_create_app_dc_with_io(
         hostname, pvc_name, dc_name_prefix="autotests-dc-with-app-io",
-        replicas=1, space_to_use=1048576, label=None):
+        replicas=1, space_to_use=1048576, label=None, image="cirros"):
     """Create DC with app PODs and attached PVC, constantly running I/O.
 
     Args:
@@ -423,34 +423,15 @@ def oc_create_app_dc_with_io(
         replicas (int): amount of application POD replicas.
         space_to_use (int): value in bytes which will be used for I/O.
         label (dict): dict of keys and values to add labels in DC.
+        image (str): Container image for I/O.
     """
     return _oc_create_app_dc_with_io_image(
         hostname, pvc_name, dc_name_prefix, replicas, space_to_use,
-        label, "cirros")
-
-
-def oc_create_busybox_app_dc_with_io(
-        hostname, pvc_name, dc_name_prefix="autotests-dc-with-app-io",
-        replicas=1, space_to_use=1048576, label=None):
-    """Create DC with app PODs and attached PVC, constantly running I/O.
-
-    Args:
-        hostname (str): Node on which 'oc create' command will be executed.
-        pvc_name (str): name of the Persistent Volume Claim to attach to
-                        the application PODs where constant I/O will run.
-        dc_name_prefix (str): DC name will consist of this prefix and
-                              random str.
-        replicas (int): amount of application POD replicas.
-        space_to_use (int): value in bytes which will be used for I/O.
-        label (dict): dict of keys and values to add labels in DC.
-    """
-    return _oc_create_app_dc_with_io_image(
-        hostname, pvc_name, dc_name_prefix, replicas, space_to_use,
-        label, "busybox")
+        label, image=image)
 
 
 def oc_create_tiny_pod_with_volume(hostname, pvc_name, pod_name_prefix='',
-                                   mount_path='/mnt'):
+                                   mount_path='/mnt', image='cirros'):
     """Create tiny POD from image in 10Mb with attached volume at /mnt"""
     pod_name = "%s-%s" % (pod_name_prefix, utils.get_random_str())
     pod_data = json.dumps({
@@ -463,7 +444,7 @@ def oc_create_tiny_pod_with_volume(hostname, pvc_name, pod_name_prefix='',
             "terminationGracePeriodSeconds": 20,
             "containers": [{
                 "name": pod_name,
-                "image": "cirros",  # noqa: 10 Mb! linux image
+                "image": image,  # noqa: 10 Mb! linux image
                 "volumeMounts": [{"mountPath": mount_path, "name": "vol"}],
                 "command": [
                     "/bin/sh", "-ec",

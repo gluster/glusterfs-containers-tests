@@ -70,7 +70,8 @@ class TestPvResizeClass(BaseClass):
         pvc_name = self.create_and_wait_for_pvc()
 
         # Create DC with POD and attached PVC to it.
-        dc_name = oc_create_app_dc_with_io(node, pvc_name)
+        dc_name = oc_create_app_dc_with_io(
+            node, pvc_name, image=self.io_container_image_cirros)
         self.addCleanup(oc_delete, node, 'dc', dc_name)
         self.addCleanup(scale_dc_pod_amount_and_wait,
                         node, dc_name, 0)
@@ -194,7 +195,8 @@ class TestPvResizeClass(BaseClass):
         pvc_name = self.create_and_wait_for_pvc(pvc_size=pvc_size_gb)
 
         # Create DC with POD and attached PVC to it
-        dc_name = oc_create_app_dc_with_io(self.node, pvc_name)
+        dc_name = oc_create_app_dc_with_io(
+            self.node, pvc_name, image=self.io_container_image_cirros)
         self.addCleanup(oc_delete, self.node, 'dc', dc_name)
         self.addCleanup(scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
         pod_name = get_pod_name_from_dc(self.node, dc_name)
@@ -270,7 +272,8 @@ class TestPvResizeClass(BaseClass):
         pvc_name = self.create_and_wait_for_pvc(pvc_size=pv_size)
 
         # Create DC with POD and attached PVC to it.
-        dc_name = oc_create_app_dc_with_io(node, pvc_name)
+        dc_name = oc_create_app_dc_with_io(
+            node, pvc_name, image=self.io_container_image_cirros)
         self.addCleanup(oc_delete, node, 'dc', dc_name)
         self.addCleanup(scale_dc_pod_amount_and_wait,
                         node, dc_name, 0)

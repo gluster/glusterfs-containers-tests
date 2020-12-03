@@ -45,7 +45,6 @@ from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_rc,
     get_pv_name_from_pvc,
     oc_create_app_dc_with_io,
-    oc_create_busybox_app_dc_with_io,
     oc_create_pvc,
     oc_create_sc,
     oc_create_secret,
@@ -126,6 +125,11 @@ class BaseClass(unittest.TestCase):
 
         cls.heketi_logs_before_delete = bool(
             g.config.get("common", {}).get("heketi_logs_before_delete", False))
+
+        cls.io_container_image_cirros = cls.openshift_config.get(
+            "io_container_images", {}).get("cirros", "cirros")
+        cls.io_container_image_busybox = cls.openshift_config.get(
+            "io_container_images", {}).get("busybox", "busybox")
 
         cmd = "echo -n %s | base64" % cls.heketi_cli_key
         ret, out, err = g.run(cls.ocp_master_node[0], cmd, "root")
@@ -434,7 +438,7 @@ class BaseClass(unittest.TestCase):
     def create_dcs_with_pvc(
             self, pvc_names, timeout=600, wait_step=5,
             dc_name_prefix='autotests-dc', space_to_use=1048576, label=None,
-            skip_cleanup=False, is_busybox=False):
+            skip_cleanup=False, image=None):
         """Create bunch of DCs with app PODs which use unique PVCs.
 
         Args:
@@ -445,7 +449,7 @@ class BaseClass(unittest.TestCase):
             dc_name_prefix(str): name prefix for deployement config.
             space_to_use(int): space to use for io's in KB.
             label (dict): keys and value for adding label into DC.
-            is_busybox (bool): True for busybox app pod else default is False
+            image (str): container image used for I/O.
         Returns: dictionary with following structure:
             {
                 "pvc_name_1": ("dc_name_1", "pod_name_1"),
@@ -454,16 +458,17 @@ class BaseClass(unittest.TestCase):
                 "pvc_name_n": ("dc_name_n", "pod_name_n"),
             }
         """
+        if not image:
+            image = self.io_container_image_cirros
+
         pvc_names = (
             pvc_names
             if isinstance(pvc_names, (list, set, tuple)) else [pvc_names])
         dc_and_pod_names, dc_names = {}, {}
-        function = (oc_create_busybox_app_dc_with_io if is_busybox else
-                    oc_create_app_dc_with_io)
         for pvc_name in pvc_names:
-            dc_name = function(self.ocp_client[0], pvc_name,
-                               space_to_use=space_to_use,
-                               dc_name_prefix=dc_name_prefix, label=label)
+            dc_name = oc_create_app_dc_with_io(
+                self.ocp_client[0], pvc_name, space_to_use=space_to_use,
+                dc_name_prefix=dc_name_prefix, label=label, image=image)
             dc_names[pvc_name] = dc_name
             if not skip_cleanup:
                 self.addCleanup(oc_delete, self.ocp_client[0], 'dc', dc_name)
@@ -484,11 +489,11 @@ class BaseClass(unittest.TestCase):
     def create_dc_with_pvc(
             self, pvc_name, timeout=300, wait_step=10,
             dc_name_prefix='autotests-dc', label=None,
-            skip_cleanup=False, is_busybox=False):
+            skip_cleanup=False, image=None):
         return self.create_dcs_with_pvc(
             pvc_name, timeout, wait_step,
             dc_name_prefix=dc_name_prefix, label=label,
-            skip_cleanup=skip_cleanup, is_busybox=is_busybox)[pvc_name]
+            skip_cleanup=skip_cleanup, image=image)[pvc_name]
 
     def create_heketi_volume_with_name_and_wait(
             self, name, size, raise_on_cleanup_error=True,

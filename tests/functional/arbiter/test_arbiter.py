@@ -155,7 +155,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         mount_path = "/mnt"
         pod_name = openshift_ops.oc_create_tiny_pod_with_volume(
             self.node, self.pvc_name, "test-arbiter-pvc-mount-on-app-pod",
-            mount_path=mount_path)
+            mount_path=mount_path, image=self.io_container_image_cirros)
         self.addCleanup(openshift_ops.oc_delete, self.node, 'pod', pod_name)
 
         # Wait for POD be up and running
@@ -1513,7 +1513,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
         # Create PVC and corresponding App pod
         self.create_and_wait_for_pvc(sc_name=sc_name)
         dc_name, pod_name = self.create_dc_with_pvc(
-            self.pvc_name, is_busybox=True)
+            self.pvc_name, image=self.io_container_image_busybox)
 
         # Get vol info
         vol_info = openshift_ops.get_gluster_vol_info_by_pvc_name(

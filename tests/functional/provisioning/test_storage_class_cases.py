@@ -146,7 +146,8 @@ class TestStorageClassCases(BaseClass):
         """
         # create pod using pvc created
         dc_name = oc_create_app_dc_with_io(
-            self.ocp_master_node[0], self.pvc_name
+            self.ocp_master_node[0], self.pvc_name,
+            image=self.io_container_image_cirros
         )
         pod_name = get_pod_name_from_dc(self.ocp_master_node[0], dc_name)
         self.addCleanup(oc_delete, self.ocp_master_node[0], "dc", dc_name)

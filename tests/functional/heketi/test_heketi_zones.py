@@ -626,7 +626,8 @@ class TestHeketiZones(baseclass.BaseClass):
         # Create app dcs with I/O
         for pvc_name in pvc_names:
             app_dc = openshift_ops.oc_create_app_dc_with_io(
-                self.node, pvc_name=pvc_name, dc_name_prefix=prefix)
+                self.node, pvc_name=pvc_name,
+                dc_name_prefix=prefix, image=self.io_container_image_cirros)
             self.addCleanup(openshift_ops.oc_delete, self.node, 'dc', app_dc)
 
             # Get pod names and label them

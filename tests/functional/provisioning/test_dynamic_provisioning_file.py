@@ -56,7 +56,8 @@ class TestDynamicProvisioningP0(BaseClass):
         pvc_name = self.create_and_wait_for_pvc()
 
         # Create DC with POD and attached PVC to it.
-        dc_name = oc_create_app_dc_with_io(self.node, pvc_name)
+        dc_name = oc_create_app_dc_with_io(
+            self.node, pvc_name, image=self.io_container_image_cirros)
         self.addCleanup(oc_delete, self.node, 'dc', dc_name)
         self.addCleanup(scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
 
@@ -144,7 +145,7 @@ class TestDynamicProvisioningP0(BaseClass):
         # Create app POD with attached volume
         app_1_pod_name = oc_create_tiny_pod_with_volume(
             self.node, app_1_pvc_name, "test-pvc-mount-on-app-pod",
-            mount_path=mount_path)
+            mount_path=mount_path, image=self.io_container_image_cirros)
         self.addCleanup(
             wait_for_resource_absence, self.node, 'pod', app_1_pod_name)
         self.addCleanup(oc_delete, self.node, 'pod', app_1_pod_name)
@@ -184,7 +185,7 @@ class TestDynamicProvisioningP0(BaseClass):
         # Create second app POD
         app_2_pod_name = oc_create_tiny_pod_with_volume(
             self.node, app_2_pvc_name, "test-pvc-mount-on-app-pod",
-            mount_path=mount_path)
+            mount_path=mount_path, image=self.io_container_image_cirros)
         self.addCleanup(
             wait_for_resource_absence, self.node, 'pod', app_2_pod_name)
         self.addCleanup(oc_delete, self.node, 'pod', app_2_pod_name)
@@ -225,7 +226,7 @@ class TestDynamicProvisioningP0(BaseClass):
         # Create app POD with attached volume
         pod_name = oc_create_tiny_pod_with_volume(
             self.node, pvc_name, "test-pvc-mount-on-app-pod",
-            mount_path=mount_path)
+            mount_path=mount_path, image=self.io_container_image_cirros)
         self.addCleanup(
             wait_for_resource_absence, self.node, 'pod', pod_name)
         self.addCleanup(oc_delete, self.node, 'pod', pod_name)
@@ -312,7 +313,8 @@ class TestDynamicProvisioningP0(BaseClass):
         pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
 
         # Create DC with POD and attached PVC to it.
-        dc_name = oc_create_app_dc_with_io(self.node, pvc_name)
+        dc_name = oc_create_app_dc_with_io(
+            self.node, pvc_name, image=self.io_container_image_cirros)
         self.addCleanup(oc_delete, self.node, 'dc', dc_name)
         self.addCleanup(scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
 
@@ -385,7 +387,8 @@ class TestDynamicProvisioningP0(BaseClass):
 
         # Create DC with application PODs
         dc_name = oc_create_app_dc_with_io(
-            self.node, pvc_name, replicas=replicas)
+            self.node, pvc_name, replicas=replicas,
+            image=self.io_container_image_cirros)
         self.addCleanup(oc_delete, self.node, 'dc', dc_name)
         self.addCleanup(scale_dc_pod_amount_and_wait, self.node, dc_name, 0)
 
@@ -456,7 +459,8 @@ class TestDynamicProvisioningP0(BaseClass):
 
         # Create DC with POD and attached PVC to it.
         try:
-            dc_name = oc_create_app_dc_with_io(self.node, self.pvc_name)
+            dc_name = oc_create_app_dc_with_io(
+                self.node, self.pvc_name, image=self.io_container_image_cirros)
             pod_name = get_pod_name_from_dc(self.node, dc_name)
             wait_for_pod_be_ready(self.node, pod_name)
         finally:
