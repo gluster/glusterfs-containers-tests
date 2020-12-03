@@ -458,6 +458,13 @@ class TestHeketiVolume(BaseClass):
         h_db_check_vol_before = (
             h_db_check_before.get("{}volumes".format(vol_type)))
 
+        # Get existing heketi volume list
+        existing_volumes = heketi_volume_list(h_node, h_url, json=True)
+
+        # Add cleanup function to clean stale volumes created during test
+        self.addCleanup(
+            self._cleanup_heketi_volumes, existing_volumes.get("volumes"))
+
         # Delete heketi pod to clean db operations
         if(h_db_check_bricks_before.get("pending")
                 or h_db_check_vol_before.get("pending")):
