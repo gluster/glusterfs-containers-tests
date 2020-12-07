@@ -13,6 +13,7 @@ import pytest
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import openshift_ops
+from openshiftstoragelibs import waiter
 
 
 @ddt.ddt
@@ -82,6 +83,62 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
                         "__name__"]] = matric_result["value"][1]
         return metric_data
 
+    def _fetch_initial_metrics(self, volume_expansion=False):
+
+        # Create PVC and wait for it to be in 'Bound' state
+        sc_name = self.create_storage_class(
+            allow_volume_expansion=volume_expansion)
+        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
+
+        # Create DC and attach with pvc
+        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
+        for w in waiter.Waiter(120, 10):
+            initial_metrics = self._get_and_manipulate_metric_data(
+                self.metrics, pvc_name)
+            if bool(initial_metrics) and len(initial_metrics) == 6:
+                break
+        if w.expired:
+            raise AssertionError("Unable to fetch metrics for the pvc")
+        return pvc_name, pod_name, initial_metrics
+
+    def _perform_io_and_fetch_metrics(
+            self, pod_name, pvc_name, filename, dirname,
+            metric_data, operation):
+        """Create 1000 files and dirs and validate with old metrics"""
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
+        if operation == "create":
+            cmds = ("touch /mnt/{}{{1..1000}}".format(filename),
+                    "mkdir /mnt/{}{{1..1000}}".format(dirname))
+        else:
+            cmds = ("rm -rf /mnt/large_file",
+                    "rm -rf /mnt/{}{{1..1000}}".format(filename),
+                    "rm -rf /mnt/{}{{1..1000}}".format(dirname))
+        for cmd in cmds:
+            self.cmd_run("oc rsh {} {}".format(pod_name, cmd))
+
+        # Fetch the new metrics and compare the inodes used and bytes used
+        for w in waiter.Waiter(120, 10):
+            after_io_metrics = self._get_and_manipulate_metric_data(
+                self.metrics, pvc_name)
+            if operation == "create":
+                if (int(after_io_metrics[
+                    'kubelet_volume_stats_inodes_used']) > int(
+                    metric_data['kubelet_volume_stats_inodes_used']) and int(
+                    after_io_metrics[
+                        'kubelet_volume_stats_used_bytes']) > int(
+                        metric_data['kubelet_volume_stats_used_bytes'])):
+                    break
+            else:
+                if int(metric_data[
+                        'kubelet_volume_stats_used_bytes']) > int(
+                        after_io_metrics['kubelet_volume_stats_used_bytes']):
+                    break
+        if w.expired:
+            raise AssertionError(
+                "After data is modified metrics like bytes used and inodes "
+                "used are not reflected in prometheus")
+
     def _run_io_on_the_pod(self, pod_name, number_of_files):
         for each in range(number_of_files):
             cmd = "touch /mnt/file{}".format(each)
@@ -143,3 +200,48 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
             self.metrics, pvc_name)
         self.assertEqual(dict(initial_metrics), dict(final_metrics),
                          "Metrics are different post pod restart")
+
+    @pytest.mark.tier2
+    def test_prometheus_basic_validation(self):
+        """ Validate basic volume metrics using prometheus """
+
+        # Fetch the metrics and storing initial_metrics as dictionary
+        pvc_name, pod_name, initial_metrics = self._fetch_initial_metrics(
+            volume_expansion=False)
+
+        # Create 1000 files and fetch the metrics that the data is updated
+        self._perform_io_and_fetch_metrics(
+            pod_name=pod_name, pvc_name=pvc_name,
+            filename="filename1", dirname="dirname1",
+            metric_data=initial_metrics, operation="create")
+
+        # Write the IO half the size of the volume and validated from
+        # prometheus pod that the size change is reflected
+        size_to_write = int(initial_metrics[
+            'kubelet_volume_stats_capacity_bytes']) // 2
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
+        cmd = ("dd if=/dev/urandom of=/mnt/large_file bs={} count=1024".
+               format(size_to_write // 1024))
+        ret, _, err = openshift_ops.oc_rsh(self._master, pod_name, cmd)
+        self.assertFalse(ret, 'Failed to write file due to err {}'.format(err))
+
+        # Fetching the metrics and validating the data change is reflected
+        for w in waiter.Waiter(120, 10):
+            half_io_metrics = self._get_and_manipulate_metric_data(
+                ['kubelet_volume_stats_used_bytes'], pvc_name)
+            if bool(half_io_metrics) and (int(
+                    half_io_metrics['kubelet_volume_stats_used_bytes'])
+                    > size_to_write):
+                break
+        if w.expired:
+            raise AssertionError(
+                "After Data is written on the pvc, metrics like inodes used "
+                "and bytes used are not reflected in the prometheus")
+
+        # Delete the files from the volume and wait for the
+        # updated details reflected in prometheus
+        self._perform_io_and_fetch_metrics(
+            pod_name=pod_name, pvc_name=pvc_name,
+            filename="filename1", dirname="dirname1",
+            metric_data=half_io_metrics, operation="delete")
