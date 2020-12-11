@@ -8,11 +8,14 @@ import time
 
 import ddt
 from glusto.core import Glusto as g
+from glustolibs.gluster import rebalance_ops
 import pytest
 
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
+from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import openshift_ops
+from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import waiter
 
 
@@ -83,15 +86,18 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
                         "__name__"]] = matric_result["value"][1]
         return metric_data
 
-    def _fetch_initial_metrics(self, volume_expansion=False):
+    def _fetch_initial_metrics(self, vol_name_prefix=None,
+                               volume_expansion=False):
 
         # Create PVC and wait for it to be in 'Bound' state
         sc_name = self.create_storage_class(
+            vol_name_prefix=vol_name_prefix,
             allow_volume_expansion=volume_expansion)
-        pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
+        pvc_name = self.create_and_wait_for_pvc(
+            pvc_name_prefix=vol_name_prefix, sc_name=sc_name)
 
         # Create DC and attach with pvc
-        dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
+        self.dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
         for w in waiter.Waiter(120, 10):
             initial_metrics = self._get_and_manipulate_metric_data(
                 self.metrics, pvc_name)
@@ -145,6 +151,24 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
             ret, _, err = openshift_ops.oc_rsh(self._master, pod_name, cmd)
             self.assertFalse(ret, "Failed to run the IO with error msg {}".
                              format(err))
+
+    @podcmd.GlustoPod()
+    def _rebalance_completion(self, volume_name):
+        """Rebalance start and completion after expansion."""
+        ret, _, err = rebalance_ops.rebalance_start(
+            'auto_get_gluster_endpoint', volume_name)
+        self.assertFalse(
+            ret, "Rebalance for {} volume not started with error {}".format(
+                volume_name, err))
+
+        for w in waiter.Waiter(240, 10):
+            reb_status = rebalance_ops.get_rebalance_status(
+                'auto_get_gluster_endpoint', volume_name)
+            if reb_status["aggregate"]["statusStr"] == "completed":
+                break
+        if w.expired:
+            raise AssertionError(
+                "Failed to complete the rebalance in 240 seconds")
 
     @pytest.mark.tier2
     def test_prometheus_volume_metrics_on_pod_restart(self):
@@ -245,3 +269,67 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
             pod_name=pod_name, pvc_name=pvc_name,
             filename="filename1", dirname="dirname1",
             metric_data=half_io_metrics, operation="delete")
+
+    @pytest.mark.tier2
+    def test_prometheus_pv_resize(self):
+        """ Validate prometheus metrics with pv resize"""
+
+        # Fetch the metrics and storing initial_metrics as dictionary
+        pvc_name, pod_name, initial_metrics = self._fetch_initial_metrics(
+            vol_name_prefix="for-pv-resize", volume_expansion=True)
+
+        # Write data on the pvc and confirm it is reflected in the prometheus
+        self._perform_io_and_fetch_metrics(
+            pod_name=pod_name, pvc_name=pvc_name,
+            filename="filename1", dirname="dirname1",
+            metric_data=initial_metrics, operation="create")
+
+        # Resize the pvc to 2GiB
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
+        pvc_size = 2
+        openshift_ops.resize_pvc(self._master, pvc_name, pvc_size)
+        openshift_ops.wait_for_events(self._master, obj_name=pvc_name,
+                                      event_reason='VolumeResizeSuccessful')
+        openshift_ops.verify_pvc_size(self._master, pvc_name, pvc_size)
+        pv_name = openshift_ops.get_pv_name_from_pvc(
+            self._master, pvc_name)
+        openshift_ops.verify_pv_size(self._master, pv_name, pvc_size)
+
+        heketi_volume_name = heketi_ops.heketi_volume_list_by_name_prefix(
+            self.heketi_client_node, self.heketi_server_url,
+            "for-pv-resize", json=True)[0][2]
+        self.assertIsNotNone(
+            heketi_volume_name, "Failed to fetch volume with prefix {}".
+            format("for-pv-resize"))
+
+        openshift_ops.oc_delete(self._master, 'pod', pod_name)
+        openshift_ops.wait_for_resource_absence(self._master, 'pod', pod_name)
+        pod_name = openshift_ops.get_pod_name_from_dc(
+            self._master, self.dc_name)
+        openshift_ops.wait_for_pod_be_ready(self._master, pod_name)
+
+        # Check whether the metrics are updated or not
+        for w in waiter.Waiter(120, 10):
+            resize_metrics = self._get_and_manipulate_metric_data(
+                self.metrics, pvc_name)
+            if bool(resize_metrics) and int(resize_metrics[
+                'kubelet_volume_stats_capacity_bytes']) > int(
+                    initial_metrics['kubelet_volume_stats_capacity_bytes']):
+                break
+        if w.expired:
+            raise AssertionError("Failed to reflect PVC Size after resizing")
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
+        time.sleep(240)
+
+        # Lookup and trigger rebalance and wait for the its completion
+        for _ in range(100):
+            self.cmd_run("oc rsh {} ls /mnt/".format(pod_name))
+        self._rebalance_completion(heketi_volume_name)
+
+        # Write data on the resized pvc and compared with the resized_metrics
+        self._perform_io_and_fetch_metrics(
+            pod_name=pod_name, pvc_name=pvc_name,
+            filename="secondfilename", dirname="seconddirname",
+            metric_data=resize_metrics, operation="create")
