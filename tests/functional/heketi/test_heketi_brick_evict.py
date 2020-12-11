@@ -15,7 +15,7 @@ class TestHeketiBrickEvict(BaseClass):
         super(TestHeketiBrickEvict, self).setUp()
 
         version = heketi_version.get_heketi_version(self.heketi_client_node)
-        if version < '9.0.0-13':
+        if version < '9.0.0-14':
             self.skipTest(
                 "heketi-client package {} does not support brick evict".format(
                     version.v_str))

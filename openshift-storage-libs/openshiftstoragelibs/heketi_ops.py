@@ -321,7 +321,7 @@ def heketi_blockvolume_expand(heketi_client_node, heketi_server_url,
     """
 
     version = heketi_version.get_heketi_version(heketi_client_node)
-    if version < '9.0.0-13':
+    if version < '9.0.0-14':
         msg = ("heketi-client package {} does not support blockvolume "
                "expand".format(version.v_str))
         g.log.error(msg)
@@ -2139,7 +2139,7 @@ def heketi_brick_evict(heketi_client_node, heketi_server_url, brick_id,
     """
 
     version = heketi_version.get_heketi_version(heketi_client_node)
-    if version < '9.0.0-13':
+    if version < '9.0.0-14':
         msg = (
             "heketi-client package {} does not support brick evict".format(
                 version.v_str))

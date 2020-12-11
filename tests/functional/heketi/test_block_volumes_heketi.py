@@ -602,7 +602,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
         h_node, h_server = self.heketi_client_node, self.heketi_server_url
 
         version = heketi_version.get_heketi_version(h_node)
-        if version < '9.0.0-13':
+        if version < '9.0.0-14':
             self.skipTest("heketi-client package {} does not support "
                           "blockvolume expand".format(version.v_str))
 
