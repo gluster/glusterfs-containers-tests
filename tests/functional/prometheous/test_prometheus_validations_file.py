@@ -11,7 +11,6 @@ from glusto.core import Glusto as g
 import pytest
 
 from openshiftstoragelibs import baseclass
-from openshiftstoragelibs import command
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import openshift_ops
 
@@ -48,8 +47,6 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
             self.skipTest("Config file doesn't have key {}".format(err))
 
         self._master = self.ocp_master_node[0]
-        cmd = "oc project --short=true"
-        self.current_project = command.cmd_run(cmd, self._master)
 
     def _fetch_metric_from_promtheus_pod(self, metric):
         """Fetch metric from prometheus pod using api call"""
@@ -74,7 +71,7 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
         openshift_ops.switch_oc_project(self._master,
                                         self._prometheus_project_name)
         self.addCleanup(openshift_ops.switch_oc_project,
-                        self._master, self.current_project)
+                        self._master, self.storage_project_name)
 
         metric_data = dict()
         for metric in metrics:
@@ -119,7 +116,8 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
             self.metrics, pvc_name)
 
         # Mark the current node unschedulable on which app pod is running
-        openshift_ops.switch_oc_project(self._master, self.current_project)
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
         pod_info = openshift_ops.oc_get_pods(self._master, name=pod_name)
         openshift_ops.oc_adm_manage_node(
             self._master, '--schedulable=false',
