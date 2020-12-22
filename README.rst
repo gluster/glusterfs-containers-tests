@@ -173,7 +173,7 @@ For example:
 
         $ tox -e functional -- glusto -c 'config.yml' \
             -l /tmp/glustotests-ocp.log --log-level DEBUG \
-            --pytest='-v -x tests -m ocp'
+            '--pytest=-v -x tests -m ocp'
 
 One can configure log files, log levels in the test cases as well. For details
 on how to use `glusto` framework for configuring logs in tests, refer `docs
