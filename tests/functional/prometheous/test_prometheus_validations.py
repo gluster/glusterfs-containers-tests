@@ -5,6 +5,7 @@ except ImportError:
     # py2
     import json
 from pkg_resources import parse_version
+from functools import reduce
 
 import ddt
 from glusto.core import Glusto as g
@@ -711,3 +712,113 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
         self.assertEqual(
             initial_prometheus, final_prometheus, err_msg.format(
                 initial_prometheus, final_prometheus))
+
+    @pytest.mark.tier4
+    @ddt.data('add', 'delete')
+    def test_heketi_metrics_validation_after_node(self, condition):
+        """Validate heketi metrics after adding and remove node"""
+
+        # Get additional node
+        additional_host_info = g.config.get("additional_gluster_servers")
+        if not additional_host_info:
+            self.skipTest(
+                "Skipping this test case as additional gluster server is "
+                "not provied in config file")
+
+        additional_host_info = list(additional_host_info.values())[0]
+        storage_hostname = additional_host_info.get("manage")
+        storage_ip = additional_host_info.get("storage")
+        if not (storage_hostname and storage_ip):
+            self.skipTest(
+                "Config options 'additional_gluster_servers.manage' "
+                "and 'additional_gluster_servers.storage' must be set.")
+
+        h_client, h_server = self.heketi_client_node, self.heketi_server_url
+        initial_node_count, final_node_count = 0, 0
+
+        # Get initial node count from prometheus metrics
+        metric_result = self._fetch_metric_from_promtheus_pod(
+            metric='heketi_nodes_count')
+        initial_node_count = reduce(
+            lambda x, y: x + y,
+            [result.get('value')[1] for result in metric_result])
+
+        # Switch to storage project
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
+
+        # Configure node before adding node
+        self.configure_node_to_run_gluster(storage_hostname)
+
+        # Get cluster list
+        cluster_info = heketi_ops.heketi_cluster_list(
+            h_client, h_server, json=True)
+
+        # Add node to the cluster
+        heketi_node_info = heketi_ops.heketi_node_add(
+            h_client, h_server,
+            len(self.gluster_servers), cluster_info.get('clusters')[0],
+            storage_hostname, storage_ip, json=True)
+        heketi_node_id = heketi_node_info.get("id")
+        self.addCleanup(
+            heketi_ops.heketi_node_delete,
+            h_client, h_server, heketi_node_id, raise_on_error=False)
+        self.addCleanup(
+            heketi_ops.heketi_node_remove,
+            h_client, h_server, heketi_node_id, raise_on_error=False)
+        self.addCleanup(
+            heketi_ops.heketi_node_disable,
+            h_client, h_server, heketi_node_id, raise_on_error=False)
+        self.addCleanup(
+            openshift_ops.switch_oc_project,
+            self._master, self.storage_project_name)
+
+        if condition == 'delete':
+            # Switch to openshift-monitoring project
+            openshift_ops.switch_oc_project(
+                self.ocp_master_node[0], self._prometheus_project_name)
+
+            # Get initial node count from prometheus metrics
+            for w in waiter.Waiter(timeout=60, interval=10):
+                metric_result = self._fetch_metric_from_promtheus_pod(
+                    metric='heketi_nodes_count')
+                node_count = reduce(
+                    lambda x, y: x + y,
+                    [result.get('value')[1] for result in metric_result])
+                if node_count != initial_node_count:
+                    break
+
+            if w.expired:
+                raise exceptions.ExecutionError(
+                    "Failed to get updated node details from prometheus")
+
+            # Remove node from cluster
+            heketi_ops.heketi_node_disable(h_client, h_server, heketi_node_id)
+            heketi_ops.heketi_node_remove(h_client, h_server, heketi_node_id)
+            for device in heketi_node_info.get('devices'):
+                heketi_ops.heketi_device_delete(
+                    h_client, h_server, device.get('id'))
+            heketi_ops.heketi_node_delete(h_client, h_server, heketi_node_id)
+
+        # Switch to openshift-monitoring project
+        openshift_ops.switch_oc_project(
+            self.ocp_master_node[0], self._prometheus_project_name)
+
+        # Get final node count from prometheus metrics
+        for w in waiter.Waiter(timeout=60, interval=10):
+            metric_result = self._fetch_metric_from_promtheus_pod(
+                metric='heketi_nodes_count')
+            final_node_count = reduce(
+                lambda x, y: x + y,
+                [result.get('value')[1] for result in metric_result])
+
+            if condition == 'delete':
+                if final_node_count < node_count:
+                    break
+            else:
+                if final_node_count > initial_node_count:
+                    break
+
+        if w.expired:
+            raise exceptions.ExecutionError(
+                "Failed to update node details in prometheus")
