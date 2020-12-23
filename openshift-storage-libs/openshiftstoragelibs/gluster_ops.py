@@ -4,7 +4,12 @@ try:
 except ImportError:
     # py2
     import json
+try:
+    import xml.etree.cElementTree as etree
+except ImportError:
+    import xml.etree.ElementTree as etree
 import re
+import six
 import time
 
 from glusto.core import Glusto as g
@@ -20,7 +25,10 @@ from glustolibs.gluster.volume_ops import (
 
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs.heketi_ops import heketi_blockvolume_info
-from openshiftstoragelibs.openshift_ops import cmd_run_on_gluster_pod_or_node
+from openshiftstoragelibs.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
+    get_ocp_gluster_pod_details,
+)
 from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import waiter
 
@@ -352,3 +360,84 @@ def get_gluster_vol_free_inodes_with_hosts_of_bricks(vol_name):
             inodes_info = {brick_process: process_data["inodesFree"]}
             hosts_with_inodes_info[g_node].update(inodes_info)
     return hosts_with_inodes_info
+
+
+def _get_gluster_cmd(target, command):
+
+    if isinstance(command, six.string_types):
+        command = [command]
+    ocp_client_node = list(g.config['ocp_servers']['client'].keys())[0]
+    gluster_pods = get_ocp_gluster_pod_details(ocp_client_node)
+
+    if target == 'auto_get_gluster_endpoint':
+        if gluster_pods:
+            target = podcmd.Pod(ocp_client_node, gluster_pods[0]["pod_name"])
+        else:
+            target = list(g.config.get("gluster_servers", {}).keys())[0]
+    elif not isinstance(target, podcmd.Pod) and gluster_pods:
+        for g_pod in gluster_pods:
+            if target in (g_pod['pod_host_ip'], g_pod['pod_hostname']):
+                target = podcmd.Pod(ocp_client_node, g_pod['pod_name'])
+                break
+
+    if isinstance(target, podcmd.Pod):
+        return target.node, ' '.join(['oc', 'rsh', target.podname] + command)
+
+    return target, ' '.join(command)
+
+
+def get_peer_status(mnode):
+    """Parse the output of command 'gluster peer status' using run_async.
+
+    Args:
+        mnode (str): Node on which command has to be executed.
+
+    Returns:
+        NoneType: None if command execution fails or parse errors.
+        list: list of dicts on success.
+
+    Examples:
+        >>> get_peer_status(mnode = 'abc.lab.eng.xyz.com')
+        [{'uuid': '77dc299a-32f7-43d8-9977-7345a344c398',
+        'hostname': 'ijk.lab.eng.xyz.com',
+        'state': '3',
+        'hostnames' : ['ijk.lab.eng.xyz.com'],
+        'connected': '1',
+        'stateStr': 'Peer in Cluster'},
+
+        {'uuid': 'b15b8337-9f8e-4ec3-8bdb-200d6a67ae12',
+        'hostname': 'def.lab.eng.xyz.com',
+        'state': '3',
+        'hostnames': ['def.lab.eng.xyz.com'],
+        'connected': '1',
+        'stateStr': 'Peer in Cluster'}
+        ]
+    """
+    mnode, cmd = _get_gluster_cmd(mnode, "gluster peer status --xml")
+    obj = g.run_async(mnode, cmd, log_level='DEBUG')
+    ret, out, err = obj.async_communicate()
+
+    if ret:
+        g.log.error(
+            "Failed to execute peer status command on node {} with error "
+            "{}".format(mnode, err))
+        return None
+
+    try:
+        root = etree.XML(out)
+    except etree.ParseError:
+        g.log.error("Failed to parse the gluster peer status xml output.")
+        return None
+
+    peer_status_list = []
+    for peer in root.findall("peerStatus/peer"):
+        peer_dict = {}
+        for element in peer.getchildren():
+            if element.tag == "hostnames":
+                hostnames_list = []
+                for hostname in element.getchildren():
+                    hostnames_list.append(hostname.text)
+                element.text = hostnames_list
+            peer_dict[element.tag] = element.text
+        peer_status_list.append(peer_dict)
+    return peer_status_list
