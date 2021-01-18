@@ -1,11 +1,16 @@
 import pytest
 
 from glustolibs.gluster import volume_ops
+import six
 
 from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
 from openshiftstoragelibs import heketi_version
+from openshiftstoragelibs import node_ops
+from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import podcmd
+from openshiftstoragelibs import waiter
 
 
 class TestHeketiBrickEvict(BaseClass):
@@ -19,6 +24,8 @@ class TestHeketiBrickEvict(BaseClass):
             self.skipTest(
                 "heketi-client package {} does not support brick evict".format(
                     version.v_str))
+
+        self.ocp_client = self.ocp_master_node[0]
 
         node_list = heketi_ops.heketi_node_list(
             self.heketi_client_node, self.heketi_server_url)
@@ -88,3 +95,86 @@ class TestHeketiBrickEvict(BaseClass):
             bricks_new, gbricks, "gluster vol info and heketi vol info "
             "mismatched after brick evict {} \n {}".format(
                 gvol_info, vol_info_new))
+
+    def _wait_for_gluster_pod_after_node_reboot(self, node_hostname):
+        """Wait for glusterfs pod to be ready after node reboot"""
+        openshift_ops.wait_for_ocp_node_be_ready(
+            self.ocp_client, node_hostname)
+        gluster_pod = openshift_ops.get_gluster_pod_name_for_specific_node(
+            self.ocp_client, node_hostname)
+        openshift_ops.wait_for_pod_be_ready(self.ocp_client, gluster_pod)
+        services = (
+            ("glusterd", "running"), ("gluster-blockd", "running"),
+            ("tcmu-runner", "running"), ("gluster-block-target", "exited"))
+        for service, state in services:
+            openshift_ops.check_service_status_on_pod(
+                self.ocp_client, gluster_pod, service, "active", state)
+
+    @pytest.mark.tier4
+    def test_brick_evict_with_node_down(self):
+        """Test brick evict basic functionality and verify brick evict
+        after node down"""
+
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+
+        # Disable node if more than 3
+        node_list = heketi_ops.heketi_node_list(h_node, h_server)
+        if len(node_list) > 3:
+            for node_id in node_list[3:]:
+                heketi_ops.heketi_node_disable(h_node, h_server, node_id)
+                self.addCleanup(
+                    heketi_ops.heketi_node_enable, h_node, h_server, node_id)
+
+        # Create heketi volume
+        vol_info = heketi_ops.heketi_volume_create(
+            h_node, h_server, 1, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete,
+            h_node, h_server, vol_info.get('id'))
+
+        # Get node on which heketi pod is scheduled
+        heketi_pod = openshift_ops.get_pod_name_from_dc(
+            self.ocp_client, self.heketi_dc_name)
+        heketi_node = openshift_ops.oc_get_custom_resource(
+            self.ocp_client, 'pod', '.:spec.nodeName', heketi_pod)[0]
+
+        # Get list of hostname from node id
+        host_list = []
+        for node_id in node_list[3:]:
+            node_info = heketi_ops.heketi_node_info(
+                h_node, h_server, node_id, json=True)
+            host_list.append(node_info.get('hostnames').get('manage')[0])
+
+        # Get brick id and glusterfs node which is not heketi node
+        for node in vol_info.get('bricks', {}):
+            node_info = heketi_ops.heketi_node_info(
+                h_node, h_server, node.get('node'), json=True)
+            hostname = node_info.get('hostnames').get('manage')[0]
+            if (hostname != heketi_node) and (hostname not in host_list):
+                brick_id = node.get('id')
+                break
+
+        # Bring down the glusterfs node
+        vm_name = node_ops.find_vm_name_by_ip_or_hostname(hostname)
+        self.addCleanup(
+            self._wait_for_gluster_pod_after_node_reboot, hostname)
+        self.addCleanup(node_ops.power_on_vm_by_name, vm_name)
+        node_ops.power_off_vm_by_name(vm_name)
+
+        # Wait glusterfs node to become NotReady
+        custom = r'":.status.conditions[?(@.type==\"Ready\")]".status'
+        for w in waiter.Waiter(300, 20):
+            status = openshift_ops.oc_get_custom_resource(
+                self.ocp_client, 'node', custom, hostname)
+            if status[0] in ['False', 'Unknown']:
+                break
+        if w.expired:
+            raise exceptions.ExecutionError(
+                "Failed to bring down node {}".format(hostname))
+
+        # Perform brick evict operation
+        try:
+            heketi_ops.heketi_brick_evict(h_node, h_server, brick_id)
+        except AssertionError as e:
+            if ('No Replacement was found' not in six.text_type(e)):
+                raise
