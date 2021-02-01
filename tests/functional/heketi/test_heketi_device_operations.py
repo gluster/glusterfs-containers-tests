@@ -1,6 +1,7 @@
 import ddt
 from glusto.core import Glusto as g
 import pytest
+import six
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
@@ -17,6 +18,8 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_topology_info,
     heketi_volume_create,
     heketi_volume_delete,
+    rm_tags,
+    set_tags,
     validate_dev_path_vg_and_uuid,
 )
 from openshiftstoragelibs import utils
@@ -600,3 +603,25 @@ class TestHeketiDeviceOperations(BaseClass):
                     h_node, h_url, node, dev)
                 self.assertTrue(is_true, "Failed to verify dv_path for the "
                                 "device {}".format(dev))
+
+    @pytest.mark.tier3
+    def test_volume_create_as_tag_maching_rule(self):
+        """Validate settags operation only on one device in the cluster"""
+
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+
+        # Set tag on any one device in cluster
+        node_list = heketi_node_list(h_node, h_server, json=True)
+        node_info = heketi_node_info(h_node, h_server, node_list[0], json=True)
+        device_id = node_info.get('devices', {})[0].get('id')
+        set_tags(h_node, h_server, 'device', device_id, "tier:it")
+        self.addCleanup(rm_tags, h_node, h_server, 'device', device_id, 'tier')
+
+        # Volume creation should fail
+        try:
+            heketi_volume_create(
+                h_node, h_server, 2,
+                gluster_volume_options="user.heketi.device-tag-match tier=it")
+        except AssertionError as e:
+            if ("Failed to allocate new volume" not in six.text_type(e)):
+                raise
