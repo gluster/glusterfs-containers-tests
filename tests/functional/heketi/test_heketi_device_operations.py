@@ -625,3 +625,74 @@ class TestHeketiDeviceOperations(BaseClass):
         except AssertionError as e:
             if ("Failed to allocate new volume" not in six.text_type(e)):
                 raise
+
+    @pytest.mark.tier4
+    def test_device_settags_tier_option(self):
+        """Validate volume creation with a tag-matching rule"""
+
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+        initial_brick_count, before_brick_count, after_brick_count = [], [], []
+
+        # Set tag on device on 3 different nodes
+        node_list = heketi_node_list(h_node, h_server, json=True)
+        device_list = []
+        for node_id in node_list[:3]:
+            node_info = heketi_node_info(h_node, h_server, node_id, json=True)
+            device_id = node_info.get('devices', {})[0].get('id')
+            device_list.append(device_id)
+            set_tags(h_node, h_server, 'device', device_id, "tier:test")
+            self.addCleanup(
+                rm_tags, h_node, h_server, 'device', device_id, "tier",
+                raise_on_error=False)
+
+        # Get initial number of bricks present on device
+        for device_id in device_list:
+            device_info = heketi_device_info(
+                h_node, h_server, device_id, json=True)
+            initial_brick_count.append(len(device_info.get("bricks")))
+
+        # Create volume with device tag option
+        volume_info = heketi_volume_create(
+            h_node, h_server, 2,
+            gluster_volume_options="user.heketi.device-tag-match tier=test",
+            json=True)
+        self.addCleanup(
+            heketi_volume_delete, h_node, h_server, volume_info.get("id"))
+
+        # Get number of bricks present on device after volume create
+        for device_id in device_list:
+            device_info = heketi_device_info(
+                h_node, h_server, device_id, json=True)
+            before_brick_count.append(len(device_info.get("bricks")))
+
+        # Validate volume has created on tag devices
+        self.assertGreater(
+            before_brick_count, initial_brick_count,
+            "Volume {} has not created on tag devices".format(
+                volume_info.get("id")))
+
+        # Create volume with not equal to tag option
+        volume_info = heketi_volume_create(
+            h_node, h_server, 2,
+            gluster_volume_options="user.heketi.device-tag-match tier!=test",
+            json=True)
+        self.addCleanup(
+            heketi_volume_delete, h_node, h_server, volume_info.get("id"))
+
+        # Get number of bricks present on device after volume create
+        for device_id in device_list:
+            device_info = heketi_device_info(
+                h_node, h_server, device_id, json=True)
+            after_brick_count.append(len(device_info.get("bricks")))
+
+        # Validate volume has not created on tag devices
+        self.assertEqual(
+            before_brick_count, after_brick_count,
+            "Volume {} has created on tag devices".format(
+                volume_info.get("id")))
+
+        # Update the tag on device
+        for device_id in device_list:
+            set_tags(h_node, h_server, 'device', device_id, "tier:test_update")
+            self.addCleanup(
+                rm_tags, h_node, h_server, 'device', device_id, "tier")
