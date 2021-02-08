@@ -10,6 +10,7 @@ from openshiftstoragelibs import (
     heketi_ops,
     podcmd,
 )
+from openshiftstoragelibs import utils
 
 
 class TestVolumeExpansionAndDevicesTestCases(BaseClass):
@@ -521,3 +522,44 @@ class TestVolumeExpansionAndDevicesTestCases(BaseClass):
             free_space_after_deletion > free_space_after_expansion,
             "Free space is not reclaimed after volume deletion of %s"
             % volume_id)
+
+    @pytest.mark.tier2
+    @podcmd.GlustoPod()
+    def test_replica_volume_expand(self):
+        """
+        Test expansion of a replica volume
+        """
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+        volume_name = (
+            "autotests-heketi-volume-{}".format(utils.get_random_str()))
+        volume_size = 10
+        creation_info = self.create_heketi_volume_with_name_and_wait(
+            volume_name, volume_size, json=True, raise_on_cleanup_error=False)
+        volume_id = creation_info["id"]
+        volume_info = heketi_ops.heketi_volume_info(
+            h_node, h_server, volume_id, json=True)
+
+        # Get gluster volume info
+        gluster_vol = volume_ops.get_volume_info(
+            'auto_get_gluster_endpoint', volname=volume_name)
+        self.assertTrue(
+            gluster_vol, "Failed to get volume {} info".format(volume_name))
+        vol_name = gluster_vol[volume_name]
+        self.assertEqual(
+            vol_name['replicaCount'], "3",
+            "Replica count is different for volume {} Actual:{} "
+            "Expected : 3".format(vol_name, vol_name['replicaCount']))
+
+        expand_size = 5
+        heketi_ops.heketi_volume_expand(
+            h_node, h_server, volume_id, expand_size)
+        volume_info = heketi_ops.heketi_volume_info(
+            h_node, h_server, volume_id, json=True)
+        expected_size = volume_size + expand_size
+        self.assertEqual(
+            volume_info['size'], expected_size,
+            "Volume Expansion failed, Expected Size: {}, Actual "
+            "Size: {}".format(str(expected_size), str(volume_info['size'])))
+
+        self.get_brick_and_volume_status(volume_name)
+        self.get_rebalance_status(volume_name)
