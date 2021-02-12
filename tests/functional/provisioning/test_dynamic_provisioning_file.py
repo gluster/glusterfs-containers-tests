@@ -4,6 +4,7 @@ from glusto.core import Glusto as g
 import pytest
 
 from openshiftstoragelibs.baseclass import BaseClass
+from openshiftstoragelibs import command
 from openshiftstoragelibs.exceptions import ExecutionError
 from openshiftstoragelibs.heketi_ops import (
     heketi_node_info,
@@ -13,7 +14,12 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_list,
     verify_volume_name_prefix,
 )
-from openshiftstoragelibs.node_ops import node_reboot_by_command
+from openshiftstoragelibs.node_ops import (
+    find_vm_name_by_ip_or_hostname,
+    node_reboot_by_command,
+    power_off_vm_by_name,
+    power_on_vm_by_name
+)
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_gluster_host_ips_by_pvc_name,
@@ -545,3 +551,37 @@ class TestDynamicProvisioningP0(BaseClass):
             "-o=custom-columns=:.spec.storageClassName" % pvc_name)
         out = self.cmd_run(get_sc_of_pvc_cmd)
         self.assertEqual(out, self.sc_name)
+
+    @pytest.mark.tier2
+    def test_node_failure_pv_mounted(self):
+        """Test node failure when PV is mounted with app pods running"""
+        filepath = "/mnt/file_for_testing_volume.log"
+        pvc_name = self.create_and_wait_for_pvc()
+
+        dc_and_pod_names = self.create_dcs_with_pvc(pvc_name)
+        dc_name, pod_name = dc_and_pod_names[pvc_name]
+
+        mount_point = "df -kh /mnt -P | tail -1 | awk '{{print $1}}'"
+        pod_cmd = "oc exec {} -- {}".format(pod_name, mount_point)
+        hostname = command.cmd_run(pod_cmd, hostname=self.node)
+        hostname = hostname.split(":")[0]
+
+        vm_name = find_vm_name_by_ip_or_hostname(hostname)
+        self.addCleanup(power_on_vm_by_name, vm_name)
+        power_off_vm_by_name(vm_name)
+
+        cmd = "dd if=/dev/urandom of={} bs=1K count=100".format(filepath)
+        ret, _, err = oc_rsh(self.node, pod_name, cmd)
+        self.assertFalse(
+            ret, "Failed to execute command {} on {} with error {}"
+            .format(cmd, self.node, err))
+
+        oc_delete(self.node, 'pod', pod_name)
+        wait_for_resource_absence(self.node, 'pod', pod_name)
+        pod_name = get_pod_name_from_dc(self.node, dc_name)
+        wait_for_pod_be_ready(self.node, pod_name)
+
+        ret, _, err = oc_rsh(self.node, pod_name, cmd)
+        self.assertFalse(
+            ret, "Failed to execute command {} on {} with error {}"
+            .format(cmd, self.node, err))
