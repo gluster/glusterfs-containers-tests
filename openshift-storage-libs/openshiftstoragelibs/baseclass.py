@@ -40,6 +40,7 @@ from openshiftstoragelibs.node_ops import (
     power_on_vm_by_name,
 )
 from openshiftstoragelibs.openshift_ops import (
+    cmd_run_on_gluster_pod_or_node,
     get_block_provisioner,
     get_pod_name_from_dc,
     get_pod_name_from_rc,
@@ -1097,3 +1098,38 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
             msg = "Out of {} pods {} pods restarted {}".format(
                 len(pods_new), len(pods_restart), pods_restart)
             raise AssertionError(msg)
+
+    def validate_glusterfsd_memory_usage(self, size_limit):
+        """Validate memory usage of glusterfsd process.
+
+        Args:
+            size_limit (int): Expected memory usage.
+
+        """
+        # Cmd to fetch the pid and memory usage
+        get_glusterfsd_pid = "pgrep glusterfsd"
+        get_mem_usage = "pmap -x {} | tail -1"
+
+        # Fetch gluster node/pod list
+        for gluster_node in self.gluster_servers:
+            # Fetch pid from the node/pod
+            out = cmd_run_on_gluster_pod_or_node(
+                self.ocp_master, get_glusterfsd_pid, gluster_node)
+            self.assertTrue(
+                out, "Failed to get pid of glusterfsd from node/pod "
+                "{}".format(gluster_node))
+            pid_list = out.split("\n")
+
+            # Fetch the memory usage for each pid
+            for pid in pid_list:
+                out = cmd_run_on_gluster_pod_or_node(
+                    self.ocp_master, get_mem_usage.format(pid), gluster_node)
+                self.assertTrue(
+                    out, "Failed to fetch the memory used for glusterfsd"
+                    " process from the node/pod {}".format(gluster_node))
+                memory_used = int(out.split()[-2])
+                self.assertLess(
+                    memory_used, size_limit,
+                    "Failed memory used  of glusterfsd {} is greater than the"
+                    " expected size {} for node/pod {}".format(
+                        memory_used, size_limit, gluster_node))
