@@ -17,6 +17,7 @@ from openshiftstoragelibs.exceptions import (
 from openshiftstoragelibs.gluster_ops import (
     get_block_hosting_volume_name,
     get_gluster_vol_status,
+    match_heketi_and_gluster_volumes_by_prefix,
 )
 from openshiftstoragelibs.heketi_ops import (
     get_block_hosting_volume_list,
@@ -30,6 +31,7 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_volume_delete,
     heketi_volume_info,
     heketi_volume_list,
+    heketi_volume_list_by_name_prefix,
 )
 from openshiftstoragelibs.node_ops import (
     attach_existing_vmdk_from_vmstore,
@@ -45,6 +47,8 @@ from openshiftstoragelibs.openshift_ops import (
     get_pod_name_from_dc,
     get_pod_name_from_rc,
     get_pv_name_from_pvc,
+    match_pv_and_heketi_volumes,
+    match_pvc_and_pv,
     oc_create_app_dc_with_io,
     oc_create_pvc,
     oc_create_sc,
@@ -738,6 +742,25 @@ class BaseClass(unittest.TestCase):
             len(h_volume_list['volumes']), len(vol_list),
             "Failed to verify volume count Expected:'{}', Actual:'{}'".format(
                 len(h_volume_list['volumes']), len(vol_list)))
+
+    def match_volume_by_prefix(self, prefix):
+        """Match PVC, PV, Heketi and Gluster volume
+
+        Args:
+            prefix (str): Start of the unique string.
+        """
+
+        match_pvc_and_pv(self.h_node, prefix)
+        h_vols = heketi_volume_list_by_name_prefix(
+            self.heketi_client_node, self.heketi_server_url,
+            prefix, json=True)
+        h_vol_ids = sorted([v[0] for v in h_vols])
+        match_pv_and_heketi_volumes(
+            self.heketi_client_node, h_vol_ids, prefix)
+        h_vol_names = sorted([
+            v[2].replace("{}_".format(prefix), "") for v in h_vols])
+        match_heketi_and_gluster_volumes_by_prefix(
+            h_vol_names, "{}_".format(prefix))
 
 
 class GlusterBlockBaseClass(BaseClass):
