@@ -94,6 +94,20 @@ openshift:
                 hacount: "3"
                 chapauthenabled: "true"
                 volumenameprefix: "autotests-block"
+            registry_block_storage_class:
+                chapauthenabled: 'true'
+                hacount: '3'
+                provisioner: gluster.org/glusterblock
+                restsecretnamespace: "<fake-namespace-name>"
+                resturl: "<fake-url>"
+                restuser: "<fake-user>"
+                volumenameprefix: autotests-registry-block
+            registry_file_storage_class:
+                provisioner: kubernetes.io/glusterfs
+                resturl: "<fake-url>"
+                restuser: "<fake-user>"
+                secretnamespace: "<fake-namespace-name>"
+                volumenameprefix: autotests-registry-file
     metrics:
         metrics_project_name: "<metrics-project-name>"
         metrics_rc_hawkular_cassandra: "<hawkular-cassandra-rc-name>"
