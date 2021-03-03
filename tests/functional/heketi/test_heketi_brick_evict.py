@@ -1,4 +1,3 @@
-import ddt
 import pytest
 
 from glustolibs.gluster import volume_ops
@@ -14,7 +13,6 @@ from openshiftstoragelibs import podcmd
 from openshiftstoragelibs import waiter
 
 
-@ddt.ddt
 class TestHeketiBrickEvict(BaseClass):
     """Test Heketi brick evict functionality."""
 
@@ -112,56 +110,7 @@ class TestHeketiBrickEvict(BaseClass):
             openshift_ops.check_service_status_on_pod(
                 self.ocp_client, gluster_pod, service, "active", state)
 
-    @pytest.mark.tier4
-    @ddt.data(3, "")
-    def test_brick_evict_with_node_down(self, node_count):
-        """Test brick evict basic functionality and verify brick evict
-        after node down"""
-
-        h_node, h_server = self.heketi_client_node, self.heketi_server_url
-
-        # Get available nodes from cluster
-        node_list = heketi_ops.heketi_node_list(h_node, h_server)
-
-        # Disable remaing nodes if more than three
-        if node_count == 3 and len(node_list) > 3:
-            node_list = node_list[3:]
-            for node_id in node_list:
-                heketi_ops.heketi_node_disable(h_node, h_server, node_id)
-                self.addCleanup(
-                    heketi_ops.heketi_node_enable,
-                    h_node, h_server, node_id)
-
-        # Create heketi volume
-        vol_info = heketi_ops.heketi_volume_create(
-            h_node, h_server, 1, json=True)
-        self.addCleanup(
-            heketi_ops.heketi_volume_delete,
-            h_node, h_server, vol_info.get('id'))
-
-        # Get node on which heketi pod is scheduled
-        heketi_pod = openshift_ops.get_pod_name_from_dc(
-            self.ocp_client, self.heketi_dc_name)
-        heketi_node = openshift_ops.oc_get_custom_resource(
-            self.ocp_client, 'pod', '.:spec.nodeName', heketi_pod)[0]
-
-        # Get list of hostname from node id
-        host_list = []
-        if node_count == 3:
-            for node_id in node_list:
-                node_info = heketi_ops.heketi_node_info(
-                    h_node, h_server, node_id, json=True)
-                host_list.append(node_info.get('hostnames').get('manage')[0])
-
-        # Get brick id and glusterfs node which is not heketi node
-        for node in vol_info.get('bricks', {}):
-            node_info = heketi_ops.heketi_node_info(
-                h_node, h_server, node.get('node'), json=True)
-            hostname = node_info.get('hostnames').get('manage')[0]
-            if (hostname != heketi_node) and (hostname not in host_list):
-                brick_id = node.get('id')
-                break
-
+    def _bring_down_node_and_wait_to_become_notready(self, hostname):
         # Bring down the glusterfs node
         vm_name = node_ops.find_vm_name_by_ip_or_hostname(hostname)
         self.addCleanup(
@@ -180,37 +129,115 @@ class TestHeketiBrickEvict(BaseClass):
             raise exceptions.ExecutionError(
                 "Failed to bring down node {}".format(hostname))
 
+    @pytest.mark.tier4
+    def test_brick_evict_with_node_down_if_three_node(self):
+        """Test brick evict basic functionality and verify brick evict
+        will fail after node down if nodes are three"""
+
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
+
+        # Disable node if more than 3
+        node_list = heketi_ops.heketi_node_list(h_node, h_server)
+        if len(node_list) > 3:
+            for node_id in node_list[3:]:
+                heketi_ops.heketi_node_disable(h_node, h_server, node_id)
+                self.addCleanup(
+                    heketi_ops.heketi_node_enable, h_node, h_server, node_id)
+
+        # Create heketi volume
+        vol_info = heketi_ops.heketi_volume_create(
+            h_node, h_server, 1, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete,
+            h_node, h_server, vol_info.get('id'))
+
+        # Get node on which heketi pod is scheduled
+        heketi_pod = openshift_ops.get_pod_name_from_dc(
+            self.ocp_client, self.heketi_dc_name)
+        heketi_node = openshift_ops.oc_get_custom_resource(
+            self.ocp_client, 'pod', '.:spec.nodeName', heketi_pod)[0]
+
+        # Get list of hostname from node id
+        host_list = []
+        for node_id in node_list[3:]:
+            node_info = heketi_ops.heketi_node_info(
+                h_node, h_server, node_id, json=True)
+            host_list.append(node_info.get('hostnames').get('manage')[0])
+
+        # Get brick id and glusterfs node which is not heketi node
+        for node in vol_info.get('bricks', {}):
+            node_info = heketi_ops.heketi_node_info(
+                h_node, h_server, node.get('node'), json=True)
+            hostname = node_info.get('hostnames').get('manage')[0]
+            if (hostname != heketi_node) and (hostname not in host_list):
+                brick_id = node.get('id')
+                break
+
+        self._bring_down_node_and_wait_to_become_notready(hostname)
+
         # Perform brick evict operation
         try:
             heketi_ops.heketi_brick_evict(h_node, h_server, brick_id)
         except AssertionError as e:
-            if (node_count == 3 and (
-                    'No Replacement was found' not in six.text_type(e))):
+            if ('No Replacement was found' not in six.text_type(e)):
                 raise
 
-        if node_count == "":
-            # Get volume info after brick evict operation
-            vol_info_new = heketi_ops.heketi_volume_info(
-                h_node, h_server, vol_info.get('id'), json=True)
+    @pytest.mark.tier4
+    def test_brick_evict_with_node_down(self):
+        """Test brick evict basic functionality and verify brick evict
+        will success after one node down out of more than three nodes"""
 
-            # Get previous and new bricks from volume
-            bricks_old = set(
-                {brick.get('path') for brick in vol_info.get("bricks")})
-            bricks_new = set(
-                {brick.get('path') for brick in vol_info_new.get("bricks")})
-            self.assertEqual(
-                len(bricks_new - bricks_old), 1,
-                "Brick was not replaced with brick evict for vol \n {}".format(
-                    vol_info_new))
+        h_node, h_server = self.heketi_client_node, self.heketi_server_url
 
-            # Get gluster volume info
-            g_vol_info = self._get_gluster_vol_info(vol_info_new.get('name'))
+        # Create heketi volume
+        vol_info = heketi_ops.heketi_volume_create(
+            h_node, h_server, 1, json=True)
+        self.addCleanup(
+            heketi_ops.heketi_volume_delete,
+            h_node, h_server, vol_info.get('id'))
 
-            # Validate bricks on gluster volume and heketi volume
-            g_bricks = set(
-                {brick.get('name').split(":")[1]
-                    for brick in g_vol_info.get("bricks", {}).get("brick")})
-            self.assertEqual(
-                bricks_new, g_bricks, "gluster vol info and heketi vol info "
-                "mismatched after brick evict {} \n {}".format(
-                    g_bricks, g_vol_info))
+        # Get node on which heketi pod is scheduled
+        heketi_pod = openshift_ops.get_pod_name_from_dc(
+            self.ocp_client, self.heketi_dc_name)
+        heketi_node = openshift_ops.oc_get_custom_resource(
+            self.ocp_client, 'pod', '.:spec.nodeName', heketi_pod)[0]
+
+        # Get brick id and glusterfs node which is not heketi node
+        for node in vol_info.get('bricks', {}):
+            node_info = heketi_ops.heketi_node_info(
+                h_node, h_server, node.get('node'), json=True)
+            hostname = node_info.get('hostnames').get('manage')[0]
+            if (hostname != heketi_node):
+                brick_id = node.get('id')
+                break
+
+        self._bring_down_node_and_wait_to_become_notready(hostname)
+
+        # Perform brick evict operation
+        heketi_ops.heketi_brick_evict(h_node, h_server, brick_id)
+
+        # Get volume info after brick evict operation
+        vol_info_new = heketi_ops.heketi_volume_info(
+            h_node, h_server, vol_info.get('id'), json=True)
+
+        # Get previous and new bricks from volume
+        bricks_old = set(
+            {brick.get('path') for brick in vol_info.get("bricks")})
+        bricks_new = set(
+            {brick.get('path') for brick in vol_info_new.get("bricks")})
+        self.assertEqual(
+            len(bricks_new - bricks_old), 1,
+            "Brick was not replaced with brick evict for vol \n {}".format(
+                vol_info_new))
+
+        # Get gluster volume info
+        g_vol_info = self._get_gluster_vol_info(vol_info_new.get('name'))
+
+        # Validate bricks on gluster volume and heketi volume
+        g_bricks = set(
+            {brick.get('name').split(":")[1]
+                for brick in g_vol_info.get("bricks", {}).get("brick")})
+        self.assertEqual(
+            bricks_new, g_bricks, "gluster vol info and heketi vol info "
+            "mismatched after brick evict {} \n {}".format(
+                g_bricks, g_vol_info))
