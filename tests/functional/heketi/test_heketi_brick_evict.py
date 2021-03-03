@@ -110,7 +110,7 @@ class TestHeketiBrickEvict(BaseClass):
             openshift_ops.check_service_status_on_pod(
                 self.ocp_client, gluster_pod, service, "active", state)
 
-    def _bring_down_node_and_wait_to_become_notready(self, hostname):
+    def _power_off_node_and_wait_node_to_be_not_ready(self, hostname):
         # Bring down the glusterfs node
         vm_name = node_ops.find_vm_name_by_ip_or_hostname(hostname)
         self.addCleanup(
@@ -130,7 +130,7 @@ class TestHeketiBrickEvict(BaseClass):
                 "Failed to bring down node {}".format(hostname))
 
     @pytest.mark.tier4
-    def test_brick_evict_with_node_down_if_three_node(self):
+    def test_brick_evict_with_node_down_with_three_node(self):
         """Test brick evict basic functionality and verify brick evict
         will fail after node down if nodes are three"""
 
@@ -173,7 +173,7 @@ class TestHeketiBrickEvict(BaseClass):
                 brick_id = node.get('id')
                 break
 
-        self._bring_down_node_and_wait_to_become_notready(hostname)
+        self._power_off_node_and_wait_node_to_be_not_ready(hostname)
 
         # Perform brick evict operation
         try:
@@ -211,7 +211,7 @@ class TestHeketiBrickEvict(BaseClass):
                 brick_id = node.get('id')
                 break
 
-        self._bring_down_node_and_wait_to_become_notready(hostname)
+        self._power_off_node_and_wait_node_to_be_not_ready(hostname)
 
         # Perform brick evict operation
         heketi_ops.heketi_brick_evict(h_node, h_server, brick_id)
