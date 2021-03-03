@@ -130,7 +130,7 @@ class TestHeketiBrickEvict(BaseClass):
                 "Failed to bring down node {}".format(hostname))
 
     @pytest.mark.tier4
-    def test_brick_evict_with_node_down_with_three_node(self):
+    def test_brick_evict_on_three_node_with_one_down(self):
         """Test brick evict basic functionality and verify brick evict
         will fail after node down if nodes are three"""
 
