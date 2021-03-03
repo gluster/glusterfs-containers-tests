@@ -183,7 +183,7 @@ class TestHeketiBrickEvict(BaseClass):
                 raise
 
     @pytest.mark.tier4
-    def test_brick_evict_with_node_down(self):
+    def test_brick_evict_on_more_than_three_node_with_one_down(self):
         """Test brick evict basic functionality and verify brick evict
         will success after one node down out of more than three nodes"""
 
