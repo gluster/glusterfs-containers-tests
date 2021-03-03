@@ -207,7 +207,7 @@ class TestHeketiBrickEvict(BaseClass):
             node_info = heketi_ops.heketi_node_info(
                 h_node, h_server, node.get('node'), json=True)
             hostname = node_info.get('hostnames').get('manage')[0]
-            if (hostname != heketi_node):
+            if hostname != heketi_node:
                 brick_id = node.get('id')
                 break
 
