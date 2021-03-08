@@ -138,12 +138,13 @@ class TestPvResizeClass(BaseClass):
                     or not node_info['devices']):
                 continue
             if len(nodes) > 2:
-                out = heketi_ops.heketi_node_disable(
-                    self.heketi_client_node, heketi_url, node_id)
-                self.assertTrue(out)
                 self.addCleanup(
                     heketi_ops.heketi_node_enable,
                     self.heketi_client_node, heketi_url, node_id)
+                out = heketi_ops.heketi_node_disable(
+                    self.heketi_client_node, heketi_url, node_id)
+                self.assertTrue(out)
+
             for device in node_info['devices']:
                 if device['state'].lower() != 'online':
                     continue
@@ -203,8 +204,10 @@ class TestPvResizeClass(BaseClass):
         wait_for_pod_be_ready(self.node, pod_name)
 
         if exceed_free_space:
+            exceed_size = available_size_gb + 10
+
             # Try to expand existing PVC exceeding free space
-            resize_pvc(self.node, pvc_name, available_size_gb)
+            resize_pvc(self.node, pvc_name, exceed_size)
             wait_for_events(self.node, obj_name=pvc_name,
                             event_reason='VolumeResizeFailed')
 
