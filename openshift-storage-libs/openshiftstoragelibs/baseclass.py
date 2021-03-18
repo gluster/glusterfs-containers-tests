@@ -118,18 +118,24 @@ class BaseClass(unittest.TestCase):
         cls.heketi_server_url = heketi_config['heketi_server_url']
         cls.heketi_cli_user = heketi_config['heketi_cli_user']
         cls.heketi_cli_key = heketi_config['heketi_cli_key']
-
-        # Initializes registry heketi config variables
-        registry_heketi_config = cls.openshift_config['registry_heketi_config']
-        cls.registry_heketi_dc_name = registry_heketi_config['heketi_dc_name']
-        cls.registry_heketi_service_name = registry_heketi_config['heketi_service_name']
-        cls.registry_heketi_client_node = registry_heketi_config['heketi_client_node']
-        cls.registry_heketi_server_url = registry_heketi_config['heketi_server_url']
-        cls.registry_heketi_cli_user = registry_heketi_config['heketi_cli_user']
-        cls.registry_heketi_cli_key = registry_heketi_config['heketi_cli_key']
-
         cls.gluster_servers = list(g.config['gluster_servers'].keys())
         cls.gluster_servers_info = g.config['gluster_servers']
+
+        # Initializes registry heketi config variables
+        registry_heketi_config = cls.openshift_config.get(
+            'registry_heketi_config', {})
+        cls.registry_heketi_dc_name = registry_heketi_config.get(
+            'heketi_dc_name')
+        cls.registry_heketi_service_name = registry_heketi_config.get(
+            'heketi_service_name')
+        cls.registry_heketi_client_node = registry_heketi_config.get(
+            'heketi_client_node')
+        cls.registry_heketi_server_url = registry_heketi_config.get(
+            'heketi_server_url')
+        cls.registry_heketi_cli_user = registry_heketi_config.get(
+            'heketi_cli_user')
+        cls.registry_heketi_cli_key = registry_heketi_config.get(
+            'heketi_cli_key')
 
         cls.storage_classes = cls.openshift_config['dynamic_provisioning'][
             'storage_classes']
@@ -137,7 +143,8 @@ class BaseClass(unittest.TestCase):
             'storage_class1', cls.storage_classes.get('file_storage_class'))
         cls.secret_type = "kubernetes.io/glusterfs"
         cls.registry_sc = cls.storage_classes.get(
-            'storage_class3', cls.storage_classes.get('registry_file_storage_class'))
+            'storage_class3', cls.storage_classes.get(
+                'registry_file_storage_class'))
         cls.registry_secret_type = "kubernetes.io/glusterfs"
 
         cls.heketi_logs_before_delete = bool(
@@ -232,7 +239,8 @@ class BaseClass(unittest.TestCase):
             error_msg)
 
     def create_secret(self, secret_name_prefix="autotests-secret",
-                      secret_type=None, skip_cleanup=False, glusterfs_registry=False):
+                      secret_type=None, skip_cleanup=False,
+                      glusterfs_registry=False):
         if glusterfs_registry:
             secret_name = oc_create_secret(
                 self.ocp_client[0],
@@ -273,7 +281,8 @@ class BaseClass(unittest.TestCase):
         # Create secret if one is not specified
         if not secret_name:
             secret_name = self.create_secret(
-                skip_cleanup=skip_cleanup, glusterfs_registry=glusterfs_registry)
+                skip_cleanup=skip_cleanup,
+                glusterfs_registry=glusterfs_registry)
 
         # Create storage class
         secret_name_option = "secretname"
@@ -287,7 +296,8 @@ class BaseClass(unittest.TestCase):
                 "restuser": self.registry_sc.get("restuser"),
                 secret_name_option: secret_name,
                 secret_namespace_option: self.registry_sc.get(
-                    "secretnamespace", self.registry_sc.get("restsecretnamespace")),
+                    "secretnamespace",
+                    self.registry_sc.get("restsecretnamespace")),
             }
         else:
             parameters = {
@@ -808,7 +818,8 @@ class GlusterBlockBaseClass(BaseClass):
         cls.secret_type = "gluster.org/glusterblock"
 
         cls.registry_sc = cls.storage_classes.get(
-            'storage_class4', cls.storage_classes.get('registry_block_storage_class'))
+            'storage_class4',
+            cls.storage_classes.get('registry_block_storage_class'))
         cls.registry_secret_type = "gluster.org/glusterblock"
 
     def get_provisioner_for_sc(self):
