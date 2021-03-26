@@ -11,6 +11,16 @@ from prometheus_client.parser import text_string_to_metric_families
 
 
 def get_random_str(size=14):
+    """
+    Gets the random string
+
+    Args:
+        size (int): size of the random string
+
+    Returns:
+        int: size of the string
+
+    """
     chars = string.ascii_lowercase + string.digits
     return ''.join(random.choice(chars) for _ in range(size))
 
