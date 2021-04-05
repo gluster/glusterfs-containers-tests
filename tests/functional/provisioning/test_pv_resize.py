@@ -424,7 +424,7 @@ class TestPvResizeClass(BaseClass):
         resize_pvc(self.ocp_master_node[0], pvc_name, available_size_gb)
         verify_pvc_size(self.ocp_master_node[0], pvc_name, available_size_gb)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_pv_resize_device_disabled(self):
         """Validate resize after disabling all devices except one"""
         h_node, h_url = self.heketi_client_node, self.heketi_server_url

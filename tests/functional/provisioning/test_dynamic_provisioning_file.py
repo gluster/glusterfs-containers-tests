@@ -552,7 +552,7 @@ class TestDynamicProvisioningP0(BaseClass):
         out = self.cmd_run(get_sc_of_pvc_cmd)
         self.assertEqual(out, self.sc_name)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_node_failure_pv_mounted(self):
         """Test node failure when PV is mounted with app pods running"""
         filepath = "/mnt/file_for_testing_volume.log"
