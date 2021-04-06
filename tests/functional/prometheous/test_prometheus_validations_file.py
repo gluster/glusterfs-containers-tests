@@ -14,8 +14,10 @@ import pytest
 from openshiftstoragelibs import baseclass
 from openshiftstoragelibs import exceptions
 from openshiftstoragelibs import heketi_ops
+from openshiftstoragelibs import node_ops
 from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import podcmd
+from openshiftstoragelibs import utils
 from openshiftstoragelibs import waiter
 
 
@@ -333,3 +335,70 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
             pod_name=pod_name, pvc_name=pvc_name,
             filename="secondfilename", dirname="seconddirname",
             metric_data=resize_metrics, operation="create")
+
+    @pytest.mark.tier4
+    def test_prometheus_volume_metrics_on_node_reboot(self):
+        """Validate volume metrics using prometheus before and after node
+        reboot"""
+
+        # Pod name for the entire test
+        prefix = "autotest-{}".format(utils.get_random_str())
+
+        # Create I/O pod with PVC
+        pvc_name = self.create_and_wait_for_pvc()
+        pod_name = openshift_ops.oc_create_tiny_pod_with_volume(
+            self._master, pvc_name, prefix,
+            image=self.io_container_image_cirros)
+        self.addCleanup(openshift_ops.oc_delete, self._master, 'pod', pod_name,
+                        raise_on_absence=False)
+        openshift_ops.wait_for_pod_be_ready(
+            self._master, pod_name, timeout=60, wait_step=5)
+
+        # Write data on the volume and wait for 2 mins and sleep is must for
+        # prometheus to get the exact values of the metrics
+        ret, _, err = openshift_ops.oc_rsh(
+            self._master, pod_name, "touch /mnt/file{1..1000}")
+        self.assertEqual(
+            ret, 0, "Failed to create files in the app pod "
+                    "with {}".format(err))
+        time.sleep(120)
+
+        # Fetch the metrics and store in initial_metrics as dictionary
+        initial_metrics = self._get_and_manipulate_metric_data(
+            self.metrics, pvc_name)
+        openshift_ops.switch_oc_project(
+            self._master, self.storage_project_name)
+
+        # Get the hostname to reboot where the pod is running
+        pod_info = openshift_ops.oc_get_pods(self._master, name=pod_name)
+        node_for_reboot = pod_info[pod_name]['node']
+
+        # Get the vm name by the hostname
+        vm_name = node_ops.find_vm_name_by_ip_or_hostname(node_for_reboot)
+
+        # power off and on the vm, based on the vm type(either gluster or not)
+        if node_for_reboot in self.gluster_servers:
+            self.power_off_gluster_node_vm(vm_name, node_for_reboot)
+            self.power_on_gluster_node_vm(vm_name, node_for_reboot)
+        else:
+            self.power_off_vm(vm_name)
+            self.power_on_vm(vm_name)
+            openshift_ops.wait_for_ocp_node_be_ready(
+                self._master, node_for_reboot)
+
+        # Create the new pod and validate the prometheus metrics
+        pod_name = openshift_ops.oc_create_tiny_pod_with_volume(
+            self._master, pvc_name, prefix)
+        self.addCleanup(openshift_ops.oc_delete, self._master, 'pod', pod_name)
+
+        # Wait for POD be up and running and prometheus to refresh the data
+        openshift_ops.wait_for_pod_be_ready(
+            self._master, pod_name, timeout=60, wait_step=5)
+        time.sleep(120)
+
+        # Fetching the metrics and storing in final_metrics as dictionary and
+        # validating with initial_metrics
+        final_metrics = self._get_and_manipulate_metric_data(
+            self.metrics, pvc_name)
+        self.assertEqual(dict(initial_metrics), dict(final_metrics),
+                         "Metrics are different post node reboot")
