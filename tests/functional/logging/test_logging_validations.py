@@ -290,7 +290,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
         openshift_ops.wait_for_pod_be_ready(
             self._master, new_pod_name, timeout=1800)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     @ddt.data('delete', 'drain')
     def test_respin_es_pod(self, motive):
         """Validate respin of elastic search pod"""

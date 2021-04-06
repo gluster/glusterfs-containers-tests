@@ -870,7 +870,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
             raise exceptions.ExecutionError(
                 "Failed to update node details in prometheus")
 
-    @pytest.mark.tier2
+    @pytest.mark.tier3
     def test_restart_prometheus_glusterfs_pod(self):
         """Validate restarting glusterfs pod"""
 
