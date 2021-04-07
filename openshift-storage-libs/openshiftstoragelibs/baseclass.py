@@ -469,20 +469,20 @@ class BaseClass(unittest.TestCase):
 
     def create_and_wait_for_pvc(
             self, pvc_size=1, pvc_name_prefix='autotests-pvc', sc_name=None,
-            timeout=300, wait_step=10, skip_cleanup=False):
+            label=None, timeout=300, wait_step=10, skip_cleanup=False):
         self.pvc_name = self.create_and_wait_for_pvcs(
             pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix,
-            sc_name=sc_name, timeout=timeout, wait_step=wait_step,
+            sc_name=sc_name, label=label, timeout=timeout, wait_step=wait_step,
             skip_cleanup=skip_cleanup)[0]
         return self.pvc_name
 
     def create_pvcs_not_waiting(
             self, pvc_size=1, pvc_name_prefix="autotests-pvc",
-            pvc_amount=1, sc_name=None, skip_cleanup=False):
+            pvc_amount=1, sc_name=None, label=None, skip_cleanup=False):
         return self.create_and_wait_for_pvcs(
             pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix,
-            pvc_amount=pvc_amount, sc_name=sc_name, skip_waiting=True,
-            skip_cleanup=skip_cleanup)
+            pvc_amount=pvc_amount, sc_name=sc_name, label=label,
+            skip_waiting=True, skip_cleanup=skip_cleanup)
 
     def create_dcs_with_pvc(
             self, pvc_names, timeout=600, wait_step=5,
