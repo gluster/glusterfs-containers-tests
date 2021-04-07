@@ -22,6 +22,7 @@ from openshiftstoragelibs import node_ops
 from openshiftstoragelibs import openshift_ops
 from openshiftstoragelibs import openshift_storage_libs
 from openshiftstoragelibs import podcmd
+from openshiftstoragelibs import utils
 from openshiftstoragelibs import waiter
 
 
@@ -974,3 +975,80 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
             # Try to fetch metric from prometheus pod
             self._fetch_metric_from_promtheus_pod(
                 metric='heketi_device_brick_count')
+
+    @pytest.mark.tier2
+    def test_metrics_workload_on_prometheus(self):
+        """Validate metrics workload on prometheus"""
+
+        # Skip test if the prometheus pods are not present
+        openshift_ops.switch_oc_project(
+            self._master, self._prometheus_project_name)
+        prometheus_pods = openshift_ops.oc_get_pods(
+            self._master, selector=self._prometheus_resources_selector)
+        if not prometheus_pods:
+            self.skipTest(
+                prometheus_pods, "Skipping test as prometheus"
+                " pod is not present")
+
+        if not self.registry_sc:
+            self.skipTest(
+                prometheus_pods, "Skipping test as registry "
+                " storage details are not provided")
+        self._registry_project = self.registry_sc.get(
+            'restsecretnamespace')
+        self.prefix = "autotest-{}".format(utils.get_random_str())
+
+        # Get one of the prometheus pod name and respective pvc name
+        prometheus_pod = list(prometheus_pods.keys())[0]
+        pvc_custom = ":.spec.volumes[*].persistentVolumeClaim.claimName"
+        pvc_name = openshift_ops.oc_get_custom_resource(
+            self._master, "pod", pvc_custom, prometheus_pod)[0]
+        self.assertTrue(
+            pvc_name, "Failed to get PVC name for prometheus"
+            " pod {}".format(prometheus_pod))
+        self.verify_iscsi_sessions_and_multipath(
+            pvc_name, prometheus_pod, rtype='pod',
+            heketi_server_url=self._registry_heketi_server_url,
+            is_registry_gluster=True)
+
+        # Try to fetch metric from the prometheus pod
+        self._fetch_metric_from_promtheus_pod(
+            metric='kube_persistentvolumeclaim_info')
+
+        # Create storage class
+        openshift_ops.switch_oc_project(
+            self._master, self._registry_project)
+        self.sc_name = self.create_storage_class(
+            vol_name_prefix=self.prefix, glusterfs_registry=True)
+        self.addCleanup(openshift_ops.switch_oc_project,
+                        self._master, self._registry_project)
+
+        # Create PVCs and app pods
+        pvc_size, pvc_count, batch_count = 1, 5, 5
+        for _ in range(batch_count):
+            test_pvc_names = self.create_and_wait_for_pvcs(
+                pvc_size, pvc_name_prefix=self.prefix,
+                pvc_amount=pvc_count, sc_name=self.sc_name, timeout=600,
+                wait_step=10)
+            self.create_dcs_with_pvc(
+                test_pvc_names, timeout=600, wait_step=5,
+                dc_name_prefix="autotests-dc-with-app-io",
+                space_to_use=1048576)
+
+        # Check from the prometheus pod for the PVC space usage
+        openshift_ops.switch_oc_project(
+            self._master, self._prometheus_project_name)
+        mount_path = "/prometheus"
+        cmd = "oc exec {0} -- df -PT {1} | grep {1}".format(
+            prometheus_pod, mount_path)
+        out = self.cmd_run(cmd)
+        self.assertTrue(out, "Failed to get info about mounted volume. "
+                             "Output is empty.")
+
+        # Try to fetch metric from prometheus pod
+        self._fetch_metric_from_promtheus_pod(
+            metric='kube_persistentvolumeclaim_info')
+        self._fetch_metric_from_promtheus_pod(
+            metric='kube_pod_spec_volumes_persistentvolumeclaims_info')
+        self.addCleanup(openshift_ops.switch_oc_project,
+                        self._master, self._registry_project)
