@@ -389,8 +389,8 @@ class BaseClass(unittest.TestCase):
 
     def create_and_wait_for_pvcs(
             self, pvc_size=1, pvc_name_prefix="autotests-pvc", pvc_amount=1,
-            sc_name=None, timeout=600, wait_step=10, skip_waiting=False,
-            skip_cleanup=False):
+            sc_name=None, label=None, timeout=600, wait_step=10,
+            skip_waiting=False, skip_cleanup=False):
         """Create multiple PVC's not waiting for it
 
         Args:
@@ -400,6 +400,7 @@ class BaseClass(unittest.TestCase):
             pvc_amount (int): number of PVC's, default value is 1
             sc_name (str): storage class to create PVC, default value is None,
                            which will cause automatic creation of sc.
+            label (dic): label for PVC creation, default is None.
             timeout (int): timeout time for waiting for PVC's to get bound
             wait_step (int): waiting time between each try of PVC status check
             skip_waiting (bool): boolean value which defines whether
@@ -420,7 +421,7 @@ class BaseClass(unittest.TestCase):
         pvc_names = []
         for i in range(pvc_amount):
             pvc_name = oc_create_pvc(
-                node, sc_name, pvc_name_prefix=pvc_name_prefix,
+                node, sc_name, label=label, pvc_name_prefix=pvc_name_prefix,
                 pvc_size=pvc_size)
             pvc_names.append(pvc_name)
         if not skip_cleanup:
@@ -468,20 +469,20 @@ class BaseClass(unittest.TestCase):
 
     def create_and_wait_for_pvc(
             self, pvc_size=1, pvc_name_prefix='autotests-pvc', sc_name=None,
-            timeout=300, wait_step=10, skip_cleanup=False):
+            label=None, timeout=300, wait_step=10, skip_cleanup=False):
         self.pvc_name = self.create_and_wait_for_pvcs(
             pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix,
-            sc_name=sc_name, timeout=timeout, wait_step=wait_step,
+            sc_name=sc_name, label=label, timeout=timeout, wait_step=wait_step,
             skip_cleanup=skip_cleanup)[0]
         return self.pvc_name
 
     def create_pvcs_not_waiting(
             self, pvc_size=1, pvc_name_prefix="autotests-pvc",
-            pvc_amount=1, sc_name=None, skip_cleanup=False):
+            pvc_amount=1, sc_name=None, label=None, skip_cleanup=False):
         return self.create_and_wait_for_pvcs(
             pvc_size=pvc_size, pvc_name_prefix=pvc_name_prefix,
-            pvc_amount=pvc_amount, sc_name=sc_name, skip_waiting=True,
-            skip_cleanup=skip_cleanup)
+            pvc_amount=pvc_amount, sc_name=sc_name, label=label,
+            skip_waiting=True, skip_cleanup=skip_cleanup)
 
     def create_dcs_with_pvc(
             self, pvc_names, timeout=600, wait_step=5,
@@ -1024,8 +1025,8 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
 
     def create_pvcs_in_batch(
             self, sc_name, pvc_count, batch_amount=8,
-            pvc_name_prefix='auto-scale-pvc', timeout=300, wait_step=5,
-            skip_cleanup=False):
+            pvc_name_prefix='auto-scale-pvc', label=None, timeout=300,
+            wait_step=5, skip_cleanup=False):
         """Create PVC's in batches.
 
         Args:
@@ -1033,6 +1034,7 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
             pvc_count(int): Count of PVC's to be create.
             batch_amount(int): Amount of PVC's to be create in one batch.
             pvc_name_prefix(str): Name prefix for PVC's.
+            label (dic): label for PVC's.
             timeout (int): timeout for one batch
             wait_step ( int): wait step
             skip_cleanup (bool): skip cleanup or not.
