@@ -318,7 +318,7 @@ def oc_create_sc(hostname, sc_name_prefix="autotests-sc",
 
 
 def oc_create_pvc(hostname, sc_name=None, pvc_name_prefix="autotests-pvc",
-                  pvc_size=1):
+                  pvc_size=1, label=None):
     """Create PVC using data provided as stdin input.
 
     Args:
@@ -327,9 +327,12 @@ def oc_create_pvc(hostname, sc_name=None, pvc_name_prefix="autotests-pvc",
         pvc_name_prefix (str): PVC name will consist of this prefix and
                                random str.
         pvc_size (int/str): size of PVC in Gb
+        label (dic): label for PVC.
     """
     pvc_name = "%s-%s" % (pvc_name_prefix, utils.get_random_str())
     metadata = {"name": pvc_name}
+    if label:
+        metadata["labels"] = label
     if sc_name:
         metadata["annotations"] = {
             "volume.kubernetes.io/storage-class": sc_name,
