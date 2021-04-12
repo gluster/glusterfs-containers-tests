@@ -464,14 +464,15 @@ def oc_create_tiny_pod_with_volume(hostname, pvc_name, pod_name_prefix='',
 
 
 def oc_delete(
-        ocp_node, rtype, name, raise_on_absence=True, collect_logs=False,
-        skip_res_validation=True, is_force=False):
-    """Delete an OCP resource by name
+        ocp_node, rtype, name=None, label=None, raise_on_absence=True,
+        collect_logs=False, skip_res_validation=True, is_force=False):
+    """Delete an OCP resource by name or label
 
     Args:
         ocp_node (str): Node on which the ocp command will run.
         rtype (str): Name of the resource type (pod, storageClass, etc).
         name (str): Name of the resource to delete.
+        label (dic): label by which PVC is deleted.
         raise_on_absence (bool): if resource absent raise
                                  exception if value is true,
                                  else return
@@ -480,17 +481,25 @@ def oc_delete(
         skip_res_validation(bool): To validate before deletion of resource.
         is_force (bool): True for deleting forcefully, default is False
     """
-    if skip_res_validation and not oc_get_yaml(
+
+    if skip_res_validation and name and not oc_get_yaml(
             ocp_node, rtype, name, raise_on_error=raise_on_absence):
         return
 
-    if rtype == "pod" and collect_logs:
+    if rtype == "pod" and collect_logs and name:
         cmd = [
             'oc', 'logs', name,
             '&>', '{}_$(date +%Y-%m-%d-%H-%m-%s).log'.format(name)]
         command.cmd_run(cmd, hostname=ocp_node)
 
-    cmd = ['oc', 'delete', rtype, name]
+    if name:
+        cmd = ['oc', 'delete', rtype, name]
+    else:
+
+        # Fetch label from dic
+        label = list(label.items())[0][0] + '=' + list(label.items())[0][1]
+        cmd = ['oc', 'delete', rtype, '-l', label]
+
     if openshift_version.get_openshift_version() >= '3.11':
         cmd.append('--wait=false')
 
