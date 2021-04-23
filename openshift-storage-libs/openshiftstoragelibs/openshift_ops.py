@@ -2096,6 +2096,7 @@ def oc_create_offline_block_volume_expand_job(
                 "spec": {
                     "containers": [{
                         "image": "rhel7",
+                        "imagePullPolicy": "IfNotPresent",
                         "env": [
                             {
                                 "name": "HOST_ROOTFS",
