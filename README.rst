@@ -16,11 +16,28 @@ Prerequisites
 Create setup with below system requirements and install required packages on
 host from which this repo is used as library or tests are executed.
 
-System Requirements
+Minimum System Requirements
 ===================
 
 * 1 Master node
 * 3 Storage nodes
+* Passwordless ssh from the host (machine from where the tests would be run)
+  to all the nodes in the cluster
+* Each node in the trusted storage pool should have 2 mandatory and 1 optional
+  devices
+
+    #. Device 1 (part of the topology)
+    #. Device 2 (part of the topology)
+    #. Device 3 (Optional additional device not part of the topology)
+
+Recommended System Requirements
+====================
+
+* 1 Master node
+* 1 Compute node (for node addition and removal tests)
+* 3 Infra node (recommended by openshift)
+* 3 Storage nodes
+* 3 Registry storage nodes (for logging, metrics and monitoring tests)
 * Passwordless ssh from the host (machine from where the tests would be run)
   to all the nodes in the cluster
 * Each node in the trusted storage pool should have 2 mandatory and 1 optional
