@@ -18,6 +18,7 @@ from openshiftstoragelibs.gluster_ops import (
     get_block_hosting_volume_name,
     get_gluster_vol_status,
     match_heketi_and_gluster_volumes_by_prefix,
+    wait_to_heal_complete,
 )
 from openshiftstoragelibs.heketi_ops import (
     get_block_hosting_volume_list,
@@ -44,6 +45,8 @@ from openshiftstoragelibs.node_ops import (
 from openshiftstoragelibs.openshift_ops import (
     cmd_run_on_gluster_pod_or_node,
     get_block_provisioner,
+    get_gluster_pod_name_for_specific_node,
+    get_ocp_gluster_pod_details,
     get_pod_name_from_dc,
     get_pod_name_from_rc,
     get_pv_name_from_pvc,
@@ -57,11 +60,13 @@ from openshiftstoragelibs.openshift_ops import (
     oc_get_custom_resource,
     oc_get_pods,
     oc_label,
+    oc_patch,
     scale_dcs_pod_amount_and_wait,
     switch_oc_project,
     wait_for_gluster_pod_be_ready_on_specific_node,
     wait_for_ocp_node_be_ready,
     wait_for_pvcs_be_bound,
+    wait_for_pod_be_ready,
     wait_for_pods_be_ready,
     wait_for_resources_absence,
     wait_for_service_status_on_gluster_pod_or_node,
@@ -1187,7 +1192,7 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
         for gluster_node in self.gluster_servers:
             # Fetch pid from the node/pod
             out = cmd_run_on_gluster_pod_or_node(
-                self.ocp_master, get_glusterfsd_pid, gluster_node)
+                self.ocp_master_node[0], get_glusterfsd_pid, gluster_node)
             self.assertTrue(
                 out, "Failed to get pid of glusterfsd from node/pod "
                 "{}".format(gluster_node))
@@ -1196,7 +1201,8 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
             # Fetch the memory usage for each pid
             for pid in pid_list:
                 out = cmd_run_on_gluster_pod_or_node(
-                    self.ocp_master, get_mem_usage.format(pid), gluster_node)
+                    self.ocp_master_node[0],
+                    get_mem_usage.format(pid), gluster_node)
                 self.assertTrue(
                     out, "Failed to fetch the memory used for glusterfsd"
                     " process from the node/pod {}".format(gluster_node))
@@ -1206,3 +1212,180 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
                     "Failed memory used  of glusterfsd {} is greater than the"
                     " expected size {} for node/pod {}".format(
                         memory_used, size_limit, gluster_node))
+
+    def configure_setup(
+            self, max_volume_count, total_volume_count, image="busybox"):
+        # Get revised version of heketi
+        revision = oc_get_custom_resource(
+            self.ocp_master_node[0], 'dc', ':status.latestVersion',
+            self.heketi_dc_name)
+
+        # Set env variable to support max 2000 volumes in heketi dc
+        cmd = ("oc set env dc/{} HEKETI_GLUSTER_MAX_VOLUMES_PER_CLUSTER="
+               "{}".format(self.heketi_dc_name, max_volume_count))
+        self.cmd_run(cmd)
+
+        # Get new revised version of heketi
+        new_revision = oc_get_custom_resource(
+            self.ocp_master_node[0], 'dc', ':status.latestVersion',
+            self.heketi_dc_name)
+
+        # Wait for new heketi pod to be up
+        if int(new_revision[0]) != int(revision[0]):
+            selector = 'deployment={}-{}'.format(
+                self.heketi_dc_name, new_revision[0])
+            for w in Waiter(300, 3):
+                if oc_get_custom_resource(
+                        self.ocp_master_node[0], "pod", ':.metadata.name',
+                        selector=selector)[0]:
+                    break
+
+            if w.expired:
+                raise AssertionError(
+                    "Heketi pod not found with label {}".format(selector))
+
+            wait_for_pods_be_ready(
+                self.ocp_master_node[0], 1, selector=selector)
+
+        # Bump up the failure threshold for glusterfs DS
+        cmd = ("oc set probe ds -l {} --readiness --liveness "
+               "--failure-threshold=100".format(self.storage_project_name))
+        self.cmd_run(cmd)
+
+        # TuneUp gluster nodes if more than 1000 file vols
+        if total_volume_count > 1000:
+            # Add init container in glusterfs DS becuase of BZ-1757407
+            patch = {
+                "spec": {
+                    "template": {
+                        "spec": {
+                            "initContainers": [{
+                                "command": ["sh", "-c", "sleep 10"],
+                                "image":image,
+                                "name":"delay-init"
+                            }]
+                        }
+                    }
+                }
+            }
+            oc_patch(self.ocp_master_node[0], 'ds', 'glusterfs-storage', patch)
+
+            # Tune glusterfs nodes if more than 1000 vols
+            data = "net.ipv4.tcp_max_syn_backlog=2048\nnet.core.somaxconn=1024"
+            file_name = '/etc/sysctl.d/99-OCS.conf'
+            cmd = ['echo', '-e', data, '>', file_name, ';', 'sysctl', '-p']
+            for srv in self.gluster_servers:
+                self.cmd_run(cmd, srv)
+
+        # Respin all glusterfs pods
+        g_pods = get_ocp_gluster_pod_details(self.ocp_master_node[0])
+        for gpod in g_pods:
+            oc_delete(self.ocp_master_node[0], 'pod', gpod['pod_name'])
+            wait_for_resources_absence(
+                self.ocp_master_node[0], 'pod', gpod['pod_name'])
+            g_pod_name = get_gluster_pod_name_for_specific_node(
+                self.ocp_master_node[0], gpod['pod_hostname'])
+            wait_for_pod_be_ready(
+                self.ocp_master_node[0], g_pod_name, wait_step=5)
+
+    def scaleup_setup(
+            self, name_prefix, skip_cleanup,
+            file_pvc_count, arbiter_pvc_count, block_pvc_count,
+            file_pod_count, arbiter_pod_count, block_pod_count,
+            timeout=1800, wait_step=20):
+        # Create secrets
+        secrets = []
+        for pvc_type, secret_type in (
+                ('file', 'kubernetes.io/glusterfs'),
+                ('arbiter', 'kubernetes.io/glusterfs'),
+                ('block', 'gluster.org/glusterblock')):
+            secret_name = self.create_secret(
+                secret_name_prefix='auto-scale-secret-{}'.format(pvc_type),
+                secret_type=secret_type, skip_cleanup=skip_cleanup)
+            secrets.append(secret_name)
+
+        secret_file, secret_arbiter, secret_block = secrets
+
+        # Create Storage Classes
+        storage_classes = []
+        for sc, secret, pvc_type, isarbiter, pvc_count in (
+                ('file', secret_file, 'file', False, file_pvc_count),
+                ('file', secret_arbiter, 'arbiter', True, arbiter_pvc_count),
+                ('block', secret_block, 'block', False, block_pvc_count)):
+            if pvc_count:
+                sc_name = self.create_storage_class(
+                    sc_type=sc, secret_name=secret,
+                    sc_name_prefix='auto-scale-sc-{}'.format(pvc_type),
+                    vol_name_prefix='scale', is_arbiter_vol=isarbiter,
+                    skip_cleanup=skip_cleanup)
+                storage_classes.append(sc_name)
+            else:
+                storage_classes.append(None)
+
+        sc_file, sc_arbiter, sc_block = storage_classes
+
+        # Create PVCs
+        pvcs = []
+        for sc, pvc_count, prefix in (
+                (sc_file, file_pvc_count, "auto-scale-pvc-file"),
+                (sc_arbiter, arbiter_pvc_count, "auto-scale-pvc-arbiter"),
+                (sc_block, block_pvc_count, "auto-scale-pvc-block")):
+            if pvc_count:
+                pvclist = self.create_pvcs_in_batch(
+                    sc, pvc_count,
+                    pvc_name_prefix="{}-{}".format(prefix, name_prefix),
+                    timeout=timeout, wait_step=wait_step,
+                    skip_cleanup=skip_cleanup)
+                pvcs.append(pvclist)
+            else:
+                pvcs.append(None)
+
+        pvcs_file, pvcs_arbiter, pvcs_block = pvcs
+
+        # Create app pods
+        for pvc_list, pod_count, prefix in (
+                (pvcs_file, file_pod_count, "file"),
+                (pvcs_arbiter, arbiter_pod_count, "arbiter"),
+                (pvcs_block, block_pod_count, "block")):
+            if pod_count:
+                self.create_app_pods_in_batch(
+                    pvc_list, pod_count, dc_name_prefix=(
+                        "auto-scale-dc-{}-{}".format(prefix, name_prefix)),
+                    timeout=timeout, wait_step=wait_step,
+                    skip_cleanup=skip_cleanup)
+
+    def verify_setup(self, prefix, timeout=300, wait_step=10):
+        # Verify all bricks are up
+        self.check_vol_status()
+
+        # Wait for heal
+        wait_to_heal_complete(timeout=timeout, wait_step=wait_step)
+
+        # Check mismatch of volumes with PV, heketi and gluster
+        match = (
+            'auto-scale-pvc-file-{}'.format(prefix),
+            'auto-scale-pvc-arbiter-{}'.format(prefix),
+            'auto-scale-pvc-block-{}'.format(prefix))
+
+        h_vol_list = heketi_volume_list(
+            self.heketi_client_node, self.heketi_server_url)
+        h_vol_list = [
+            vol.split('Name:')[1] for vol in h_vol_list.split('\n')
+            if any(m in vol for m in match)]
+
+        g_vol_list = get_volume_list('auto_get_gluster_endpoint')
+        g_vol_list = [
+            gvol for gvol in g_vol_list if any(m in gvol for m in match)]
+
+        pv_vols = oc_get_custom_resource(
+            self.ocp_master_node[0], 'pv', ':.spec.glusterfs.path')
+        pv_vols = [
+            vol[0] for vol in pv_vols
+            if vol[0] != '<none>' and any(m in vol[0] for m in match)]
+
+        self.assertTrue(
+            (h_vol_list.sort() == g_vol_list.sort() == pv_vols.sort()),
+            'Mismatch b/w heketi, gluster and pv volumes {}\n{}\n{}\n'.format(
+                h_vol_list, g_vol_list, pv_vols))
+
+        self.verify_pods_are_running()
