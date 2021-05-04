@@ -145,6 +145,7 @@ def power_on_vm_by_name(name, timeout=600, interval=10):
 
     # Wait for hostname to get assigned
     _waiter = waiter.Waiter(timeout, interval)
+    err = ""
     for w in _waiter:
         try:
             hostname = cloudProvider.wait_for_hostname(name, 1, 1)
@@ -153,9 +154,10 @@ def power_on_vm_by_name(name, timeout=600, interval=10):
             _waiter._attempt = 0
             break
         except Exception as e:
+            err = e
             g.log.info(e)
     if w.expired:
-        raise exceptions.CloudProviderError(e)
+        raise exceptions.CloudProviderError(err)
 
     # Wait for hostname to ssh connection ready
     for w in _waiter:
@@ -164,8 +166,9 @@ def power_on_vm_by_name(name, timeout=600, interval=10):
             break
         except Exception as e:
             g.log.info(e)
+            err = e
     if w.expired:
-        raise exceptions.CloudProviderError(e)
+        raise exceptions.CloudProviderError(err)
 
 
 def node_add_iptables_rules(node, chain, rules, raise_on_error=True):
