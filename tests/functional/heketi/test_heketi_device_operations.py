@@ -5,6 +5,8 @@ import six
 
 from openshiftstoragelibs.baseclass import BaseClass
 from openshiftstoragelibs.heketi_ops import (
+    heketi_blockvolume_create,
+    heketi_blockvolume_delete,
     heketi_device_add,
     heketi_device_delete,
     heketi_device_disable,
@@ -18,6 +20,8 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_topology_info,
     heketi_volume_create,
     heketi_volume_delete,
+    heketi_volume_info,
+    heketi_volume_list,
     rm_tags,
     set_tags,
     validate_dev_path_vg_and_uuid,
@@ -100,6 +104,19 @@ class TestHeketiDeviceOperations(BaseClass):
 
         return online_hosts
 
+    def _cleanup_heketi_volumes(self, existing_volumes):
+        h_node, h_url = self.heketi_client_node, self.heketi_server_url
+
+        volumes = heketi_volume_list(h_node, h_url, json=True).get("volumes")
+        new_volumes = list(set(volumes) - set(existing_volumes))
+        for volume in new_volumes:
+            h_vol_info = heketi_volume_info(h_node, h_url, volume, json=True)
+            if h_vol_info.get("block"):
+                for block_vol in (
+                        h_vol_info.get("blockinfo").get("blockvolume")):
+                    heketi_blockvolume_delete(h_node, h_url, block_vol)
+            heketi_volume_delete(h_node, h_url, volume, raise_on_error=False)
+
     @pytest.mark.tier1
     def test_heketi_device_enable_disable(self):
         """Validate device enable and disable functionality"""
@@ -180,6 +197,33 @@ class TestHeketiDeviceOperations(BaseClass):
             "None of '%s' volume bricks is present on the '%s' device." % (
                 vol_info['id'], online_device_id))
 
+    def _add_heketi_device(
+            self, device_name, node_id, raise_on_error=True):
+
+        # Add device to heketi node
+        device_id, device_size = None, None
+        h_client, h_url = self.heketi_client_node, self.heketi_server_url
+        heketi_device_add(h_client, h_url, device_name, node_id)
+        node_info_addition = heketi_node_info(
+            h_client, h_url, node_id, json=True)
+        for device in node_info_addition.get("devices"):
+            if device.get("name") == device_name:
+                device_id = device.get("id")
+                device_size = device.get("storage", {}).get("total")
+                break
+
+        self.addCleanup(
+            heketi_device_delete, h_client, h_url, device_id,
+            raise_on_error=raise_on_error)
+        self.addCleanup(
+            heketi_device_remove, h_client, h_url, device_id,
+            raise_on_error=raise_on_error)
+        self.addCleanup(
+            heketi_device_disable, h_client, h_url, device_id,
+            raise_on_error=raise_on_error)
+
+        return device_id, device_size
+
     def _add_new_device_and_remove_existing_device(
             self, is_delete_device, add_device_name, node_id,
             add_back_again=False, skip_cleanup_addition=False):
@@ -215,23 +259,8 @@ class TestHeketiDeviceOperations(BaseClass):
             self.heketi_server_url, vol_info['id'])
 
         # Add extra device, then remember it's ID and size
-        heketi_device_add(h_client, h_url, add_device_name, node_id)
-        node_info_after_addition = heketi_node_info(
-            h_client, h_url, node_id, json=True)
-        for device in node_info_after_addition["devices"]:
-            if device["name"] != add_device_name:
-                continue
-            device_id_new = device["id"]
-            device_size_new = device["storage"]["total"]
-        self.addCleanup(
-            heketi_device_delete, h_client, h_url, device_id_new,
-            raise_on_error=raise_on_error)
-        self.addCleanup(
-            heketi_device_remove, h_client, h_url, device_id_new,
-            raise_on_error=raise_on_error)
-        self.addCleanup(
-            heketi_device_disable, h_client, h_url, device_id_new,
-            raise_on_error=raise_on_error)
+        device_id_new, device_size_new = self._add_heketi_device(
+            add_device_name, node_id, raise_on_error)
 
         if lowest_device_size > device_size_new:
             skip_msg = ("Skip test case, because newly added disk %s is "
@@ -696,3 +725,92 @@ class TestHeketiDeviceOperations(BaseClass):
             set_tags(h_node, h_server, 'device', device_id, "tier:test_update")
             self.addCleanup(
                 rm_tags, h_node, h_server, 'device', device_id, "tier")
+
+    @pytest.mark.tier3
+    def test_heketi_device_replacement_in_node(self):
+        """Validate device replacement operation on single node"""
+
+        h_client, h_server = self.heketi_client_node, self.heketi_server_url
+
+        try:
+            gluster_server_0 = list(g.config["gluster_servers"].values())[0]
+            manage_hostname = gluster_server_0["manage"]
+            add_device_name = gluster_server_0["additional_devices"][0]
+        except (KeyError, IndexError):
+            self.skipTest(
+                "Additional disk is not specified for node with following "
+                "hostnames and IP addresses: {}, {}".format(
+                    gluster_server_0.get('manage', '?'),
+                    gluster_server_0.get('storage', '?')))
+
+        # Get existing heketi volume list
+        existing_volumes = heketi_volume_list(h_client, h_server, json=True)
+
+        # Add cleanup function to clean stale volumes created during test
+        self.addCleanup(
+            self._cleanup_heketi_volumes, existing_volumes.get("volumes"))
+
+        # Get nodes info
+        node_id_list = heketi_node_list(h_client, h_server)
+
+        # Disable 4th and other nodes
+        if len(node_id_list) > 3:
+            for node_id in node_id_list[3:]:
+                heketi_node_disable(h_client, h_server, node_id)
+                self.addCleanup(
+                    heketi_node_enable, h_client, h_server, node_id)
+
+        # Create volume when 3 nodes are online
+        vol_size, vol_count = 2, 4
+        for _ in range(vol_count):
+            vol_info = heketi_blockvolume_create(
+                h_client, h_server, vol_size, json=True)
+            self.addCleanup(
+                heketi_blockvolume_delete, h_client, h_server, vol_info['id'])
+
+        # Get node ID of the Gluster hostname
+        topology_info = heketi_topology_info(
+            h_client, h_server, json=True)
+        self.assertIsNotNone(topology_info, "Failed to get topology info")
+        self.assertIn(
+            "clusters", topology_info.keys(), "Failed to get cluster "
+            "details from topology info")
+        node_list = topology_info["clusters"][0]["nodes"]
+        self.assertTrue(
+            node_list, "Cluster info command returned empty list of nodes")
+
+        node_id = None
+        for node in node_list:
+            if manage_hostname == node['hostnames']["manage"][0]:
+                node_id = node["id"]
+                break
+        self.assertTrue(
+            node_id, "Failed to get  node info for node  id '{}'".format(
+                manage_hostname))
+
+        # Add extra device, then remember it's ID and size
+        device_id_new, device_size_new = self._add_heketi_device(
+            add_device_name, node_id)
+
+        # Remove one of the existing devices on node except new device
+        device_name, device_id = None, None
+        node_info_after_addition = heketi_node_info(
+            h_client, h_server, node_id, json=True)
+        for device in node_info_after_addition["devices"]:
+            if (device["name"] != add_device_name
+                    and device["storage"]["total"] == device_size_new):
+                device_name = device["name"]
+                device_id = device["id"]
+                break
+
+        self.assertIsNotNone(device_name, "Failed to get device name")
+        self.assertIsNotNone(device_id, "Failed to get device id")
+        self.addCleanup(
+            heketi_device_enable, h_client, h_server, device_id,
+            raise_on_error=False)
+        self.addCleanup(
+            heketi_device_add, h_client, h_server,
+            device_name, node_id, raise_on_error=False)
+        heketi_device_disable(h_client, h_server, device_id)
+        heketi_device_remove(h_client, h_server, device_id)
+        heketi_device_delete(h_client, h_server, device_id)
