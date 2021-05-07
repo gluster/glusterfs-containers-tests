@@ -143,6 +143,7 @@ common:
 
 scaleup:
     run_scale_up_on_start: True
+    use_default_config: True
     skip_cleanup: True
     file_pvc_count: 500
     file_pod_count: 100
@@ -150,6 +151,8 @@ scaleup:
     arbiter_pod_count: 100
     block_pvc_count: 200
     block_pod_count: 100
+    block_hosting_volume: True
+    block_hosting_volume_size: 200
 
 cloud_provider:
     name: '<fake-cloud-provider-name eg. vmware>'
