@@ -17,9 +17,6 @@ from openshiftstoragelibs.exceptions import (
     ConfigError,
     ExecutionError,
 )
-from openshiftstoragelibs.gluster_ops import (
-    match_heketi_and_gluster_block_volumes_by_prefix
-)
 from openshiftstoragelibs.heketi_ops import (
     get_block_hosting_volume_list,
     get_total_free_space,
@@ -27,7 +24,6 @@ from openshiftstoragelibs.heketi_ops import (
     heketi_blockvolume_delete,
     heketi_blockvolume_info,
     heketi_blockvolume_list,
-    heketi_blockvolume_list_by_name_prefix,
     heketi_node_info,
     heketi_node_list,
     heketi_volume_delete,
@@ -51,7 +47,6 @@ from openshiftstoragelibs.openshift_ops import (
     get_pvc_status,
     get_vol_names_from_pv,
     kill_service_on_gluster_pod_or_node,
-    match_pv_and_heketi_block_volumes,
     oc_adm_manage_node,
     oc_create_pvc,
     oc_delete,
@@ -108,38 +103,6 @@ class TestGlusterBlockStability(GlusterBlockBaseClass):
             self.skipTest(
                 "Skipping this test case as multipath validation "
                 "is not supported in OCS 3.9")
-
-    def bulk_app_pods_creation_with_block_pv(self, app_pod_count):
-        prefix = "autotest-%s" % utils.get_random_str()
-        self.create_storage_class(sc_name_prefix=prefix,
-                                  create_vol_name_prefix=True, set_hacount=3)
-        size_of_pvc = 1
-
-        # Create pvs & dc's
-        pvc_names = self.create_and_wait_for_pvcs(
-            pvc_size=size_of_pvc, pvc_amount=app_pod_count)
-        dcs = self.create_dcs_with_pvc(pvc_names)
-
-        # Validate iscsi sessions & multipath for created pods
-        for pvc_name in pvc_names:
-            dc_name, pod_name = dcs[pvc_name]
-            wait_for_pod_be_ready(self.node, pod_name, wait_step=10)
-            iqn, _, ini_node = self.verify_iscsi_sessions_and_multipath(
-                pvc_name, dc_name)
-
-        h_blockvol_list = heketi_blockvolume_list_by_name_prefix(
-            self.heketi_client_node, self.heketi_server_url, prefix)
-
-        # validate block volumes listed by heketi and pvs
-        heketi_blockvolume_ids = sorted([bv[0] for bv in h_blockvol_list])
-        match_pv_and_heketi_block_volumes(
-            self.node, heketi_blockvolume_ids, pvc_prefix=prefix)
-
-        # validate block volumes listed by heketi and gluster
-        heketi_blockvolume_names = sorted([
-            bv[1].replace("%s_" % prefix, "") for bv in h_blockvol_list])
-        match_heketi_and_gluster_block_volumes_by_prefix(
-            heketi_blockvolume_names, "%s_" % prefix)
 
     def initiator_side_failures(self):
         self.create_storage_class()
