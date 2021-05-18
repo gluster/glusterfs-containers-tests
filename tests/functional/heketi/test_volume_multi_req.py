@@ -249,7 +249,7 @@ class TestVolumeMultiReq(BaseClass):
             size=2)
         c1.create_pvc(ocp_node)
         self.addCleanup(c1.delete_pvc, ocp_node)
-        c1.update_pvc_info(ocp_node)
+        c1.update_pvc_info(ocp_node, timeout=300)
         # verify volume exists
         self.assertTrue(c1.volumeName)
         c1.update_pv_info(ocp_node)
@@ -269,7 +269,7 @@ class TestVolumeMultiReq(BaseClass):
             size=2)
         c2.create_pvc(ocp_node)
         self.addCleanup(c2.delete_pvc, ocp_node)
-        c2.update_pvc_info(ocp_node)
+        c2.update_pvc_info(ocp_node, timeout=300)
         # verify volume exists
         self.assertTrue(c2.volumeName)
         c2.update_pv_info(ocp_node)
@@ -317,8 +317,8 @@ class TestVolumeMultiReq(BaseClass):
         self.addCleanup(c2.delete_pvc, ocp_node)
 
         # wait for pvcs/volumes to complete
-        c1.update_pvc_info(ocp_node)
-        c2.update_pvc_info(ocp_node)
+        c1.update_pvc_info(ocp_node, timeout=300)
+        c2.update_pvc_info(ocp_node, timeout=300)
         now_vols = _heketi_name_id_map(
             _heketi_vols(ocp_node, self.heketi_server_url))
 
@@ -378,7 +378,7 @@ class TestVolumeMultiReq(BaseClass):
             t.join()
 
         for c in claims:
-            c.update_pvc_info(ocp_node, timeout=120)
+            c.update_pvc_info(ocp_node, timeout=300)
         now_vols = _heketi_name_id_map(
             _heketi_vols(ocp_node, self.heketi_server_url))
         for c in claims:
@@ -417,7 +417,7 @@ class TestVolumeMultiReq(BaseClass):
                     size=2)
                 c.create_pvc(ocp_node)
                 time.sleep(1)
-                c.update_pvc_info(ocp_node, timeout=120)
+                c.update_pvc_info(ocp_node, timeout=300)
                 c.update_pv_info(ocp_node)
                 time.sleep(random.randint(1, 10) * 0.1)
                 c.delete_pvc(ocp_node)
@@ -457,8 +457,8 @@ class TestVolumeMultiReq(BaseClass):
         self.addCleanup(c2.delete_pvc, ocp_node)
 
         # wait for pvcs/volumes to complete
-        c1.update_pvc_info(ocp_node, timeout=120)
-        c2.update_pvc_info(ocp_node, timeout=120)
+        c1.update_pvc_info(ocp_node, timeout=300)
+        c2.update_pvc_info(ocp_node, timeout=300)
 
         # verify first volume exists
         self.assertTrue(c1.volumeName)
