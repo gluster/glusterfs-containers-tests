@@ -1893,7 +1893,7 @@ def heketi_db_check(
         heketi_server_url, **kwargs)
 
     # output is always json-like and we do not need to provide "--json" CLI arg
-    cmd = "heketi-cli db check %s %s %s" % (
+    cmd = "heketi-cli db check -s %s %s %s" % (
         heketi_server_url, user, secret)
     cmd = TIMEOUT_PREFIX + cmd
     out = heketi_cmd_run(
