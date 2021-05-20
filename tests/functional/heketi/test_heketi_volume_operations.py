@@ -245,6 +245,7 @@ class TestHeketiVolumeOperations(BaseClass):
     @pytest.mark.tier2
     def test_heketi_volume_create_mutiple_sizes(self):
         """Validate creation of heketi volume with differnt sizes"""
+        prefix = "autotest-{}".format(utils.get_random_str())
         sizes, required_space = [15, 50, 100], 495
         h_node, h_url = self.heketi_client_node, self.heketi_server_url
 
@@ -256,8 +257,8 @@ class TestHeketiVolumeOperations(BaseClass):
 
         # Create volume 3 times, each time different size
         for size in sizes:
-            vol_id = heketi_volume_create(h_node, h_url, size, json=True)['id']
-            self.addCleanup(heketi_volume_delete, h_node, h_url, vol_id)
+            self.create_heketi_volume_with_name_and_wait(
+                "{}-{}".format(prefix, size), size, json=True)
 
     @pytest.mark.tier2
     @podcmd.GlustoPod()
