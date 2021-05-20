@@ -194,5 +194,5 @@ class TestVolumeDeleteTestCases(baseclass.BaseClass):
                     and (not h_db_check_vol.get("pending"))):
                 break
         if w.expired:
-            raise exceptions.AssertionError(
+            raise AssertionError(
                 "Failed to delete volumes after 120 secs")
