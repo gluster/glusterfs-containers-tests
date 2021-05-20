@@ -318,6 +318,9 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
         server_node = server_info.get('manage')
         additional_device = server_info.get('additional_devices')[0]
 
+        # command to run pvscan
+        cmd_pvscan = "timeout 300 pvscan"
+
         # Get pod name from on host
         for pod_info in self.pod_name:
             if pod_info.get('pod_hostname') == server_node:
@@ -350,8 +353,7 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
                 self.oc_node, pod_name, "ps aux | grep dmeventd.service")
 
         # Perform a pvscan in contaier
-        openshift_ops.oc_rsh(
-            self.oc_node, pod_name, "pvscan")
+        openshift_ops.oc_rsh(self.oc_node, pod_name, cmd_pvscan)
 
         # Get heketi node to add new device
         heketi_node_list = heketi_ops.heketi_node_list(h_client, h_url)
@@ -401,4 +403,4 @@ class TestHeketiLvmWrapper(baseclass.BaseClass):
         self._check_heketi_and_gluster_pod_after_node_reboot(server_node)
 
         # Perform a pvscan in contaier
-        openshift_ops.oc_rsh(self.oc_node, pod_name, "pvscan")
+        openshift_ops.oc_rsh(self.oc_node, pod_name, cmd_pvscan)

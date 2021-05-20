@@ -254,7 +254,8 @@ def get_pvs_info(node, gluster_node_ip, devices_list, raise_on_error=True):
 
     pvs_info = []
     for device in devices_list:
-        cmd = ("pvs -o pv_name,pv_uuid,vg_name | grep {}".format(device))
+        cmd = ("timeout 120 pvs -o pv_name,pv_uuid,vg_name | "
+               "grep {}".format(device))
         out = cmd_run_on_gluster_pod_or_node(
             node, cmd, gluster_node_ip, raise_on_error=raise_on_error)
         pvs_info.append(out.split())

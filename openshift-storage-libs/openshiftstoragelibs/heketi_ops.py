@@ -2107,7 +2107,9 @@ def validate_dev_path_vg_and_uuid(
         h_vg = bricks[0]["path"].split("/")[5]
 
     # Collect data from the node
-    cmd = "pvs --noheadings -o vg_name,uuid -S name={}".format(dev_name)
+    cmd = ("pvs --noheadings -o vg_name,uuid "
+           "-S name={}".format(dev_name))
+    cmd = TIMEOUT_PREFIX + cmd
     n_vg, n_uuid = command.cmd_run(cmd, hostname=hostname).split()
 
     # Compare the vg from node and heketi
