@@ -93,8 +93,12 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
         sc_name = self.create_storage_class(
             vol_name_prefix=vol_name_prefix,
             allow_volume_expansion=volume_expansion)
-        pvc_name = self.create_and_wait_for_pvc(
-            pvc_name_prefix=vol_name_prefix, sc_name=sc_name)
+
+        if vol_name_prefix:
+            pvc_name = self.create_and_wait_for_pvc(
+                pvc_name_prefix=vol_name_prefix, sc_name=sc_name)
+        else:
+            pvc_name = self.create_and_wait_for_pvc(sc_name=sc_name)
 
         # Create DC and attach with pvc
         self.dc_name, pod_name = self.create_dc_with_pvc(pvc_name)
