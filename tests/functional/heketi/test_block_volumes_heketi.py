@@ -289,6 +289,11 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
     @pytest.mark.tier2
     @podcmd.GlustoPod()
     def test_create_max_num_blockhostingvolumes(self):
+        """Create blockvolumes to test max no of blockvolumes in
+        blockhosting volume
+        """
+        prefix = "autotest-{}".format(utils.get_random_str())
+
         num_of_bv = 10
         new_bhv_list, bv_list, g_nodes = [], [], []
         free_space, nodenum = get_total_free_space(
@@ -310,18 +315,16 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
                           % (free_space_available, default_bhv_size))
 
         # Create BHV's
+        count = 1
         while free_space_available > default_bhv_size:
-            block_host_create_info = heketi_volume_create(
-                self.heketi_client_node, self.heketi_server_url,
-                default_bhv_size, json=True, block=True)
-            if block_host_create_info["id"] not in existing_bhv_list.keys():
-                new_bhv_list.append(block_host_create_info["id"])
-            self.addCleanup(
-                heketi_volume_delete, self.heketi_client_node,
-                self.heketi_server_url, block_host_create_info["id"],
-                raise_on_error=False)
+            bhv_name = "{}-bhv-{}".format(prefix, count)
+            bhv_info = self.create_heketi_volume_with_name_and_wait(
+                bhv_name, default_bhv_size,
+                raise_on_cleanup_error=False, json=True, block=True)
+            if bhv_info["id"] not in existing_bhv_list.keys():
+                new_bhv_list.append(bhv_info["id"])
 
-            free_size = block_host_create_info["blockinfo"]["freesize"]
+            free_size = bhv_info["blockinfo"]["freesize"]
             if free_size > num_of_bv:
                 block_vol_size = int(free_size / num_of_bv)
             else:
@@ -338,6 +341,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
                     raise_on_error=False)
                 bv_list.append(block_vol["id"])
             free_space_available = int(free_space_available - default_bhv_size)
+            count += 1
 
         # Get gluster node ips
         h_nodes_ids = heketi_node_list(
