@@ -586,6 +586,36 @@ class BaseClass(unittest.TestCase):
 
         return h_volume_info
 
+    def cleanup_heketi_block_hosting_volumes(
+            self, bhv_initial, skip_cleanup_bv=False, raise_on_error=False):
+        """Delete heketi block hosting volumes and block volumes.
+
+        Args:
+            initial_vols (list): volumes present at initial.
+            skip_cleanup_bv (bool): skip cleanup or not.
+            raise_on_error (bool): whether or not to raise exception
+            in case of an error.
+        """
+        bhv_final = list(
+            get_block_hosting_volume_list(
+                self.heketi_client_node, self.heketi_server_url).keys())
+
+        diff_volumes = list(set(bhv_final) - set(bhv_initial))
+        for volume in diff_volumes:
+            h_vol_info = heketi_volume_info(
+                self.heketi_client_node, self.heketi_server_url,
+                volume, json=True)
+            if not skip_cleanup_bv and h_vol_info.get("block", {}):
+                for block_vol in (
+                        h_vol_info.get(
+                            "blockinfo", {}).get("blockvolume", {})):
+                    heketi_blockvolume_delete(
+                        self.heketi_client_node, self.heketi_server_url,
+                        block_vol)
+            heketi_volume_delete(
+                self.heketi_client_node, self.heketi_server_url,
+                volume, raise_on_error=raise_on_error)
+
     def configure_node_to_run_gluster_node(self, storage_hostname):
         glusterd_status_cmd = "systemctl is-active glusterd"
         command.cmd_run(glusterd_status_cmd, storage_hostname)
