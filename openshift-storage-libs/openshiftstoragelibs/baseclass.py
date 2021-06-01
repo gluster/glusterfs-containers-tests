@@ -1,5 +1,13 @@
+try:
+    # py2/3
+    import simplejson as json
+except ImportError:
+    # py2
+    import json
+
 from collections import defaultdict
 import datetime
+import mock
 import re
 import unittest
 
@@ -615,6 +623,123 @@ class BaseClass(unittest.TestCase):
             heketi_volume_delete(
                 self.heketi_client_node, self.heketi_server_url,
                 volume, raise_on_error=raise_on_error)
+
+    def create_heketi_volumes_in_batch(
+            self, vol_count, size=1, batch_amount=8, timeout=300, interval=5,
+            block=False, skip_cleanup=False, **kwargs):
+        """Create heketi volume in batches.
+
+        Args:
+            vol_count (int): Count of volumes to create.
+            size (str): Volume size.
+            batch_amount (int): Amount of volumes to be created in one batch.
+            timeout (int): Timeout for entire volume count to create.
+            interval (int): Time interval between each interation.
+            block (bool): Block volume create or not.
+            skip_cleanup (bool): Skip cleanup or not.
+        Returns:
+            list: List of heketi volume id's.
+
+        Kwargs:
+            The keys, values in kwargs are:
+                - clusters : (str)|None
+                - disperse_data : (int)|None
+                - durability : (str)|None
+                - gid : (int)|None
+                - gluster_volume_options : (str)|None
+                - name : (str)|None
+                - persistent_volume : (bool)
+                - persistent_volume_endpoint : (str)|None
+                - persistent_volume_file : (str)|None
+                - redundancy : (int):None
+                - replica : (int)|None
+                - size : (int):None
+                - snapshot-factor : (float)|None
+                - json : (bool)
+                - secret : (str)|None
+                - user : (str)|None
+        """
+        kwargs.pop("json", None)
+        h_vols, async_obj = [], []
+
+        if block:
+            # Fetch BHV list before operation
+            bhv_initial = list(get_block_hosting_volume_list(
+                self.heketi_client_node, self.heketi_server_url).keys())
+
+            # Add cleanup function to clean stale volumes created during test
+            self.addCleanup(
+                self.cleanup_heketi_block_hosting_volumes, bhv_initial)
+
+        # Fetch heketi volume list before operation
+        h_vols_count_initial = len(heketi_volume_list(
+            self.heketi_client_node, self.heketi_server_url,
+            json=True).get('volumes'))
+
+        # Temporary replace g.run with g.async_run in heketi_volume_create func
+        # to be able to run it in background. Also, avoid parsing the output as
+        # it won't be json at that moment. Parse it after reading the async
+        # operation results.
+        def run_async(cmd, hostname, raise_on_error=True):
+            async_op = g.run_async(host=hostname, command=cmd)
+            async_obj.append(async_op)
+            return async_op
+
+        # Waiter for overall volumes
+        _waiter = Waiter(timeout=timeout, interval=interval)
+        while vol_count > 0:
+            # Change batch_amount if pvc_count < batch_amount
+            if vol_count < batch_amount:
+                batch_amount = vol_count
+            for _ in range(batch_amount):
+                with mock.patch.object(
+                        json, 'loads', side_effect=(lambda j: j)):
+                    with mock.patch.object(
+                            command, 'cmd_run', side_effect=run_async):
+                        heketi_volume_create(
+                            self.heketi_client_node, self.heketi_server_url,
+                            size, json=True, block=block, **kwargs)
+            h_vols_count_initial += batch_amount
+
+            # Wait for all the volume to be created
+            for w in _waiter:
+                h_vols_count_final = len(heketi_volume_list(
+                    self.heketi_client_node, self.heketi_server_url,
+                    json=True).get('volumes'))
+                if h_vols_count_final == h_vols_count_initial:
+                    # Check that all background processes got exited
+                    for obj in async_obj:
+                        ret, out, err = obj.async_communicate()
+                        self.assertFalse(
+                            ret, "Failed to create volume due to error: "
+                            "{}".format(err))
+                        vol_id = json.loads(out).get('id', {})
+                        self.assertTrue(vol_id, "Failed to get the volume id")
+
+                        # List of heketi volumes created
+                        h_vols.append(vol_id)
+                        if not skip_cleanup:
+                            self.addCleanup(
+                                heketi_volume_delete,
+                                self.heketi_client_node,
+                                self.heketi_server_url, vol_id)
+                    async_obj = []
+                    break
+
+            if w.expired:
+                # Delete all the volumes i.e created before failure
+                h_vols = heketi_volume_list(
+                    self.heketi_client_node, self.heketi_server_url,
+                    json=True).get('volumes')
+                for vol in h_vols:
+                    self.addCleanup(
+                        heketi_volume_delete,
+                        self.heketi_client_node, self.heketi_server_url, vol)
+                raise AssertionError(
+                    "Failed to create volumes after waiting for {} "
+                    "secs".format(timeout))
+            vol_count -= batch_amount
+        return h_vols
 
     def configure_node_to_run_gluster_node(self, storage_hostname):
         glusterd_status_cmd = "systemctl is-active glusterd"
