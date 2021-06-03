@@ -352,14 +352,11 @@ def oc_create_pvc(hostname, sc_name=None, pvc_name_prefix="autotests-pvc",
 
 
 def _oc_create_app_dc_with_io_image(hostname, pvc_name, dc_name_prefix,
-                                    replicas, space_to_use, label, image):
+                                    replicas, space_to_use, label, image,
+                                    cmd_args=None):
     dc_name = "%s-%s" % (dc_name_prefix, utils.get_random_str())
-    container_data = {
-        "name": dc_name,
-        "image": image,
-        "volumeMounts": [{"mountPath": "/mnt", "name": dc_name}],
-        "command": ["sh"],
-        "args": [
+    if cmd_args is None:
+        cmd_args = [
             "-ec",
             "trap \"rm -f /mnt/random-data-$HOSTNAME.log ; exit 0\" SIGTERM; "
             "while true; do "
@@ -368,7 +365,13 @@ def _oc_create_app_dc_with_io_image(hostname, pvc_name, dc_name_prefix,
             "   exit 1; "
             " sleep 1 ; "
             "done" % space_to_use,
-        ],
+        ]
+    container_data = {
+        "name": dc_name,
+        "image": image,
+        "volumeMounts": [{"mountPath": "/mnt", "name": dc_name}],
+        "command": ["sh"],
+        "args": cmd_args,
         "livenessProbe": {
             "initialDelaySeconds": 3,
             "periodSeconds": 3,
@@ -414,7 +417,8 @@ def _oc_create_app_dc_with_io_image(hostname, pvc_name, dc_name_prefix,
 
 def oc_create_app_dc_with_io(
         hostname, pvc_name, dc_name_prefix="autotests-dc-with-app-io",
-        replicas=1, space_to_use=1048576, label=None, image="cirros"):
+        cmd_args=None, replicas=1, space_to_use=1048576, label=None,
+        image="cirros"):
     """Create DC with app PODs and attached PVC, constantly running I/O.
 
     Args:
@@ -423,6 +427,8 @@ def oc_create_app_dc_with_io(
                         the application PODs where constant I/O will run.
         dc_name_prefix (str): DC name will consist of this prefix and
                               random str.
+        cmd_args (list): list of arguments to be passed to the container
+                     command
         replicas (int): amount of application POD replicas.
         space_to_use (int): value in bytes which will be used for I/O.
         label (dict): dict of keys and values to add labels in DC.
@@ -430,7 +436,7 @@ def oc_create_app_dc_with_io(
     """
     return _oc_create_app_dc_with_io_image(
         hostname, pvc_name, dc_name_prefix, replicas, space_to_use,
-        label, image=image)
+        label, cmd_args=cmd_args, image=image)
 
 
 def oc_create_tiny_pod_with_volume(hostname, pvc_name, pod_name_prefix='',
