@@ -100,13 +100,15 @@ def _set_heketi_global_flags(heketi_server_url, **kwargs):
 
 
 def heketi_volume_create(heketi_client_node, heketi_server_url, size,
-                         raise_on_error=True, **kwargs):
+                         timeout=None, raise_on_error=True, **kwargs):
     """Creates heketi volume with the given user options.
 
     Args:
         heketi_client_node (str): Node on which cmd has to be executed.
         heketi_server_url (str): Heketi server url
         size (str): Volume size
+        timeout(int): Timeout value for heketi volume create cmd,
+            default is 120 sec
         raise_on_error (bool): whether or not to raise exception
             in case of an error.
 
@@ -200,6 +202,11 @@ def heketi_volume_create(heketi_client_node, heketi_server_url, size,
                persistent_volume_arg, persistent_volume_endpoint_arg,
                persistent_volume_file_arg, redundancy_arg, replica_arg,
                snapshot_factor_arg, json_arg, secret_arg, user_arg))
+    if timeout:
+        TIMEOUT_PREFIX = "timeout %s " % timeout
+    else:
+        TIMEOUT_PREFIX = "timeout %s " % HEKETI_COMMAND_TIMEOUT
+
     cmd = TIMEOUT_PREFIX + cmd
     out = heketi_cmd_run(
         heketi_client_node, cmd, raise_on_error=raise_on_error)
