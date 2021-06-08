@@ -1481,15 +1481,20 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
                         memory_used, size_limit, gluster_node))
 
     def configure_setup(
-            self, max_volume_count, total_volume_count, image="busybox"):
+            self, total_volume_count, max_volume_count=None, image="busybox"):
         # Get revised version of heketi
         revision = oc_get_custom_resource(
             self.ocp_master_node[0], 'dc', ':status.latestVersion',
             self.heketi_dc_name)
 
         # Set env variable to support max 2000 volumes in heketi dc
-        cmd = ("oc set env dc/{} HEKETI_GLUSTER_MAX_VOLUMES_PER_CLUSTER="
-               "{}".format(self.heketi_dc_name, max_volume_count))
+        cmd = "oc set env dc/{}".format(self.heketi_dc_name)
+        if max_volume_count:
+            cmd += " HEKETI_GLUSTER_MAX_VOLUMES_PER_CLUSTER={}".format(
+                max_volume_count)
+        else:
+            cmd += " HEKETI_GLUSTER_MAX_VOLUMES_PER_CLUSTER-"
+
         self.cmd_run(cmd)
 
         # Get new revised version of heketi
