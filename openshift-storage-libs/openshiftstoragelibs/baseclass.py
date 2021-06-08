@@ -1365,7 +1365,7 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
                     pvc_names=pvcs[index:index + batch_amount],
                     dc_name_prefix=dc_name_prefix, label=label,
                     timeout=timeout, wait_step=wait_step,
-                    skip_cleanup=self.skip_cleanup))
+                    skip_cleanup=skip_cleanup))
             index += batch_amount
             pod_count -= batch_amount
 
