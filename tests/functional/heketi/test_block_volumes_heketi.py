@@ -322,7 +322,7 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
                 bhv_name, default_bhv_size,
                 raise_on_cleanup_error=False, json=True, block=True)
             if bhv_info["id"] not in existing_bhv_list.keys():
-                new_bhv_list.append(bhv_info["id"])
+                new_bhv_list.append((bhv_info["id"], bhv_info["name"]))
 
             free_size = bhv_info["blockinfo"]["freesize"]
             if free_size > num_of_bv:
@@ -371,25 +371,27 @@ class TestBlockVolumeOps(GlusterBlockBaseClass):
                 self.heketi_client_node, self.heketi_server_url, bv_volume)
 
         # Check if any blockvolume exist in heketi & gluster
-        for bhv_volume in new_bhv_list[:]:
+        for bhv_id, bhv_name in new_bhv_list[:]:
             heketi_vol_info = heketi_volume_info(
                 self.heketi_client_node, self.heketi_server_url,
-                bhv_volume, json=True)
+                bhv_id, json=True)
             self.assertNotIn(
                 "blockvolume", heketi_vol_info["blockinfo"].keys())
             gluster_vol_info = get_block_list(
-                'auto_get_gluster_endpoint', volname="vol_%s" % bhv_volume)
+                'auto_get_gluster_endpoint', bhv_name)
             self.assertIsNotNone(
-                gluster_vol_info, "Failed to get volume info %s" % bhv_volume)
-            new_bhv_list.remove(bhv_volume)
+                gluster_vol_info, "Failed to get volume info %s" % bhv_name)
+            new_bhv_list.remove((bhv_id, bhv_name))
             for blockvol in gluster_vol_info:
                 self.assertNotIn("blockvol_", blockvol)
                 heketi_volume_delete(
                     self.heketi_client_node, self.heketi_server_url,
-                    bhv_volume)
+                    bhv_id)
 
         # Check if all blockhosting volumes are deleted from heketi
-        self.assertFalse(new_bhv_list)
+        self.assertFalse(
+            new_bhv_list,
+            "Failed to delete all the BHV {}".format(new_bhv_list))
 
     @pytest.mark.tier3
     @podcmd.GlustoPod()
