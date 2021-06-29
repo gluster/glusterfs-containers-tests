@@ -501,7 +501,7 @@ class BaseClass(unittest.TestCase):
     def create_dcs_with_pvc(
             self, pvc_names, timeout=600, wait_step=5,
             dc_name_prefix='autotests-dc', space_to_use=1048576, label=None,
-            skip_cleanup=False, image=None):
+            skip_cleanup=False, image=None, raise_on_error=True):
         """Create bunch of DCs with app PODs which use unique PVCs.
 
         Args:
@@ -513,6 +513,7 @@ class BaseClass(unittest.TestCase):
             space_to_use(int): space to use for io's in KB.
             label (dict): keys and value for adding label into DC.
             image (str): container image used for I/O.
+            raise_on_error (bool): defines whether we should raise exception
         Returns: dictionary with following structure:
             {
                 "pvc_name_1": ("dc_name_1", "pod_name_1"),
@@ -534,8 +535,10 @@ class BaseClass(unittest.TestCase):
                 dc_name_prefix=dc_name_prefix, label=label, image=image)
             dc_names[pvc_name] = dc_name
             if not skip_cleanup:
-                self.addCleanup(oc_delete, self.ocp_client[0], 'dc', dc_name)
-        if not skip_cleanup:
+                self.addCleanup(
+                    oc_delete, self.ocp_client[0], 'dc', dc_name,
+                    raise_on_absence=raise_on_error)
+        if not skip_cleanup and raise_on_error:
             self.addCleanup(
                 scale_dcs_pod_amount_and_wait, self.ocp_client[0],
                 dc_names.values(), 0, timeout=timeout, wait_step=wait_step)
@@ -1332,7 +1335,7 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
     def create_app_pods_in_batch(
             self, pvcs, pod_count, batch_amount=5,
             dc_name_prefix='auto-scale-dc', label={'scale': 'scale'},
-            timeout=300, wait_step=5, skip_cleanup=False):
+            timeout=300, wait_step=5, skip_cleanup=False, raise_on_error=True):
         """Create App pods in batches.
 
         Args:
@@ -1344,6 +1347,7 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
             timeout (int): timeout for one batch
             wait_step ( int): wait step
             skip_cleanup (bool): skip cleanup or not.
+            raise_on_error (bool): defines whether we should raise exception
 
         Returns:
             dict: dict of DC's as key.
@@ -1365,7 +1369,7 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
                     pvc_names=pvcs[index:index + batch_amount],
                     dc_name_prefix=dc_name_prefix, label=label,
                     timeout=timeout, wait_step=wait_step,
-                    skip_cleanup=skip_cleanup))
+                    skip_cleanup=skip_cleanup, raise_on_error=raise_on_error))
             index += batch_amount
             pod_count -= batch_amount
 
