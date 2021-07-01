@@ -1459,10 +1459,13 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
         for gluster_node in self.gluster_servers:
             # Fetch pid from the node/pod
             out = cmd_run_on_gluster_pod_or_node(
-                self.ocp_master_node[0], get_glusterfsd_pid, gluster_node)
-            self.assertTrue(
-                out, "Failed to get pid of glusterfsd from node/pod "
-                "{}".format(gluster_node))
+                self.ocp_master_node[0], get_glusterfsd_pid, gluster_node,
+                raise_on_error=False)
+            if not out:
+                g.log.info(
+                    "'glusterfsd'process is not present on node/pod "
+                    "{}".format(gluster_node))
+                continue
             pid_list = out.split("\n")
 
             # Fetch the memory usage for each pid
