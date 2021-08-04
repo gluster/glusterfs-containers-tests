@@ -186,7 +186,7 @@ class TestVolumeDeleteTestCases(baseclass.BaseClass):
             "found {}".format(h_db_check_bricks.get("pending")))
 
         # Verify and Wait for pending operations to complete
-        for w in waiter.Waiter(timeout=120, interval=10):
+        for w in waiter.Waiter(timeout=300, interval=15):
             h_db_check = heketi_ops.heketi_db_check(h_node, h_server)
             h_db_check_vol = h_db_check.get("volumes")
             h_db_check_bricks = h_db_check.get("bricks")
@@ -195,4 +195,4 @@ class TestVolumeDeleteTestCases(baseclass.BaseClass):
                 break
         if w.expired:
             raise AssertionError(
-                "Failed to delete volumes after 120 secs")
+                "Failed to delete volumes after 300 secs")
