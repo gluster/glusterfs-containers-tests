@@ -1401,8 +1401,11 @@ class ScaleUpBaseClass(GlusterBlockBaseClass):
                 for brick_or_shd in status[vol][host].keys():
                     if status[vol][host][brick_or_shd]['status'] != "1":
                         down_bricks += 1
-                    pid = status[vol][host][brick_or_shd]['pid']
-                    pids[pid] += 1
+
+                    if brick_or_shd not in (
+                            "Self-heal Daemon", "Snapshot Daemon"):
+                        pid = status[vol][host][brick_or_shd]['pid']
+                        pids[pid] += 1
 
         # Get Pids which are running more than 250 bricks and raise exception
         exhausted_pids = [pd for pd in pids.keys() if pids[pd] > 250]
