@@ -629,7 +629,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
                     pvc_size=(expand_size - 1), pvc_amount=1)
 
     @skip("Blocked by BZ-1769426")
-    @pytest.mark.tier4
+    @pytest.mark.tier4b
     def test_targetcli_failure_during_block_pvc_creation(self):
         h_node, h_server = self.heketi_client_node, self.heketi_server_url
 
@@ -751,7 +751,7 @@ class TestDynamicProvisioningBlockP0(GlusterBlockBaseClass):
         # Wait for all the PVCs to be in bound state
         wait_for_pvcs_be_bound(self.node, pvc_names, timeout=300, wait_step=5)
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     def test_creation_of_pvc_when_one_node_is_down(self):
         """Test PVC creation when one node is down than hacount"""
         node_count = len(self.gluster_servers)

@@ -61,7 +61,7 @@ class TestDevPathMapping(baseclass.BaseClass):
         # sort the devices list
         self.devices_list.sort()
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_file_volume_create(self):
         """Validate dev path mapping for file volumes"""
@@ -159,7 +159,7 @@ class TestDevPathMapping(baseclass.BaseClass):
                 " Actual:{}".format(vg_name, _vg_name))
         return pod_name, dc_name, use_percent_before
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_mapping_app_pod_with_file_volume_reboot(self):
         """Validate dev path mapping for app pods with file volume after reboot
@@ -186,7 +186,7 @@ class TestDevPathMapping(baseclass.BaseClass):
             "Failed to execute IO's in the app pod {} after respin".format(
                 pod_name))
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_file_volume_delete(self):
         """Validate device path name changes the deletion of
@@ -274,7 +274,7 @@ class TestDevPathMapping(baseclass.BaseClass):
                 self.node, self.heketi_dc_name)
             openshift_ops.wait_for_pod_be_ready(self.node, new_pod_name)
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_mapping_heketi_pod_reboot(self):
         """Validate dev path mapping for heketi pod reboot
@@ -341,7 +341,7 @@ class TestDevPathMapping(baseclass.BaseClass):
             g_new_pod = self._get_gluster_pod()
             openshift_ops.wait_for_pod_be_ready(self.node, g_new_pod)
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_mapping_gluster_pod_reboot(self):
         """Validate dev path mapping for app pods with file volume after reboot
@@ -398,7 +398,7 @@ class TestDevPathMapping(baseclass.BaseClass):
                     for node_info in h_node_info['devices']]
                 return h_node_details, h_node
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_mapping_heketi_device_delete(self):
         """Validate dev path mapping for heketi device delete lifecycle"""
@@ -582,7 +582,7 @@ class TestDevPathMapping(baseclass.BaseClass):
                 node_details[h_node][1].append(device['id'])
         return node_details
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_mapping_heketi_node_delete(self):
         """Validate dev path mapping for heketi node deletion lifecycle"""

@@ -340,7 +340,7 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
             filename="secondfilename", dirname="seconddirname",
             metric_data=resize_metrics, operation="create")
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4a
     def test_prometheus_volume_metrics_on_node_reboot(self):
         """Validate volume metrics using prometheus before and after node
         reboot"""

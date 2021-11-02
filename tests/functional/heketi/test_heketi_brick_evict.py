@@ -129,7 +129,7 @@ class TestHeketiBrickEvict(BaseClass):
             raise exceptions.ExecutionError(
                 "Failed to bring down node {}".format(hostname))
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4b
     def test_brick_evict_on_three_node_with_one_down(self):
         """Test brick evict basic functionality and verify brick evict
         will fail after node down if nodes are three"""
@@ -182,7 +182,7 @@ class TestHeketiBrickEvict(BaseClass):
             if ('No Replacement was found' not in six.text_type(e)):
                 raise
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4b
     def test_brick_evict_on_more_than_three_node_with_one_down(self):
         """Test brick evict basic functionality and verify brick evict
         will success after one node down out of more than three nodes"""

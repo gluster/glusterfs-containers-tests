@@ -177,7 +177,7 @@ class TestHeketiMetrics(BaseClass):
         """Validate heketi metrics generation"""
         self.verify_heketi_metrics_with_topology_info()
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4a
     def test_heketi_metrics_heketipod_failure(self):
         """Validate heketi metrics after heketi pod failure"""
         scale_dc_pod_amount_and_wait(

@@ -1492,7 +1492,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
             "expansion".format(
                 arbiter_brick_size_after, arbiter_brick_size_before))
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4a
     def test_poweroff_gluster_nodes_after_filling_inodes_arbiter_brick(self):
         """Validate io after filling up the arbiter brick and node poweroff"""
 

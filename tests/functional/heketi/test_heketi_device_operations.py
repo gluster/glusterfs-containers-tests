@@ -655,7 +655,7 @@ class TestHeketiDeviceOperations(BaseClass):
             if ("Failed to allocate new volume" not in six.text_type(e)):
                 raise
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4b
     def test_device_settags_tier_option(self):
         """Validate volume creation with a tag-matching rule"""
 
