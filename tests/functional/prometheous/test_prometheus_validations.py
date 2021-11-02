@@ -686,7 +686,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
                 openshift_ops.check_service_status_on_pod(
                     self._master, gluster_pod, service, "active", state)
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4a
     def test_heketi_metrics_validation_with_node_reboot(self):
         """Validate heketi metrics after node reboot using prometheus"""
 
@@ -761,7 +761,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
             initial_prometheus, final_prometheus, err_msg.format(
                 initial_prometheus, final_prometheus))
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4a
     @ddt.data('add', 'delete')
     def test_heketi_metrics_validation_after_node(self, condition):
         """Validate heketi metrics after adding and remove node"""

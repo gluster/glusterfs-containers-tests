@@ -171,7 +171,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             self.addCleanup(
                 openshift_ops.oc_rsh, self._master, es_pod, cmd_remove_file)
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4a
     def test_resping_gluster_pod(self):
         """Validate gluster pod restart with no disruption to elasticsearch pod
         """
@@ -218,7 +218,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             " {} and after {} for es pod to be equal after gluster pod"
             " respin".format(restart_count_before, restart_count_after))
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4a
     def test_kill_bhv_fsd_while_es_pod_running(self):
         """Validate killing of bhv fsd won't effect es pod io's"""
 

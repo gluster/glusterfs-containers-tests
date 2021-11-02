@@ -78,7 +78,7 @@ class TestDevPathMapping(baseclass.GlusterBlockBaseClass):
             heketi_ops.heketi_volume_delete(
                 self.h_node, self.h_server, volume, raise_on_error=False)
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_block_volume_create(self):
         """Validate dev path mapping for block volumes"""
@@ -180,7 +180,7 @@ class TestDevPathMapping(baseclass.GlusterBlockBaseClass):
                 " Actual:{}".format(vg_name, _vg_name))
         return pod_name, dc_name, use_percent_before
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_mapping_app_pod_with_block_volume_reboot(self):
         """Validate dev path mapping for app pods with block volume after reboot
@@ -206,7 +206,7 @@ class TestDevPathMapping(baseclass.GlusterBlockBaseClass):
             "Failed to execute IO's in the app pod {} after respin".format(
                 pod_name))
 
-    @pytest.mark.tier4
+    @pytest.mark.tier4c
     @podcmd.GlustoPod()
     def test_dev_path_block_volume_delete(self):
         """Validate device path name changes the deletion of

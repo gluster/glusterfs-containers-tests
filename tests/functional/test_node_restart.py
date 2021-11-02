@@ -100,7 +100,7 @@ class TestNodeRestart(BaseClass):
                 self.oc_node, gluster_pod, service, "active", state)
 
     @skip("Blocked by BZ-1652913")
-    @pytest.mark.tier4
+    @pytest.mark.tier4b
     def test_node_restart_check_volume(self):
         df_cmd = "df --out=target | sed 1d | grep /var/lib/heketi"
         fstab_cmd = "grep '%s' /var/lib/heketi/fstab"
