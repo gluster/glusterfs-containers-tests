@@ -2101,7 +2101,7 @@ def oc_create_offline_block_volume_expand_job(
             "template": {
                 "spec": {
                     "containers": [{
-                        "image": "rhel7",
+                        "image": "registry.access.redhat.com/rhel7",
                         "imagePullPolicy": "IfNotPresent",
                         "env": [
                             {
