@@ -181,7 +181,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
         except exceptions.ExecutionError:
             self._guster_pod_delete(g_pod_list_before)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     def test_promethoues_pods_and_pvcs(self):
         """Validate prometheus pods and PVC"""
         # Wait for PVCs to be bound
@@ -204,7 +204,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
         self._fetch_metric_from_promtheus_pod(metric='kube_node_info')
 
     @ddt.data('delete', 'drain')
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     def test_respin_prometheus_pod(self, motive="delete"):
         """Validate respin of prometheus pod"""
         if motive == 'drain':
@@ -263,7 +263,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
         # Try to fetch metric from prometheus pod
         self._fetch_metric_from_promtheus_pod(metric='kube_node_info')
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     def test_heketi_and_prometheus_device_count(self):
         """Check if device count is same in heketi and promtheus"""
 
@@ -352,7 +352,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
                     msg + " differnt")
 
     @ddt.data('add', 'delete')
-    @pytest.mark.tier3
+    @pytest.mark.tier4a
     def test_heketi_prometheus_device_count_after_operation(self, operation):
         """Do operation and validate device count in heketi and prometheus"""
         h_node, h_server = self.heketi_client_node, self.heketi_server_url
@@ -440,7 +440,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
                 "Failed to update device details in prometheus")
 
     @ddt.data('usedbytes', 'brickcount')
-    @pytest.mark.tier3
+    @pytest.mark.tier4a
     def test_heketi_prometheus_usedbytes_brickcount_on_device_delete(
             self, operation):
         """Validate used bytes,device count on heketi and prometheus"""
@@ -560,7 +560,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
                 raise exceptions.ExecutionError(
                     "Failed to update device details in prometheus")
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     @podcmd.GlustoPod()
     def test_prometheous_kill_bhv_brick_process(self):
         """Validate kill brick process of block hosting
@@ -871,7 +871,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
             raise exceptions.ExecutionError(
                 "Failed to update node details in prometheus")
 
-    @pytest.mark.tier3
+    @pytest.mark.tier4a
     def test_restart_prometheus_glusterfs_pod(self):
         """Validate restarting glusterfs pod"""
 
@@ -976,7 +976,7 @@ class TestPrometheusAndGlusterRegistryValidation(GlusterBlockBaseClass):
             self._fetch_metric_from_promtheus_pod(
                 metric='heketi_device_brick_count')
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     def test_metrics_workload_on_prometheus(self):
         """Validate metrics workload on prometheus"""
 

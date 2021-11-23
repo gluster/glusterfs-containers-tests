@@ -77,7 +77,7 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
         switch_oc_project(self.master, self.metrics_project_name)
         self.addCleanup(switch_oc_project, self.master, current_project)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     def test_validate_metrics_pods_and_pvc(self):
         """Validate metrics pods and PVC"""
         # Get cassandra pod name and PVC name
@@ -230,7 +230,7 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
             rtype='rc', heketi_server_url=self.registry_heketi_server_url,
             is_registry_gluster=True)
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     def test_metrics_cassandra_pod_pvc_all_freespace_utilization(self):
         """Validate metrics by utilizing all the free space of block PVC bound
            to cassandra pod"""
@@ -276,7 +276,7 @@ class TestMetricsAndGlusterRegistryValidation(GlusterBlockBaseClass):
             self.master, bhv_name, list(self.registry_servers_info.keys()))
         self.addCleanup(self.cassandra_pod_delete_cleanup, raise_on_error=True)
 
-    @pytest.mark.tier3
+    @pytest.mark.tier4a
     def test_run_workload_with_metrics(self):
         """Validate if logs are being generated after running workload"""
 
