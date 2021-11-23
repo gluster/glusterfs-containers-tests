@@ -819,7 +819,7 @@ class TestArbiterVolumeCreateExpandDelete(baseclass.BaseClass):
                     openshift_ops.cmd_run_on_gluster_pod_or_node(
                         self.node, cmd, gluster_node_ip)
 
-    @pytest.mark.tier4
+    @pytest.mark.tier3
     def test_arbiter_scaled_heketi_and_gluster_volume_mapping(self):
         """Test to validate PVC, Heketi & gluster volume mapping
         for large no of PVC's
