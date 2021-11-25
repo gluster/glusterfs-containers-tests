@@ -111,7 +111,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             g_new_pod = self._get_newly_deployed_gluster_pod(g_pod_list_before)
             openshift_ops.wait_for_pod_be_ready(self._master, g_new_pod[0])
 
-    @pytest.mark.tier3
+    @pytest.mark.tier4a
     def test_validate_logging_pods_and_pvc(self):
         """Validate logging pods and PVC"""
 
@@ -144,7 +144,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             heketi_server_url=self._registry_heketi_server_url,
             is_registry_gluster=True)
 
-    @pytest.mark.tier3
+    @pytest.mark.tier4a
     def test_logging_es_pod_pvc_all_freespace_utilization(self):
         """Validate logging by utilizing all the free space of block PVC bound
            to elsaticsearch pod"""
@@ -290,7 +290,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
         openshift_ops.wait_for_pod_be_ready(
             self._master, new_pod_name, timeout=1800)
 
-    @pytest.mark.tier3
+    @pytest.mark.tier4a
     @ddt.data('delete', 'drain')
     def test_respin_es_pod(self, motive):
         """Validate respin of elastic search pod"""
@@ -354,7 +354,7 @@ class TestLoggingAndGlusterRegistryValidation(GlusterBlockBaseClass):
             heketi_server_url=self._registry_heketi_server_url,
             is_registry_gluster=True)
 
-    @pytest.mark.tier3
+    @pytest.mark.tier4a
     def test_run_workload_with_logging(self):
         """Validate logs are being generated aifter running workload"""
 

@@ -176,7 +176,7 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
             raise AssertionError(
                 "Failed to complete the rebalance in 240 seconds")
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     def test_prometheus_volume_metrics_on_pod_restart(self):
         """Validate volume metrics using prometheus before and after pod
         restart"""
@@ -231,7 +231,7 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
         self.assertEqual(dict(initial_metrics), dict(final_metrics),
                          "Metrics are different post pod restart")
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     def test_prometheus_basic_validation(self):
         """ Validate basic volume metrics using prometheus """
 
@@ -276,7 +276,7 @@ class TestPrometheusValidationFile(baseclass.BaseClass):
             filename="filename1", dirname="dirname1",
             metric_data=half_io_metrics, operation="delete")
 
-    @pytest.mark.tier2
+    @pytest.mark.tier4a
     def test_prometheus_pv_resize(self):
         """ Validate prometheus metrics with pv resize"""
 
