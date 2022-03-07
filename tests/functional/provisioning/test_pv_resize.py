@@ -164,8 +164,8 @@ class TestPvResizeClass(BaseClass):
                 "at least, 1 online device having free space "
                 "bigger than %dGb." % min_free_space_gb)
 
-        # Calculate maximum available size for PVC
-        available_size_gb = int(min(nodes.values()) / (1024**2))
+        # Calculate maximum free size for PVC excluding 3 percent for metadata
+        available_size_gb = int(min(nodes.values()) // (1024**2) * 0.97)
         return available_size_gb
 
     def _write_file(self, pod_name, filename, filesize, mnt_path):
@@ -189,6 +189,7 @@ class TestPvResizeClass(BaseClass):
         dir_path = "/mnt"
         pvc_size_gb = 1
 
+        # Check for available free size
         available_size_gb = self._available_disk_free_space()
 
         # Create PVC
